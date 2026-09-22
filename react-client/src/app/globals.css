@@ -1,0 +1,59 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens. Colour values are *not* declared here — they come from
+ * src/theme/colors.js as `--c-*` custom properties (see ThemeStyles.jsx),
+ * so the palette has exactly one source of truth.
+ */
+@theme {
+  --color-ink: var(--c-ink);
+  --color-paper: var(--c-paper);
+  --color-panel: var(--c-panel);
+  --color-line: var(--c-line);
+
+  --color-saffron: var(--c-saffron);
+  --color-saffron-soft: var(--c-saffronSoft);
+
+  --color-teal: var(--c-teal);
+  --color-teal-soft: var(--c-tealSoft);
+
+  --color-coral: var(--c-coral);
+  --color-coral-soft: var(--c-coralSoft);
+
+  --color-bluegrey: var(--c-blueGrey);
+  --color-bluegrey-soft: var(--c-blueGreySoft);
+
+  --color-text: var(--c-text);
+  --color-textdim: var(--c-textDim);
+
+  --font-heading: var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif;
+  --font-body: var(--font-ibm-plex-sans), ui-sans-serif, system-ui, sans-serif;
+
+  /* Sharp corners: the single radius used across every surface. */
+  --radius-sharp: 3px;
+}
+
+@layer base {
+  html {
+    background-color: var(--color-paper);
+  }
+
+  body {
+    background-color: var(--color-paper);
+    color: var(--color-text);
+    font-family: var(--font-body);
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-heading);
+  }
+
+  /* Keyboard focus must always be visible. */
+  :focus-visible {
+    outline: 2px solid var(--color-saffron);
+    outline-offset: 2px;
+  }
+}
