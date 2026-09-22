@@ -1,26 +1,44 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
+/* ExportHub design tokens (wired for Tailwind v4). Sharp 3px corners. */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --color-ink: #10213a;
+  --color-paper: #f6f4ee;
+  --color-panel: #ffffff;
+  --color-line: #e4dfd2;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-saffron: #c97a1a;
+  --color-saffron-soft: #f3e3c8;
+
+  --color-teal: #2f7d6e;
+  --color-teal-soft: #dcede8;
+
+  --color-coral: #b84a3b;
+  --color-coral-soft: #f5dfda;
+
+  --color-blue-grey: #3a4e7a;
+  --color-blue-grey-soft: #e4e9f5;
+
+  --color-text: #1b2333;
+  --color-text-dim: #66707f;
+
+  --radius: 3px;
+
+  --font-heading: var(--font-space-grotesk), sans-serif;
+  --font-body: var(--font-ibm-plex-sans), sans-serif;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-paper);
+  color: var(--color-text);
+  font-family: var(--font-body);
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-heading);
 }
