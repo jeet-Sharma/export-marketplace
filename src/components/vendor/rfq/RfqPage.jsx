@@ -38,6 +38,7 @@ export default function RfqPage() {
             <div className="lg:col-span-2 flex flex-col gap-4">
               <TableToolbar
                 inputId="rfq-search"
+                label="Search RFQs"
                 query={query}
                 onQueryChange={setQuery}
                 placeholder={rfqMeta.searchPlaceholder}

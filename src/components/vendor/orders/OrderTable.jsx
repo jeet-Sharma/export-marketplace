@@ -1,9 +1,9 @@
-import colors from "@/theme/colors";
 import Panel from "@/components/ui/Panel";
-import Table, { cellStyle } from "@/components/ui/Table";
+import Table, { cellClassName } from "@/components/ui/Table";
 import Button from "@/components/ui/Button";
 import StatusPill from "@/components/vendor/StatusPill";
 import { ordersMeta } from "@/data/orders";
+import { formatStatValue } from "@/lib/formatters";
 
 const COLUMNS = [
   "Order",
@@ -29,44 +29,37 @@ function actionFor(status) {
 export default function OrderTable({ orders = [] }) {
   return (
     <Panel title={ordersMeta.panelTitle}>
-      <Table columns={COLUMNS} emptyMessage="No orders match your search.">
+      <Table
+        columns={COLUMNS}
+        caption={ordersMeta.panelTitle}
+        emptyMessage="No orders match your search."
+      >
         {orders.map((order) => (
           <tr key={order.id}>
             <td
-              className="px-4 py-3 font-heading font-semibold"
-              style={cellStyle({ color: colors.ink })}
+              className={`px-4 py-3 font-heading font-semibold ${cellClassName({ emphasis: true })}`}
             >
               {order.id}
             </td>
-            <td className="px-4 py-3" style={cellStyle()}>
-              {order.product}
-            </td>
-            <td className="px-4 py-3" style={cellStyle()}>
+            <td className={`px-4 py-3 ${cellClassName()}`}>{order.product}</td>
+            <td className={`px-4 py-3 ${cellClassName()}`}>
               <span>{order.buyer}</span>
-              <span style={{ color: colors.textDim }}> ({order.country})</span>
+              <span className="text-text-dim"> ({order.country})</span>
             </td>
-            <td className="px-4 py-3" style={cellStyle()}>
-              {order.quantity}
-            </td>
+            <td className={`px-4 py-3 ${cellClassName()}`}>{order.quantity}</td>
             <td
-              className="px-4 py-3 font-heading font-medium"
-              style={cellStyle()}
+              className={`px-4 py-3 font-heading font-medium ${cellClassName()}`}
             >
-              {order.value}
+              {formatStatValue(order.value, "currency")}
             </td>
-            <td className="px-4 py-3" style={cellStyle()}>
-              {order.incoterm}
-            </td>
-            <td
-              className="px-4 py-3 font-body"
-              style={cellStyle({ color: colors.textDim })}
-            >
+            <td className={`px-4 py-3 ${cellClassName()}`}>{order.incoterm}</td>
+            <td className={`px-4 py-3 font-body ${cellClassName({ dim: true })}`}>
               {order.placed}
             </td>
-            <td className="px-4 py-3" style={cellStyle()}>
+            <td className={`px-4 py-3 ${cellClassName()}`}>
               <StatusPill status={order.status} />
             </td>
-            <td className="px-4 py-3" style={cellStyle()}>
+            <td className={`px-4 py-3 ${cellClassName()}`}>
               <Button variant="ghost" size="sm">
                 {actionFor(order.status)}
               </Button>

@@ -34,6 +34,7 @@ export default function OrdersPage() {
           <div className="flex flex-col gap-4">
             <TableToolbar
               inputId="order-search"
+              label="Search orders"
               query={query}
               onQueryChange={setQuery}
               placeholder={ordersMeta.searchPlaceholder}

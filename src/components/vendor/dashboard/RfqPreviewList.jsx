@@ -1,10 +1,12 @@
-import colors from "@/theme/colors";
 import Panel from "@/components/ui/Panel";
 import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
-import RfqCard from "@/components/vendor/dashboard/RfqCard";
+import RfqPreviewCard from "@/components/vendor/dashboard/RfqPreviewCard";
 
-export default function RfqList({ rfqs = [], title = "Pending RFQs" }) {
+// Dashboard-only preview of a few pending RFQs, with a link out to the full
+// RFQ table (components/vendor/rfq/RfqTable.jsx). Not the same component —
+// this one has no search/filter and always shows a "New" pill.
+export default function RfqPreviewList({ rfqs = [], title = "Pending RFQs" }) {
   return (
     <Panel
       title={title}
@@ -13,14 +15,11 @@ export default function RfqList({ rfqs = [], title = "Pending RFQs" }) {
     >
       <div className="flex flex-col gap-3">
         {rfqs.length === 0 ? (
-          <p
-            className="font-body"
-            style={{ color: colors.textDim, fontSize: "13px" }}
-          >
+          <p className="font-body text-text-dim text-[13px]">
             No pending RFQs right now.
           </p>
         ) : (
-          rfqs.map((rfq) => <RfqCard key={rfq.id} rfq={rfq} />)
+          rfqs.map((rfq) => <RfqPreviewCard key={rfq.id} rfq={rfq} />)
         )}
       </div>
 

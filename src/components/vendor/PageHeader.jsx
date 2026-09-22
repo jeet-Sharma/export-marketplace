@@ -1,4 +1,3 @@
-import colors from "@/theme/colors";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import NavIcon from "@/components/vendor/NavIcon";
@@ -13,26 +12,15 @@ export default function PageHeader({
   onAction,
 }) {
   return (
-    <header
-      style={{
-        backgroundColor: colors.panel,
-        borderBottom: `1px solid ${colors.line}`,
-      }}
-    >
+    <header className="bg-panel border-b border-line">
       <div className="w-full px-4 py-4 sm:px-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1
-              className="font-heading font-bold"
-              style={{ color: colors.ink, fontSize: "22px", lineHeight: 1.2 }}
-            >
+            <h1 className="font-heading font-bold text-ink text-[22px] leading-[1.2]">
               {title}
             </h1>
             {breadcrumb && (
-              <p
-                className="font-body mt-1"
-                style={{ color: colors.textDim, fontSize: "12px" }}
-              >
+              <p className="font-body mt-1 text-text-dim text-[12px]">
                 {breadcrumb}
               </p>
             )}
@@ -45,14 +33,7 @@ export default function PageHeader({
             <button
               type="button"
               aria-label="Notifications"
-              className="inline-flex items-center justify-center"
-              style={{
-                color: colors.saffron,
-                background: "transparent",
-                border: "none",
-                cursor: "pointer",
-                padding: "4px",
-              }}
+              className="inline-flex items-center justify-center text-saffron bg-transparent border-none cursor-pointer p-1"
             >
               <NavIcon name="bell" size={18} />
             </button>

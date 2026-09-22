@@ -1,6 +1,5 @@
-import colors from "@/theme/colors";
 import Button from "@/components/ui/Button";
-import { cellStyle } from "@/components/ui/Table";
+import { cellClassName } from "@/components/ui/Table";
 import StatusPill from "@/components/vendor/StatusPill";
 
 // One catalog row: product identity tile, commercial terms, workflow stage,
@@ -8,54 +7,38 @@ import StatusPill from "@/components/vendor/StatusPill";
 export default function ProductRow({ product }) {
   return (
     <tr>
-      <td className="px-4 py-3" style={cellStyle()}>
+      <td className={`px-4 py-3 ${cellClassName()}`}>
         <div className="flex items-center gap-3">
           <span
-            className="inline-flex items-center justify-center"
-            style={{
-              backgroundColor: colors.saffronSoft,
-              border: `1px solid ${colors.line}`,
-              borderRadius: "3px",
-              width: "30px",
-              height: "30px",
-              fontSize: "15px",
-            }}
+            className="inline-flex items-center justify-center bg-saffron-soft border border-line rounded text-[15px] w-[30px] h-[30px]"
             aria-hidden="true"
           >
             {product.emoji}
           </span>
           <span className="flex flex-col">
-            <span
-              className="font-heading font-semibold"
-              style={{ color: colors.saffron, fontSize: "13px" }}
-            >
+            <span className="font-heading font-semibold text-saffron text-[13px]">
               {product.name}
             </span>
-            <span
-              className="font-body"
-              style={{ color: colors.textDim, fontSize: "11px" }}
-            >
+            <span className="font-body text-text-dim text-[11px]">
               {product.origin} {"\u2192"} {product.market}
             </span>
           </span>
         </div>
       </td>
-      <td className="px-4 py-3 font-heading font-medium" style={cellStyle()}>
+      <td
+        className={`px-4 py-3 font-heading font-medium ${cellClassName()}`}
+      >
         {product.price}
       </td>
-      <td className="px-4 py-3" style={cellStyle()}>
-        {product.moq}
-      </td>
-      <td className="px-4 py-3 font-heading" style={cellStyle()}>
+      <td className={`px-4 py-3 ${cellClassName()}`}>{product.moq}</td>
+      <td className={`px-4 py-3 font-heading ${cellClassName()}`}>
         {product.hsCode}
       </td>
-      <td className="px-4 py-3" style={cellStyle()}>
-        {product.stage}
-      </td>
-      <td className="px-4 py-3" style={cellStyle()}>
+      <td className={`px-4 py-3 ${cellClassName()}`}>{product.stage}</td>
+      <td className={`px-4 py-3 ${cellClassName()}`}>
         <StatusPill status={product.status} />
       </td>
-      <td className="px-4 py-3" style={cellStyle()}>
+      <td className={`px-4 py-3 ${cellClassName()}`}>
         <Button variant="ghost" size="sm">
           {product.action}
         </Button>

@@ -37,6 +37,7 @@ export default function InventoryPage() {
           <div className="flex flex-col gap-4">
             <TableToolbar
               inputId="inventory-search"
+              label="Search SKUs"
               query={query}
               onQueryChange={setQuery}
               placeholder={inventoryMeta.searchPlaceholder}

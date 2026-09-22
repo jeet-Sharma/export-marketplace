@@ -1,6 +1,5 @@
-import colors from "@/theme/colors";
 import Panel from "@/components/ui/Panel";
-import Table, { cellStyle } from "@/components/ui/Table";
+import Table, { cellClassName } from "@/components/ui/Table";
 import PageHeader from "@/components/vendor/PageHeader";
 import StatRow from "@/components/vendor/dashboard/StatRow";
 import { BarChart, RankedBars } from "@/components/vendor/analytics/ChartPanel";
@@ -11,6 +10,7 @@ import {
   topProducts,
   analyticsMeta,
 } from "@/data/analytics";
+import { formatStatValue } from "@/lib/formatters";
 
 const PRODUCT_COLUMNS = ["Product", "Orders", "Revenue"];
 
@@ -32,7 +32,7 @@ export default function AnalyticsPage() {
               <BarChart
                 title={analyticsMeta.revenuePanelTitle}
                 data={revenueByMonth}
-                valuePrefix={analyticsMeta.currencyPrefix}
+                valueFormat="currency"
               />
             </div>
             <div className="lg:col-span-1">
@@ -44,23 +44,24 @@ export default function AnalyticsPage() {
           </div>
 
           <Panel title={analyticsMeta.productsPanelTitle}>
-            <Table columns={PRODUCT_COLUMNS}>
+            <Table
+              columns={PRODUCT_COLUMNS}
+              caption={analyticsMeta.productsPanelTitle}
+            >
               {topProducts.map((row) => (
                 <tr key={row.id}>
                   <td
-                    className="px-4 py-3 font-heading font-semibold"
-                    style={cellStyle({ color: colors.ink })}
+                    className={`px-4 py-3 font-heading font-semibold ${cellClassName({ emphasis: true })}`}
                   >
                     {row.product}
                   </td>
-                  <td className="px-4 py-3" style={cellStyle()}>
+                  <td className={`px-4 py-3 ${cellClassName()}`}>
                     {row.orders}
                   </td>
                   <td
-                    className="px-4 py-3 font-heading font-medium"
-                    style={cellStyle({ color: colors.teal })}
+                    className={`px-4 py-3 font-heading font-medium ${cellClassName({ extra: "text-teal" })}`}
                   >
-                    {row.revenue}
+                    {formatStatValue(row.revenue, "currency")}
                   </td>
                 </tr>
               ))}

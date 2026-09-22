@@ -31,6 +31,7 @@ export default function ProductsPage() {
         <div className="flex flex-col gap-4">
           <TableToolbar
             inputId="product-search"
+            label="Search products"
             query={query}
             onQueryChange={setQuery}
             placeholder={productsMeta.searchPlaceholder}

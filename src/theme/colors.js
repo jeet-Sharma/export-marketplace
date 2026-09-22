@@ -1,5 +1,11 @@
 // Central color tokens for the ExportHub vendor dashboard.
-// Components must import from here — no hardcoded hex values in components.
+//
+// These hex values are registered once in src/app/globals.css under @theme
+// and consumed everywhere as Tailwind utility classes (bg-ink, text-saffron,
+// border-line, etc) — components should not import this file to build
+// inline styles. This module exists so non-component code (chart math,
+// docs, tests) has a single source of truth for the same values, and so
+// statusTokens below can map status keys to Tailwind class names.
 
 const colors = {
   ink: "#10213A",
@@ -25,58 +31,57 @@ const colors = {
 
 export default colors;
 
-// Sidebar surface tokens. These are aliases over the shared palette so the
-// sidebar reads as the same surface as the dashboard — no separate ramp.
-export const sidebarColors = {
-  bg: colors.panel,
-  bgActive: colors.saffronSoft,
-  bgHover: colors.paper,
-  line: colors.line,
-  heading: colors.textDim,
-  item: colors.text,
-  itemActive: colors.ink,
-  brand: colors.ink,
-  panelLabel: colors.saffron,
-  accent: colors.saffron,
-  footerBg: colors.paper,
+// Sidebar surface tokens, expressed as Tailwind class names. These alias
+// the shared palette so the sidebar reads as the same surface as the
+// dashboard — no separate ramp.
+export const sidebarClasses = {
+  bg: "bg-panel",
+  bgActive: "bg-saffron-soft",
+  bgHover: "bg-paper",
+  border: "border-line",
+  heading: "text-text-dim",
+  item: "text-text",
+  itemActive: "text-ink",
+  brand: "text-ink",
+  panelLabel: "text-saffron",
+  accentBorder: "border-saffron",
+  footerBg: "bg-paper",
 };
 
-// Status pill token mapping, shared by every vendor screen.
+// Status pill token mapping, shared by every vendor screen, expressed as a
+// Tailwind tone name that Badge.jsx already knows how to render, plus the
+// display label.
 // Base rule: pending=saffron, approved/delivered=teal, shipped=blueGrey,
 // rejected/low=coral. Everything below follows the same semantics:
 // saffron = needs attention, teal = good, blueGrey = in flight, coral = problem.
 export const statusTokens = {
   // Orders
-  pending: { fg: colors.saffron, bg: colors.saffronSoft, label: "Pending" },
-  approved: { fg: colors.teal, bg: colors.tealSoft, label: "Approved" },
-  delivered: { fg: colors.teal, bg: colors.tealSoft, label: "Delivered" },
-  shipped: { fg: colors.blueGrey, bg: colors.blueGreySoft, label: "Shipped" },
-  rejected: { fg: colors.coral, bg: colors.coralSoft, label: "Rejected" },
-  processing: {
-    fg: colors.blueGrey,
-    bg: colors.blueGreySoft,
-    label: "Processing",
-  },
-  cancelled: { fg: colors.coral, bg: colors.coralSoft, label: "Cancelled" },
+  pending: { tone: "saffron", label: "Pending" },
+  approved: { tone: "teal", label: "Approved" },
+  delivered: { tone: "teal", label: "Delivered" },
+  shipped: { tone: "blueGrey", label: "Shipped" },
+  rejected: { tone: "coral", label: "Rejected" },
+  processing: { tone: "blueGrey", label: "Processing" },
+  cancelled: { tone: "coral", label: "Cancelled" },
 
   // Products
-  live: { fg: colors.teal, bg: colors.tealSoft, label: "Live" },
-  draft: { fg: colors.textDim, bg: colors.paper, label: "Draft" },
-  review: { fg: colors.saffron, bg: colors.saffronSoft, label: "In Review" },
+  live: { tone: "teal", label: "Live" },
+  draft: { tone: "neutral", label: "Draft" },
+  review: { tone: "saffron", label: "In Review" },
 
   // Inventory
-  low: { fg: colors.coral, bg: colors.coralSoft, label: "Low Stock" },
-  inStock: { fg: colors.teal, bg: colors.tealSoft, label: "In Stock" },
-  outOfStock: { fg: colors.coral, bg: colors.coralSoft, label: "Out of Stock" },
+  low: { tone: "coral", label: "Low Stock" },
+  inStock: { tone: "teal", label: "In Stock" },
+  outOfStock: { tone: "coral", label: "Out of Stock" },
 
   // RFQ
-  open: { fg: colors.saffron, bg: colors.saffronSoft, label: "Open" },
-  quoted: { fg: colors.blueGrey, bg: colors.blueGreySoft, label: "Quoted" },
-  won: { fg: colors.teal, bg: colors.tealSoft, label: "Won" },
-  expired: { fg: colors.coral, bg: colors.coralSoft, label: "Expired" },
+  open: { tone: "saffron", label: "Open" },
+  quoted: { tone: "blueGrey", label: "Quoted" },
+  won: { tone: "teal", label: "Won" },
+  expired: { tone: "coral", label: "Expired" },
 
   // Documents / compliance
-  verified: { fg: colors.teal, bg: colors.tealSoft, label: "Verified" },
-  uploaded: { fg: colors.blueGrey, bg: colors.blueGreySoft, label: "Uploaded" },
-  missing: { fg: colors.coral, bg: colors.coralSoft, label: "Missing" },
+  verified: { tone: "teal", label: "Verified" },
+  uploaded: { tone: "blueGrey", label: "Uploaded" },
+  missing: { tone: "coral", label: "Missing" },
 };

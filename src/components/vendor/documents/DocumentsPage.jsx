@@ -39,6 +39,7 @@ export default function DocumentsPage() {
           <div className="flex flex-col gap-4">
             <TableToolbar
               inputId="document-search"
+              label="Search documents"
               query={query}
               onQueryChange={setQuery}
               placeholder={documentsMeta.searchPlaceholder}

@@ -1,33 +1,15 @@
-import colors from "@/theme/colors";
-
 // Button variants:
 // primary (navy fill), accent (saffron fill), ghost (transparent), danger (coral outline)
-const VARIANTS = {
-  primary: {
-    backgroundColor: colors.ink,
-    color: colors.panel,
-    border: `1px solid ${colors.ink}`,
-  },
-  accent: {
-    backgroundColor: colors.saffron,
-    color: colors.panel,
-    border: `1px solid ${colors.saffron}`,
-  },
-  ghost: {
-    backgroundColor: "transparent",
-    color: colors.text,
-    border: `1px solid ${colors.line}`,
-  },
-  danger: {
-    backgroundColor: "transparent",
-    color: colors.coral,
-    border: `1px solid ${colors.coral}`,
-  },
+const VARIANT_CLASSES = {
+  primary: "bg-ink text-panel border border-ink",
+  accent: "bg-saffron text-panel border border-saffron",
+  ghost: "bg-transparent text-text border border-line",
+  danger: "bg-transparent text-coral border border-coral",
 };
 
-const SIZES = {
-  sm: { padding: "5px 10px", fontSize: "12px" },
-  md: { padding: "8px 14px", fontSize: "13px" },
+const SIZE_CLASSES = {
+  sm: "px-[10px] py-[5px] text-[12px]",
+  md: "px-[14px] py-[8px] text-[13px]",
 };
 
 export default function Button({
@@ -39,22 +21,14 @@ export default function Button({
   className = "",
   ...rest
 }) {
-  const variantStyle = VARIANTS[variant] ?? VARIANTS.primary;
-  const sizeStyle = SIZES[size] ?? SIZES.md;
+  const variantClass = VARIANT_CLASSES[variant] ?? VARIANT_CLASSES.primary;
+  const sizeClass = SIZE_CLASSES[size] ?? SIZE_CLASSES.md;
 
   return (
     <button
       type={type}
       onClick={onClick}
-      className={`inline-flex items-center justify-center gap-1 font-body font-medium transition-opacity hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:opacity-50 ${className}`}
-      style={{
-        ...variantStyle,
-        ...sizeStyle,
-        borderRadius: "3px",
-        cursor: "pointer",
-        lineHeight: 1.2,
-        whiteSpace: "nowrap",
-      }}
+      className={`inline-flex items-center justify-center gap-1 font-body font-medium leading-[1.2] whitespace-nowrap rounded cursor-pointer transition-opacity hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50 ${variantClass} ${sizeClass} ${className}`}
       {...rest}
     >
       {children}

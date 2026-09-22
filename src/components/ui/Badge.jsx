@@ -1,38 +1,20 @@
-import colors from "@/theme/colors";
-
-// Generic badge / pill. Pass explicit fg + bg tokens (from colors.js),
-// or a `tone` shortcut. Defaults to a neutral line-bordered pill.
-const TONES = {
-  neutral: { fg: colors.textDim, bg: colors.paper },
-  saffron: { fg: colors.saffron, bg: colors.saffronSoft },
-  teal: { fg: colors.teal, bg: colors.tealSoft },
-  blueGrey: { fg: colors.blueGrey, bg: colors.blueGreySoft },
-  coral: { fg: colors.coral, bg: colors.coralSoft },
+// Generic badge / pill. Pass a `tone` shortcut for one of the palette pairs,
+// or explicit `className` overrides (e.g. from StatusPill) for arbitrary
+// foreground/background token pairs not covered by the shortcuts below.
+const TONE_CLASSES = {
+  neutral: "text-text-dim bg-paper",
+  saffron: "text-saffron bg-saffron-soft",
+  teal: "text-teal bg-teal-soft",
+  blueGrey: "text-blue-grey bg-blue-grey-soft",
+  coral: "text-coral bg-coral-soft",
 };
 
-export default function Badge({
-  children,
-  tone = "neutral",
-  fg,
-  bg,
-  className = "",
-}) {
-  const resolved = TONES[tone] ?? TONES.neutral;
-  const color = fg ?? resolved.fg;
-  const background = bg ?? resolved.bg;
+export default function Badge({ children, tone = "neutral", className = "" }) {
+  const toneClass = TONE_CLASSES[tone] ?? TONE_CLASSES.neutral;
 
   return (
     <span
-      className={`inline-flex items-center gap-1 font-body font-medium ${className}`}
-      style={{
-        color,
-        backgroundColor: background,
-        borderRadius: "3px",
-        padding: "3px 8px",
-        fontSize: "12px",
-        lineHeight: 1.2,
-        whiteSpace: "nowrap",
-      }}
+      className={`inline-flex items-center gap-1 font-body font-medium rounded px-2 py-[3px] text-[12px] leading-[1.2] whitespace-nowrap ${toneClass} ${className}`}
     >
       {children}
     </span>

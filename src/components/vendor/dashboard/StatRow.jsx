@@ -9,7 +9,10 @@ export default function StatRow({ stats = [] }) {
           key={stat.id}
           label={stat.label}
           value={stat.value}
+          format={stat.format}
           delta={stat.delta}
+          deltaFormat={stat.deltaFormat}
+          note={stat.note}
           trend={stat.trend}
         />
       ))}

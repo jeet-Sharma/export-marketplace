@@ -1,4 +1,3 @@
-import colors from "@/theme/colors";
 import Panel from "@/components/ui/Panel";
 import Button from "@/components/ui/Button";
 import StatusPill from "@/components/vendor/StatusPill";
@@ -13,10 +12,7 @@ export default function VerificationPanel() {
     <Panel
       title={profileMeta.verificationPanelTitle}
       action={
-        <span
-          className="font-body"
-          style={{ color: colors.textDim, fontSize: "12px" }}
-        >
+        <span className="font-body text-text-dim text-[12px]">
           {outstanding} outstanding
         </span>
       }
@@ -24,14 +20,8 @@ export default function VerificationPanel() {
     >
       <ul className="flex flex-col gap-3">
         {verificationChecklist.map((item) => (
-          <li
-            key={item.id}
-            className="flex items-center justify-between gap-3"
-          >
-            <span
-              className="font-body"
-              style={{ color: colors.text, fontSize: "13px" }}
-            >
+          <li key={item.id} className="flex items-center justify-between gap-3">
+            <span className="font-body text-text text-[13px]">
               {item.label}
             </span>
             <span className="flex items-center gap-2">

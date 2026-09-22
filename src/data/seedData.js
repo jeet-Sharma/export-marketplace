@@ -1,34 +1,45 @@
 // Dummy data for the ExportHub vendor dashboard.
 // No data should be hardcoded in components — everything is pulled from here.
+//
+// Stat shape: `value` is raw (number), `format` says how StatCard renders it
+// ("number" | "currency" | "percent"). `delta` is a raw signed number and is
+// rendered with the same format unless `deltaFormat` overrides it; `trend`
+// (up/down/neutral) is derived from delta's sign unless a row needs to
+// override it (e.g. a note-only row with no meaningful sign). `note` is a
+// plain-text annotation used instead of, or alongside, a numeric delta.
 
 export const dashboardStats = [
   {
     id: "orders",
     label: "Total Orders",
-    value: "128",
-    delta: "+12%",
-    trend: "up",
+    value: 128,
+    format: "number",
+    delta: 12,
   },
   {
     id: "earnings",
     label: "Earnings",
-    value: "$24,680",
-    delta: "+8%",
-    trend: "up",
+    value: 24680,
+    format: "currency",
+    delta: 8,
   },
   {
     id: "products",
     label: "Products Listed",
-    value: "17",
-    delta: "2 pending",
+    value: 17,
+    format: "number",
+    delta: null,
     trend: "neutral",
+    note: "2 pending",
   },
   {
     id: "readiness",
     label: "Export Readiness",
-    value: "75%",
-    delta: "3 docs missing",
+    value: 75,
+    format: "percent",
+    delta: null,
     trend: "down",
+    note: "3 docs missing",
   },
 ];
 

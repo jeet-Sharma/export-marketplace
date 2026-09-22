@@ -1,4 +1,3 @@
-import colors from "@/theme/colors";
 import Panel from "@/components/ui/Panel";
 import Button from "@/components/ui/Button";
 import { profileFields, profileMeta } from "@/data/profile";
@@ -19,16 +18,10 @@ export default function CompanyForm() {
       <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {profileFields.map((field) => (
           <div key={field.id} className="flex flex-col gap-1">
-            <dt
-              className="font-body"
-              style={{ color: colors.textDim, fontSize: "12px" }}
-            >
+            <dt className="font-body text-text-dim text-[12px]">
               {field.label}
             </dt>
-            <dd
-              className="font-heading font-medium"
-              style={{ color: colors.text, fontSize: "13px" }}
-            >
+            <dd className="font-heading font-medium text-text text-[13px]">
               {field.value}
             </dd>
           </div>

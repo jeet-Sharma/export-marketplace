@@ -1,5 +1,3 @@
-import colors from "@/theme/colors";
-
 // Generic surface container with sharp 3px corners and a hairline border.
 // Optionally renders a header row with a title and trailing action slot.
 export default function Panel({
@@ -8,28 +6,13 @@ export default function Panel({
   children,
   className = "",
   bodyClassName = "",
-  style = {},
 }) {
   return (
-    <section
-      className={className}
-      style={{
-        backgroundColor: colors.panel,
-        border: `1px solid ${colors.line}`,
-        borderRadius: "3px",
-        ...style,
-      }}
-    >
+    <section className={`bg-panel border border-line rounded ${className}`}>
       {(title || action) && (
-        <header
-          className="flex items-center justify-between px-4 py-3"
-          style={{ borderBottom: `1px solid ${colors.line}` }}
-        >
+        <header className="flex items-center justify-between px-4 py-3 border-b border-line">
           {title ? (
-            <h3
-              className="font-heading font-semibold"
-              style={{ color: colors.text, fontSize: "15px" }}
-            >
+            <h3 className="font-heading font-semibold text-text text-[15px]">
               {title}
             </h3>
           ) : (

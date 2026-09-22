@@ -1,6 +1,5 @@
-import colors from "@/theme/colors";
 import Panel from "@/components/ui/Panel";
-import Table, { cellStyle } from "@/components/ui/Table";
+import Table, { cellClassName } from "@/components/ui/Table";
 import Button from "@/components/ui/Button";
 import StatusPill from "@/components/vendor/StatusPill";
 import { documentsMeta } from "@/data/documents";
@@ -20,45 +19,35 @@ export default function DocumentTable({ documents = [] }) {
     <Panel
       title={documentsMeta.panelTitle}
       action={
-        <span
-          className="font-body"
-          style={{ color: colors.textDim, fontSize: "12px" }}
-        >
+        <span className="font-body text-text-dim text-[12px]">
           {documentsMeta.storageNote}
         </span>
       }
     >
-      <Table columns={COLUMNS} emptyMessage="No documents match your search.">
+      <Table
+        columns={COLUMNS}
+        caption={documentsMeta.panelTitle}
+        emptyMessage="No documents match your search."
+      >
         {documents.map((doc) => (
           <tr key={doc.id}>
             <td
-              className="px-4 py-3 font-heading font-semibold"
-              style={cellStyle({ color: colors.ink })}
+              className={`px-4 py-3 font-heading font-semibold ${cellClassName({ emphasis: true })}`}
             >
               {doc.name}
             </td>
-            <td className="px-4 py-3" style={cellStyle()}>
-              {doc.category}
-            </td>
-            <td className="px-4 py-3" style={cellStyle()}>
-              {doc.reference}
-            </td>
-            <td
-              className="px-4 py-3"
-              style={cellStyle({ color: colors.textDim })}
-            >
+            <td className={`px-4 py-3 ${cellClassName()}`}>{doc.category}</td>
+            <td className={`px-4 py-3 ${cellClassName()}`}>{doc.reference}</td>
+            <td className={`px-4 py-3 ${cellClassName({ dim: true })}`}>
               {doc.updated}
             </td>
-            <td
-              className="px-4 py-3"
-              style={cellStyle({ color: colors.textDim })}
-            >
+            <td className={`px-4 py-3 ${cellClassName({ dim: true })}`}>
               {doc.expires}
             </td>
-            <td className="px-4 py-3" style={cellStyle()}>
+            <td className={`px-4 py-3 ${cellClassName()}`}>
               <StatusPill status={doc.status} />
             </td>
-            <td className="px-4 py-3" style={cellStyle()}>
+            <td className={`px-4 py-3 ${cellClassName()}`}>
               {doc.status === "missing" ? (
                 <Button variant="accent" size="sm">
                   Upload

@@ -1,7 +1,7 @@
 import PageHeader from "@/components/vendor/PageHeader";
 import StatRow from "@/components/vendor/dashboard/StatRow";
-import OrdersTable from "@/components/vendor/dashboard/OrdersTable";
-import RfqList from "@/components/vendor/dashboard/RfqList";
+import RecentOrdersTable from "@/components/vendor/dashboard/RecentOrdersTable";
+import RfqPreviewList from "@/components/vendor/dashboard/RfqPreviewList";
 import LowStockAlert from "@/components/vendor/dashboard/LowStockAlert";
 import {
   dashboardStats,
@@ -28,10 +28,10 @@ export default function DashboardPage() {
           {/* 3. Two-column section, stacks to 1 col on mobile */}
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
             <div className="lg:col-span-2">
-              <OrdersTable orders={recentOrders} />
+              <RecentOrdersTable orders={recentOrders} />
             </div>
             <div className="lg:col-span-1">
-              <RfqList rfqs={pendingRfqs} />
+              <RfqPreviewList rfqs={pendingRfqs} />
             </div>
           </div>
 

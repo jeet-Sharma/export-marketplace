@@ -1,5 +1,5 @@
-import colors from "@/theme/colors";
 import Button from "@/components/ui/Button";
+import { cellClassName } from "@/components/ui/Table";
 import StatusPill from "@/components/vendor/StatusPill";
 
 // Per-status row actions:
@@ -38,31 +38,22 @@ function RowActions({ status }) {
 }
 
 export default function OrderRow({ order }) {
-  const cellStyle = {
-    borderTop: `1px solid ${colors.line}`,
-    fontSize: "13px",
-    color: colors.text,
-  };
-
   return (
     <tr>
       <td
-        className="px-4 py-3 font-heading font-semibold"
-        style={{ ...cellStyle, color: colors.ink }}
+        className={`px-4 py-3 font-heading font-semibold ${cellClassName({ emphasis: true })}`}
       >
         {order.id}
       </td>
-      <td className="px-4 py-3" style={cellStyle}>
-        {order.product}
-      </td>
-      <td className="px-4 py-3" style={cellStyle}>
+      <td className={`px-4 py-3 ${cellClassName()}`}>{order.product}</td>
+      <td className={`px-4 py-3 ${cellClassName()}`}>
         <span>{order.buyer}</span>
-        <span style={{ color: colors.textDim }}> ({order.country})</span>
+        <span className="text-text-dim"> ({order.country})</span>
       </td>
-      <td className="px-4 py-3" style={cellStyle}>
+      <td className={`px-4 py-3 ${cellClassName()}`}>
         <StatusPill status={order.status} />
       </td>
-      <td className="px-4 py-3" style={cellStyle}>
+      <td className={`px-4 py-3 ${cellClassName()}`}>
         <RowActions status={order.status} />
       </td>
     </tr>

@@ -1,5 +1,3 @@
-import colors from "@/theme/colors";
-
 // Generic text input with an optional leading adornment (used for search).
 export default function Input({
   value,
@@ -15,27 +13,13 @@ export default function Input({
   return (
     <div className={`flex flex-col gap-1 ${className}`}>
       {label && (
-        <label
-          htmlFor={id}
-          className="font-body"
-          style={{ color: colors.textDim, fontSize: "12px" }}
-        >
+        <label htmlFor={id} className="font-body text-text-dim text-[12px]">
           {label}
         </label>
       )}
-      <div
-        className="flex items-center gap-2"
-        style={{
-          backgroundColor: colors.panel,
-          border: `1px solid ${colors.line}`,
-          borderRadius: "3px",
-          padding: "7px 10px",
-        }}
-      >
+      <div className="flex items-center gap-2 bg-panel border border-line rounded px-[10px] py-[7px] focus-within:border-saffron">
         {adornment && (
-          <span style={{ color: colors.textDim, fontSize: "13px" }}>
-            {adornment}
-          </span>
+          <span className="text-text-dim text-[13px]">{adornment}</span>
         )}
         <input
           id={id}
@@ -43,13 +27,7 @@ export default function Input({
           value={value}
           onChange={onChange}
           placeholder={placeholder}
-          className="font-body w-full focus:outline-none"
-          style={{
-            color: colors.text,
-            backgroundColor: "transparent",
-            border: "none",
-            fontSize: "13px",
-          }}
+          className="font-body w-full bg-transparent border-none text-text text-[13px] focus:outline-none"
           {...rest}
         />
       </div>

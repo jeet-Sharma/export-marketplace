@@ -1,15 +1,23 @@
 // Incoming buyer requests for quotation.
 
 export const rfqStats = [
-  { id: "open", label: "Open RFQs", value: "6", delta: "+2", trend: "up" },
-  { id: "quoted", label: "Quoted", value: "4", delta: "awaiting buyer", trend: "neutral" },
-  { id: "won", label: "Won", value: "3", delta: "+1", trend: "up" },
+  { id: "open", label: "Open RFQs", value: 6, format: "number", delta: 2 },
+  {
+    id: "quoted",
+    label: "Quoted",
+    value: 4,
+    format: "number",
+    delta: null,
+    trend: "neutral",
+    note: "awaiting buyer",
+  },
+  { id: "won", label: "Won", value: 3, format: "number", delta: 1 },
   {
     id: "winRate",
     label: "Win Rate",
-    value: "42%",
-    delta: "-3%",
-    trend: "down",
+    value: 42,
+    format: "percent",
+    delta: -3,
   },
 ];
 

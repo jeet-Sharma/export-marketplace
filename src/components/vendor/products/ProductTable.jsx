@@ -1,4 +1,3 @@
-import colors from "@/theme/colors";
 import Panel from "@/components/ui/Panel";
 import Table from "@/components/ui/Table";
 import ProductRow from "@/components/vendor/products/ProductRow";
@@ -19,15 +18,16 @@ export default function ProductTable({ products = [] }) {
     <Panel
       title={productsMeta.panelTitle}
       action={
-        <span
-          className="font-body"
-          style={{ color: colors.textDim, fontSize: "12px" }}
-        >
+        <span className="font-body text-text-dim text-[12px]">
           {productsMeta.workflowNote}
         </span>
       }
     >
-      <Table columns={COLUMNS} emptyMessage="No products match your search.">
+      <Table
+        columns={COLUMNS}
+        caption={productsMeta.panelTitle}
+        emptyMessage="No products match your search."
+      >
         {products.map((product) => (
           <ProductRow key={product.id} product={product} />
         ))}

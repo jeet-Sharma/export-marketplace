@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import colors, { sidebarColors } from "@/theme/colors";
+import { sidebarClasses } from "@/theme/colors";
 import SidebarNavItem from "@/components/vendor/SidebarNavItem";
 import { sidebarNav, appBrand, vendorCompany } from "@/data/seedData";
 
@@ -17,35 +17,18 @@ export default function Sidebar({
   const pathname = usePathname();
   return (
     <aside
-      className={`flex flex-col ${className}`}
-      style={{
-        backgroundColor: sidebarColors.bg,
-        borderRight: `1px solid ${sidebarColors.line}`,
-        width: "228px",
-      }}
+      className={`flex flex-col w-[228px] border-r ${sidebarClasses.border} ${sidebarClasses.bg} ${className}`}
     >
       {/* Brand */}
-      <div
-        className="px-4 py-4"
-        style={{ borderBottom: `1px solid ${sidebarColors.line}` }}
-      >
-        <span
-          className="font-heading font-bold"
-          style={{ color: sidebarColors.brand, fontSize: "18px" }}
-        >
+      <div className={`px-4 py-4 border-b ${sidebarClasses.border}`}>
+        <span className={`font-heading font-bold text-[18px] ${sidebarClasses.brand}`}>
           {brand.name}
         </span>
       </div>
 
       {/* Panel label */}
       <p
-        className="font-heading font-semibold px-4 pt-3"
-        style={{
-          color: sidebarColors.panelLabel,
-          fontSize: "10px",
-          letterSpacing: "0.14em",
-          textTransform: "uppercase",
-        }}
+        className={`font-heading font-semibold px-4 pt-3 text-[10px] tracking-[0.14em] uppercase ${sidebarClasses.panelLabel}`}
       >
         {brand.panelLabel}
       </p>
@@ -55,13 +38,7 @@ export default function Sidebar({
         {nav.map((group) => (
           <div key={group.id} className="mb-5">
             <p
-              className="font-body px-4 pb-2"
-              style={{
-                color: sidebarColors.heading,
-                fontSize: "10px",
-                letterSpacing: "0.12em",
-                textTransform: "uppercase",
-              }}
+              className={`font-body px-4 pb-2 text-[10px] tracking-[0.12em] uppercase ${sidebarClasses.heading}`}
             >
               {group.heading}
             </p>
@@ -80,36 +57,16 @@ export default function Sidebar({
 
       {/* Company footer */}
       <div
-        className="flex items-center gap-3 px-4 py-3"
-        style={{
-          borderTop: `1px solid ${sidebarColors.line}`,
-          backgroundColor: sidebarColors.footerBg,
-        }}
+        className={`flex items-center gap-3 px-4 py-3 border-t ${sidebarClasses.border} ${sidebarClasses.footerBg}`}
       >
-        <span
-          className="inline-flex items-center justify-center font-heading font-bold"
-          style={{
-            backgroundColor: colors.blueGrey,
-            color: colors.panel,
-            width: "28px",
-            height: "28px",
-            borderRadius: "3px",
-            fontSize: "11px",
-          }}
-        >
+        <span className="inline-flex items-center justify-center font-heading font-bold bg-blue-grey text-panel w-7 h-7 rounded text-[11px]">
           {company.initials}
         </span>
         <span className="flex flex-col">
-          <span
-            className="font-heading font-semibold"
-            style={{ color: sidebarColors.itemActive, fontSize: "12px" }}
-          >
+          <span className={`font-heading font-semibold text-[12px] ${sidebarClasses.itemActive}`}>
             {company.name}
           </span>
-          <span
-            className="font-body"
-            style={{ color: colors.saffron, fontSize: "11px" }}
-          >
+          <span className="font-body text-saffron text-[11px]">
             {company.status}
           </span>
         </span>

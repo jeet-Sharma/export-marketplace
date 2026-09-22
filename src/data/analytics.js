@@ -1,34 +1,34 @@
-// Analytics seed data. Unlike the other screens these are raw numbers,
-// because the charts need to compute scale from them.
+// Analytics seed data. These are raw numbers throughout — the charts and
+// stat cards compute scale and formatting from them at render time.
 
 export const analyticsStats = [
   {
     id: "revenue",
     label: "Revenue (YTD)",
-    value: "$212,400",
-    delta: "+14%",
-    trend: "up",
+    value: 212400,
+    format: "currency",
+    delta: 14,
   },
   {
     id: "aov",
     label: "Avg Order Value",
-    value: "$1,930",
-    delta: "+5%",
-    trend: "up",
+    value: 1930,
+    format: "currency",
+    delta: 5,
   },
   {
     id: "quoteRate",
     label: "Quote Conversion",
-    value: "42%",
-    delta: "-3%",
-    trend: "down",
+    value: 42,
+    format: "percent",
+    delta: -3,
   },
   {
     id: "repeat",
     label: "Repeat Buyers",
-    value: "31%",
-    delta: "+7%",
-    trend: "up",
+    value: 31,
+    format: "percent",
+    delta: 7,
   },
 ];
 
@@ -55,10 +55,10 @@ export const topMarkets = [
 ];
 
 export const topProducts = [
-  { id: "tp-1", product: "Turmeric Powder", orders: 52, revenue: "$86,300" },
-  { id: "tp-2", product: "Cotton Bedsheet", orders: 38, revenue: "$54,900" },
-  { id: "tp-3", product: "Wooden Handicraft", orders: 24, revenue: "$41,200" },
-  { id: "tp-4", product: "Red Chilli Powder", orders: 14, revenue: "$30,000" },
+  { id: "tp-1", product: "Turmeric Powder", orders: 52, revenue: 86300 },
+  { id: "tp-2", product: "Cotton Bedsheet", orders: 38, revenue: 54900 },
+  { id: "tp-3", product: "Wooden Handicraft", orders: 24, revenue: 41200 },
+  { id: "tp-4", product: "Red Chilli Powder", orders: 14, revenue: 30000 },
 ];
 
 export const analyticsMeta = {

@@ -72,7 +72,7 @@ export default function NavIcon({ name, size = 16 }) {
       strokeLinejoin="miter"
       aria-hidden="true"
       focusable="false"
-      style={{ flexShrink: 0 }}
+      className="shrink-0"
     >
       {path}
     </svg>
