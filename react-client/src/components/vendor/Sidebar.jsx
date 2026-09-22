@@ -3,11 +3,11 @@
 import { usePathname } from "next/navigation";
 import { sidebarClasses } from "@/theme/colors";
 import SidebarNavItem from "@/components/vendor/SidebarNavItem";
-import { sidebarNav, appBrand, vendorCompany } from "@/data/seedData";
+import { sidebarNav, appBrand, vendorCompany } from "@/config/navigation";
 
 // Vendor sidebar: brand, panel label, grouped nav, company footer.
-// Nav content comes entirely from seedData; the active row is derived from
-// the current route so no page has to declare it.
+// Nav content comes entirely from config/navigation; the active row is
+// derived from the current route so no page has to declare it.
 export default function Sidebar({
   nav = sidebarNav,
   brand = appBrand,

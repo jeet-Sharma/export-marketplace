@@ -1,4 +1,4 @@
-// Inline stroke icons for the sidebar, keyed by the `icon` field in seedData.
+// Inline stroke icons for the sidebar, keyed by the `icon` field in config/navigation.
 // Kept local so the project takes on no icon-library dependency.
 const PATHS = {
   dashboard: (
