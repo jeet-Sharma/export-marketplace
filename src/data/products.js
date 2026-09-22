@@ -1,0 +1,62 @@
+// Vendor product catalog seed data.
+
+export const productCatalog = [
+  {
+    id: "p-1",
+    name: "Turmeric Powder",
+    origin: "India",
+    market: "Global",
+    emoji: "\u{1F33F}",
+    price: "$8/kg",
+    moq: "100 kg",
+    hsCode: "091030",
+    stage: "Checker review",
+    status: "pending",
+    action: "Edit",
+  },
+  {
+    id: "p-2",
+    name: "Cotton Bedsheet",
+    origin: "India",
+    market: "Global",
+    emoji: "\u{1F6CF}",
+    price: "$8 base",
+    moq: "50 units",
+    hsCode: "630231",
+    stage: "Live",
+    status: "approved",
+    action: "Edit",
+  },
+  {
+    id: "p-3",
+    name: "Wooden Handicraft",
+    origin: "India",
+    market: "Global",
+    emoji: "\u{1FAB5}",
+    price: "$1.5/pc",
+    moq: "20 units",
+    hsCode: "442190",
+    stage: "Live",
+    status: "approved",
+    action: "Edit",
+  },
+  {
+    id: "p-4",
+    name: "Red Chilli Powder",
+    origin: "India",
+    market: "Global",
+    emoji: "\u{1F336}",
+    price: "$6.50/kg",
+    moq: "200 kg",
+    hsCode: "090430",
+    stage: "Maker draft",
+    status: "rejected",
+    action: "Revise",
+  },
+];
+
+export const productsMeta = {
+  panelTitle: "Product Catalog",
+  workflowNote: "Maker-checker workflow \u00B7 edits require approval",
+  searchPlaceholder: "Search products...",
+};
