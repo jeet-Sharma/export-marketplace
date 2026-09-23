@@ -33,7 +33,7 @@ export default function WizardProgress({ steps, currentStep }) {
               {index < steps.length - 1 && (
                 <span
                   aria-hidden="true"
-                  className={`h-[2px] flex-1 ${isComplete ? "bg-teal" : "bg-line"}`}
+                  className={`h-[2px] flex-1 mx-2 ${isComplete ? "bg-teal" : "bg-line"}`}
                 />
               )}
             </div>
