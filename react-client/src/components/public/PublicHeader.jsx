@@ -39,9 +39,11 @@ export default function PublicHeader() {
             <Button variant="ghost" size="sm" className="hidden sm:inline-flex">
               Signup
             </Button>
-            <Button variant="accent" size="sm">
-              Sell with us
-            </Button>
+            <Link href="/sell-with-us">
+              <Button variant="accent" size="sm">
+                Sell with us
+              </Button>
+            </Link>
           </div>
         </div>
       </div>
