@@ -1,0 +1,33 @@
+# Local AWS emulation for development. Provides S3 (file storage) and SQS
+# (messaging) so the app never needs real AWS credentials on a dev machine.
+# Usage: npm run localstack:up / npm run localstack:down (see package.json).
+#
+# Image pin: LocalStack merged its Community and Pro images into a single
+# image starting with the 2026.03.0 release, which requires a
+# LOCALSTACK_AUTH_TOKEN (a free account) to boot at all — see
+# https://blog.localstack.cloud/localstack-single-image-next-steps/.
+# 4.4.0 is the last tag published before that change, so it still runs with
+# no account and no token. Bump this only after adding
+# LOCALSTACK_AUTH_TOKEN below (get one free at https://app.localstack.cloud).
+services:
+  localstack:
+    image: localstack/localstack:4.4.0
+    container_name: export-marketplace-localstack
+    ports:
+      - '4566:4566' # Edge port: every emulated AWS service speaks here.
+    environment:
+      - SERVICES=s3,sqs
+      - DEBUG=${LOCALSTACK_DEBUG:-0}
+      - PERSISTENCE=1
+      - DEFAULT_REGION=${AWS_REGION:-us-east-1}
+      # - LOCALSTACK_AUTH_TOKEN=${LOCALSTACK_AUTH_TOKEN} # required if you upgrade the image tag above
+    volumes:
+      - localstack-data:/var/lib/localstack
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:4566/_localstack/health']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  localstack-data:
