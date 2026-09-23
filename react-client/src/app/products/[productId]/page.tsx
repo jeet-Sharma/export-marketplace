@@ -1,9 +1,9 @@
 import { notFound } from "next/navigation";
 import ProductDetailPage from "@/components/public/product-detail/ProductDetailPage";
-import { productDetails } from "@/data/public";
+import { getAllProductIds, getProductById } from "@/lib/products";
 
 export function generateStaticParams() {
-  return Object.keys(productDetails).map((productId) => ({ productId }));
+  return getAllProductIds().map((productId) => ({ productId }));
 }
 
 export default async function ProductPage({
@@ -12,7 +12,7 @@ export default async function ProductPage({
   params: Promise<{ productId: string }>;
 }) {
   const { productId } = await params;
-  const product = productDetails[productId];
+  const product = getProductById(productId);
 
   if (!product) {
     notFound();
