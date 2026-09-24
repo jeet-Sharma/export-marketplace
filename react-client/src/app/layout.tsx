@@ -16,8 +16,9 @@ const ibmPlexSans = IBM_Plex_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "ExportHub — Vendor Dashboard",
-  description: "Vendor dashboard for the ExportHub B2B export marketplace.",
+  title: "ExportHub — Export Indian Products Worldwide",
+  description:
+    "ExportHub is a B2B export marketplace connecting verified Indian suppliers with buyers worldwide.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

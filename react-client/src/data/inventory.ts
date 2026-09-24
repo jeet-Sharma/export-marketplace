@@ -1,0 +1,95 @@
+// Warehouse stock levels per product/SKU.
+import type { StatCardData } from "@/types/stats";
+import type { InventoryItem } from "@/types/inventory";
+
+export const inventoryStats: StatCardData[] = [
+  {
+    id: "skus",
+    label: "Active SKUs",
+    value: 17,
+    format: "number",
+    delta: 1,
+  },
+  {
+    id: "lowStock",
+    label: "Low Stock",
+    value: 2,
+    format: "number",
+    delta: null,
+    trend: "down",
+    note: "needs restock",
+  },
+  {
+    id: "outOfStock",
+    label: "Out of Stock",
+    value: 1,
+    format: "number",
+    delta: null,
+    trend: "down",
+    note: "blocking orders",
+  },
+  {
+    id: "value",
+    label: "Stock Value",
+    value: 31450,
+    format: "currency",
+    delta: 6,
+  },
+];
+
+export const inventoryItems: InventoryItem[] = [
+  {
+    id: "inv-1",
+    sku: "TUR-500",
+    product: "Turmeric Powder",
+    warehouse: "Erode, IN",
+    onHand: 4200,
+    reserved: 2000,
+    threshold: 800,
+    unit: "kg",
+    status: "inStock",
+  },
+  {
+    id: "inv-2",
+    sku: "BED-CTN-01",
+    product: "Cotton Bedsheet",
+    warehouse: "Karur, IN",
+    onHand: 640,
+    reserved: 500,
+    threshold: 200,
+    unit: "sets",
+    status: "inStock",
+  },
+  {
+    id: "inv-3",
+    sku: "WD-HC-220",
+    product: "Wooden Handicraft",
+    warehouse: "Jodhpur, IN",
+    onHand: 18,
+    reserved: 0,
+    threshold: 20,
+    unit: "units",
+    status: "low",
+  },
+  {
+    id: "inv-4",
+    sku: "CHL-900",
+    product: "Red Chilli Powder",
+    warehouse: "Guntur, IN",
+    onHand: 0,
+    reserved: 0,
+    threshold: 300,
+    unit: "kg",
+    status: "outOfStock",
+  },
+];
+
+export interface InventoryMeta {
+  panelTitle: string;
+  searchPlaceholder: string;
+}
+
+export const inventoryMeta: InventoryMeta = {
+  panelTitle: "Stock Levels",
+  searchPlaceholder: "Search SKUs...",
+};

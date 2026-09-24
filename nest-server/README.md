@@ -6,6 +6,8 @@ It will own business rules and transactional workflows for companies, products, 
 
 The current API is the initial NestJS foundation. It contains the starter application module, a root controller and service, test coverage, and NestJS Observe instrumentation configuration. The marketplace domain modules and database integrations are planned, not yet implemented.
 
+File storage (S3) and async messaging (SQS) are implemented and backed by [LocalStack](https://www.localstack.cloud/) in development, so no real AWS account is needed locally. See [LocalStack Setup](#localstack-setup-s3--sqs) below.
+
 ## Technology
 
 - Node.js
@@ -39,7 +41,7 @@ These directories are planned boundaries, not a claim that all modules currently
 
 - **PostgreSQL** is planned as the primary transactional source of truth for users, companies, products, RFQs, quotations, orders, payments, invoices, shipments, documents, compliance, reviews, and disputes.
 - **MongoDB** is planned for conversations, messages, notifications, activity logs, audit events, flexible product drafts, and selected search or recommendation data.
-- Object storage such as S3-compatible storage is planned for document files. Database records should store document metadata and object references.
+- Object storage such as S3-compatible storage is planned for document files. Database records should store document metadata and object references. **S3 file storage is implemented** (`src/modules/storage`) — database records for products/documents should store the returned object `key`, not the file itself.
 
 No PostgreSQL or MongoDB integration is present in the current codebase.
 
@@ -58,13 +60,20 @@ It returns the starter response `Hello World!`. The API listens on port `3000` b
 ```text
 nest-server/
 ├── src/
-│   ├── app.controller.ts       # Current root controller
-│   ├── app.controller.spec.ts  # Unit test
+│   ├── app.controller.ts        # Current root controller
+│   ├── app.controller.spec.ts   # Unit test
 │   ├── app.module.ts            # Root module and Observe setup
 │   ├── app.service.ts           # Current root service
-│   └── main.ts                  # Application bootstrap
+│   ├── main.ts                  # Application bootstrap
+│   ├── config/                  # Env config (aws.config.ts, validation)
+│   └── modules/
+│       ├── aws/                 # Shared S3Client/SQSClient providers
+│       ├── storage/              # S3 file storage (upload/download/delete)
+│       └── messaging/            # SQS messaging (publish/receive/delete)
 ├── test/
 │   └── app.e2e-spec.ts          # End-to-end test
+├── docker-compose.yml            # LocalStack (S3 + SQS) for local dev
+├── .env.example                  # Copy to .env for local dev
 ├── package.json
 ├── package-lock.json
 ├── tsconfig.json
@@ -78,10 +87,38 @@ From the repository root:
 ```bash
 cd nest-server
 npm ci
+cp .env.example .env
+npm run localstack:up   # starts LocalStack (S3 + SQS) — see below
 npm run start:dev
 ```
 
 The API is available at [http://localhost:3000](http://localhost:3000) by default.
+
+## LocalStack Setup (S3 + SQS)
+
+File storage and messaging run against [LocalStack](https://www.localstack.cloud/) locally instead of real AWS, so no AWS account or credentials are needed for development.
+
+```bash
+npm run localstack:up    # start the LocalStack container (docker compose)
+npm run localstack:logs  # tail LocalStack logs
+npm run localstack:down  # stop and remove the container
+```
+
+`.env.example` has working defaults (`AWS_ENDPOINT=http://localhost:4566`, dummy credentials). On startup, the app automatically creates the configured S3 bucket and SQS queue in LocalStack if they don't exist yet — no manual `awslocal`/`aws` CLI setup is required.
+
+**Endpoints:**
+
+```text
+POST   /storage/upload?folder=products   # multipart "file" field
+GET    /storage/download-url?key=...     # time-limited signed download URL
+DELETE /storage?key=...
+
+POST   /messaging/publish                # { "payload": {...}, "messageGroupId"?: string }
+```
+
+**Image pin:** `docker-compose.yml` pins `localstack/localstack:4.4.0`, the last version that runs without a LocalStack account/auth token. LocalStack now requires a free account and `LOCALSTACK_AUTH_TOKEN` for newer image tags — see the comment in `docker-compose.yml` before upgrading.
+
+In production, leave `AWS_ENDPOINT` unset so the AWS SDK talks to real AWS using standard credentials (IAM role, real access keys, etc).
 
 ## Commands
 
