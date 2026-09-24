@@ -5,6 +5,15 @@ import nextTs from "eslint-config-next/typescript";
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
+  // Codebase-wide restriction: `any` defeats the point of TypeScript, so we
+  // ban it outright rather than relying on whatever eslint-config-next's
+  // default happens to be. Use `unknown` + narrowing, or a proper type,
+  // instead.
+  {
+    rules: {
+      "@typescript-eslint/no-explicit-any": "error",
+    },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:

@@ -1,0 +1,109 @@
+// Export documentation and compliance records.
+import type { StatCardData } from "@/types/stats";
+import type { VendorDocument } from "@/types/document";
+
+export const documentStats: StatCardData[] = [
+  {
+    id: "readiness",
+    label: "Export Readiness",
+    value: 75,
+    format: "percent",
+    delta: null,
+    trend: "down",
+    note: "3 docs missing",
+  },
+  {
+    id: "verified",
+    label: "Verified",
+    value: 6,
+    format: "number",
+    delta: 2,
+  },
+  {
+    id: "pending",
+    label: "Awaiting Review",
+    value: 2,
+    format: "number",
+    delta: null,
+    trend: "neutral",
+    note: "with checker",
+  },
+  {
+    id: "expiring",
+    label: "Expiring Soon",
+    value: 1,
+    format: "number",
+    delta: null,
+    trend: "down",
+    note: "within 30 days",
+  },
+];
+
+export const documents: VendorDocument[] = [
+  {
+    id: "doc-1",
+    name: "Certificate of Origin",
+    category: "Trade",
+    reference: "COO-2026-114",
+    updated: "2026-09-12",
+    expires: "2027-09-12",
+    status: "verified",
+  },
+  {
+    id: "doc-2",
+    name: "Commercial Invoice",
+    category: "Commercial",
+    reference: "INV-101",
+    updated: "2026-09-14",
+    expires: "\u2014",
+    status: "verified",
+  },
+  {
+    id: "doc-3",
+    name: "Phytosanitary Certificate",
+    category: "Compliance",
+    reference: "PHY-2026-51",
+    updated: "2026-09-09",
+    expires: "2026-10-09",
+    status: "uploaded",
+  },
+  {
+    id: "doc-4",
+    name: "Export Licence",
+    category: "Compliance",
+    reference: "\u2014",
+    updated: "\u2014",
+    expires: "\u2014",
+    status: "missing",
+  },
+  {
+    id: "doc-5",
+    name: "Bill of Lading",
+    category: "Logistics",
+    reference: "\u2014",
+    updated: "\u2014",
+    expires: "\u2014",
+    status: "missing",
+  },
+  {
+    id: "doc-6",
+    name: "Insurance Certificate",
+    category: "Logistics",
+    reference: "\u2014",
+    updated: "\u2014",
+    expires: "\u2014",
+    status: "missing",
+  },
+];
+
+export interface DocumentsMeta {
+  panelTitle: string;
+  searchPlaceholder: string;
+  storageNote: string;
+}
+
+export const documentsMeta: DocumentsMeta = {
+  panelTitle: "Document Vault",
+  searchPlaceholder: "Search documents...",
+  storageNote: "Files are stored in object storage; only metadata lives here.",
+};
