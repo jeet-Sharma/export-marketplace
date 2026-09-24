@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import awsConfig from './aws.config.js';
+import dbConfig from './db.config.js';
 
 /**
  * Global, application-wide environment configuration. Imported once from
@@ -9,9 +10,10 @@ import awsConfig from './aws.config.js';
  *
  * No strict env validation here: aws.config.ts already falls back to safe
  * defaults (LocalStack-friendly dummy credentials, default bucket/queue
- * names) for every AWS_* variable, so local dev, CI, and unit/e2e tests all
- * boot without requiring a .env file. Override the defaults via .env for
- * anything environment-specific (see .env.example).
+ * names) for every AWS_* variable, and db.config.ts falls back to the local
+ * Docker Compose defaults, so local dev, CI, and unit/e2e tests all boot
+ * without requiring a .env file. Override the defaults via .env for anything
+ * environment-specific (see .env.example).
  */
 @Module({
   imports: [
@@ -19,8 +21,8 @@ import awsConfig from './aws.config.js';
       isGlobal: true,
       envFilePath: '.env',
       ignoreEnvFile: process.env.NODE_ENV === 'test',
-      load: [awsConfig],
+      load: [awsConfig, dbConfig],
     }),
   ],
 })
-export class AppConfigModule { }
+export class AppConfigModule {}

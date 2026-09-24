@@ -3,6 +3,7 @@ import { createObserveModule } from '@nestjs/observe';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { AppConfigModule } from './config/config.module.js';
+import { DatabaseModule } from './modules/database/database.module.js';
 import { StorageModule } from './modules/storage/storage.module.js';
 import { MessagingModule } from './modules/messaging/messaging.module.js';
 
@@ -17,7 +18,10 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
       appSecret: 'YOUR_APP_SECRET',
       serviceId: 'export-marketplace',
     }),
+    // Config must come before DatabaseModule so ConfigService is available
+    // when TypeORM's async factory runs.
     AppConfigModule,
+    DatabaseModule,
     // S3 (file storage) and SQS (messaging) — backed by LocalStack in dev,
     // real AWS in production. See docker-compose.yml and .env.example.
     StorageModule,
@@ -26,4 +30,4 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule { }
+export class AppModule {}

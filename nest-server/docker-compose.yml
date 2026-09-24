@@ -1,18 +1,83 @@
-# Local AWS emulation for development. Provides S3 (file storage) and SQS
-# (messaging) so the app never needs real AWS credentials on a dev machine.
-# Usage: npm run localstack:up / npm run localstack:down (see package.json).
+# Local development stack.
 #
-# Image pin: LocalStack merged its Community and Pro images into a single
-# image starting with the 2026.03.0 release, which requires a
-# LOCALSTACK_AUTH_TOKEN (a free account) to boot at all — see
-# https://blog.localstack.cloud/localstack-single-image-next-steps/.
-# 4.4.0 is the last tag published before that change, so it still runs with
-# no account and no token. Bump this only after adding
-# LOCALSTACK_AUTH_TOKEN below (get one free at https://app.localstack.cloud).
+# Services:
+#   app         — NestJS API (built from Dockerfile)
+#   postgres    — primary relational database (TypeORM connects here)
+#   localstack  — emulated AWS S3 + SQS (no real AWS credentials needed)
+#
+# Usage:
+#   docker compose up --build        — build and start everything
+#   docker compose up --build app    — rebuild only the app image
+#   docker compose down              — stop all services (volumes kept)
+#   docker compose logs -f app       — tail API logs
+#
+# Image pin (LocalStack): 4.4.0 is the last tag that boots without a
+# LOCALSTACK_AUTH_TOKEN. Bump only after adding the token env var below.
+# See https://blog.localstack.cloud/localstack-single-image-next-steps/
+
 services:
+  # ---------------------------------------------------------------------------
+  # NestJS API
+  # ---------------------------------------------------------------------------
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: export-marketplace-api
+    restart: unless-stopped
+    ports:
+      - '${PORT:-3000}:3000'
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 3000
+      # Postgres — use service name as host, not localhost
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-export_marketplace}
+      TYPEORM_LOGGING: ${TYPEORM_LOGGING:-false}
+      # AWS / LocalStack — use service name as host
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_ENDPOINT: http://localstack:4566
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-test}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-test}
+      AWS_S3_BUCKET: ${AWS_S3_BUCKET:-export-marketplace-documents}
+      AWS_SQS_QUEUE_NAME: ${AWS_SQS_QUEUE_NAME:-export-marketplace-events}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------------------
+  # PostgreSQL — primary database
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:17-alpine
+    container_name: export-marketplace-postgres
+    restart: unless-stopped
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-export_marketplace}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-export_marketplace}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ---------------------------------------------------------------------------
+  # LocalStack — emulated AWS S3 + SQS
+  # ---------------------------------------------------------------------------
   localstack:
     image: localstack/localstack:4.4.0
     container_name: export-marketplace-localstack
+    restart: unless-stopped
     ports:
       - '4566:4566' # Edge port: every emulated AWS service speaks here.
     environment:
@@ -30,4 +95,5 @@ services:
       retries: 20
 
 volumes:
+  postgres-data:
   localstack-data:
