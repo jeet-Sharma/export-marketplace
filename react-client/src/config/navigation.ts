@@ -1,11 +1,12 @@
 // Vendor sidebar navigation config: brand, signed-in company footer, and
 // the grouped nav itself. Kept separate from /data/seedData.js because this
 // is app configuration (routes/labels/icons), not dashboard seed data.
+import type { NavIconName } from "@/components/vendor/NavIcon";
 
 export interface NavItem {
   id: string;
   label: string;
-  icon: string;
+  icon: NavIconName;
   href: string;
 }
 

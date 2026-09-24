@@ -1,0 +1,50 @@
+import Panel from "@/components/ui/Panel";
+import Button from "@/components/ui/Button";
+import StatusPill from "@/components/vendor/StatusPill";
+import { verificationChecklist, profileMeta } from "@/data/profile";
+import type { VerificationChecklistItem } from "@/types/profile";
+
+export interface VerificationPanelProps {
+  onUpload?: (item: VerificationChecklistItem) => void;
+}
+
+export default function VerificationPanel({ onUpload }: VerificationPanelProps) {
+  const outstanding = verificationChecklist.filter(
+    (item) => item.status !== "verified",
+  ).length;
+
+  return (
+    <Panel
+      title={profileMeta.verificationPanelTitle}
+      action={
+        <span className="font-body text-text-dim text-[12px]">
+          {outstanding} outstanding
+        </span>
+      }
+      bodyClassName="p-4"
+    >
+      <ul className="flex flex-col gap-3">
+        {verificationChecklist.map((item) => (
+          <li key={item.id} className="flex items-center justify-between gap-3">
+            <span className="font-body text-text text-[13px]">
+              {item.label}
+            </span>
+            <span className="flex items-center gap-2">
+              <StatusPill status={item.status} />
+              {item.status === "missing" && (
+                <Button
+                  variant="accent"
+                  size="sm"
+                  onClick={() => onUpload?.(item)}
+                  disabled={!onUpload}
+                >
+                  Upload
+                </Button>
+              )}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </Panel>
+  );
+}
