@@ -20,9 +20,12 @@
     "test:cov": "vitest run --coverage",
     "test:debug": "vitest --inspect-brk --no-file-parallelism",
     "test:e2e": "vitest run --config ./vitest.config.e2e.ts",
-    "localstack:up": "docker compose up -d",
-    "localstack:down": "docker compose down",
-    "localstack:logs": "docker compose logs -f localstack"
+    "localstack:up": "docker compose up localstack -d",
+    "localstack:down": "docker compose down localstack",
+    "localstack:logs": "docker compose logs -f localstack",
+    "infra:up": "docker compose up -d",
+    "infra:down": "docker compose down",
+    "infra:logs": "docker compose logs -f"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1138.0",
@@ -33,9 +36,12 @@
     "@nestjs/core": "^12.0.1",
     "@nestjs/observe": "^0.1.8",
     "@nestjs/platform-express": "^12.0.1",
+    "@nestjs/typeorm": "12.0.1",
     "@smithy/node-http-handler": "^4.12.1",
+    "pg": "8.16.0",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "typeorm": "0.3.31"
   },
   "devDependencies": {
     "@nestjs/cli": "^12.0.0",
@@ -45,6 +51,7 @@
     "@types/express": "^5.0.0",
     "@types/multer": "^2.2.0",
     "@types/node": "^24.0.0",
+    "@types/pg": "8.11.14",
     "@types/supertest": "^7.0.0",
     "@vitest/coverage-v8": "^4.1.2",
     "oxlint": "^1.58.0",

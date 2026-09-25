@@ -1,0 +1,42 @@
+# Dependencies — reinstalled inside the builder stage via npm ci
+node_modules
+
+# Compiled output — produced fresh inside the builder stage
+dist
+
+# TypeScript incremental build cache
+tsconfig.build.tsbuildinfo
+
+# Local environment — never bake secrets into the image
+.env
+.env.*
+!.env.example
+
+# Test files — not needed in the production image
+test
+**/*.spec.ts
+**/*.e2e-spec.ts
+vitest.config.ts
+vitest.config.e2e.ts
+
+# Docker files themselves
+Dockerfile
+.dockerignore
+docker-compose.yml
+
+# Git
+.git
+.gitignore
+.github
+
+# Editor / OS
+.vscode
+.idea
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
