@@ -23,7 +23,7 @@ export default function FeaturedSuppliersSection() {
                 {supplier.verified && <Badge tone="teal">{"\u2713"} Verified</Badge>}
               </div>
               <p className="font-body text-text-dim text-[12px] mt-1">
-                {supplier.country} \u00B7 {supplier.categories}
+                {supplier.country} {"\u00B7"} {supplier.categories}
               </p>
             </div>
           </Panel>
