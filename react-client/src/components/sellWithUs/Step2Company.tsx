@@ -28,6 +28,18 @@ export const validateCompany: WizardStepValidator = (values) => {
     errors.iecNumber = "Enter a valid 10-character IEC number";
   }
 
+  if (!values.companyPhone.trim()) {
+    errors.companyPhone = "Enter a company phone number";
+  } else if (!/^[0-9+\-\s()]{7,15}$/.test(values.companyPhone.trim())) {
+    errors.companyPhone = "Enter a valid phone number";
+  }
+
+  if (!values.companyEmail.trim()) {
+    errors.companyEmail = "Enter a company email address";
+  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.companyEmail.trim())) {
+    errors.companyEmail = "Enter a valid email address";
+  }
+
   if (!values.address.trim()) {
     errors.address = "Enter the registered address";
   }
@@ -52,26 +64,56 @@ export default function Step2Company({ values, errors, onChange }: WizardStepPro
         <FieldError message={errors.legalName} />
       </div>
 
-      <div className="flex flex-col gap-1">
-        <Input
-          id="company-gst"
-          label="GST number"
-          value={values.gstNumber}
-          onChange={(event) => onChange("gstNumber", event.target.value)}
-          placeholder="33ABCDE1234F1Z5"
-        />
-        <FieldError message={errors.gstNumber} />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="flex flex-col gap-1">
+          <Input
+            id="company-gst"
+            label="GST number"
+            value={values.gstNumber}
+            onChange={(event) => onChange("gstNumber", event.target.value)}
+            placeholder="33ABCDE1234F1Z5"
+          />
+          <FieldError message={errors.gstNumber} />
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <Input
+            id="company-iec"
+            label="IEC number"
+            value={values.iecNumber}
+            onChange={(event) => onChange("iecNumber", event.target.value)}
+            placeholder="0414512345"
+          />
+          <FieldError message={errors.iecNumber} />
+        </div>
       </div>
 
-      <div className="flex flex-col gap-1">
-        <Input
-          id="company-iec"
-          label="IEC number"
-          value={values.iecNumber}
-          onChange={(event) => onChange("iecNumber", event.target.value)}
-          placeholder="0414512345"
-        />
-        <FieldError message={errors.iecNumber} />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="flex flex-col gap-1">
+          <Input
+            id="company-phone"
+            label="Phone number"
+            type="tel"
+            value={values.companyPhone}
+            onChange={(event) => onChange("companyPhone", event.target.value)}
+            placeholder="+91 98765 43210"
+            autoComplete="tel"
+          />
+          <FieldError message={errors.companyPhone} />
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <Input
+            id="company-email"
+            label="Email ID"
+            type="email"
+            value={values.companyEmail}
+            onChange={(event) => onChange("companyEmail", event.target.value)}
+            placeholder="contact@company.com"
+            autoComplete="email"
+          />
+          <FieldError message={errors.companyEmail} />
+        </div>
       </div>
 
       <div className="flex flex-col gap-1">

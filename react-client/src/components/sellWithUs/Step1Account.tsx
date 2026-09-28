@@ -21,6 +21,12 @@ export const validateAccount: WizardStepValidator = (values) => {
     errors.email = "Enter a valid email address";
   }
 
+  if (!values.phone.trim()) {
+    errors.phone = "Enter your phone number";
+  } else if (!/^[0-9+\-\s()]{7,15}$/.test(values.phone.trim())) {
+    errors.phone = "Enter a valid phone number";
+  }
+
   if (!values.password) {
     errors.password = "Enter a password";
   } else if (values.password.length < 8) {
@@ -65,6 +71,19 @@ export default function Step1Account({ values, errors, onChange }: WizardStepPro
           autoComplete="email"
         />
         <FieldError message={errors.email} />
+      </div>
+
+      <div className="flex flex-col gap-1">
+        <Input
+          id="account-phone"
+          label="Phone number"
+          type="tel"
+          value={values.phone}
+          onChange={(event) => onChange("phone", event.target.value)}
+          placeholder="+91 98765 43210"
+          autoComplete="tel"
+        />
+        <FieldError message={errors.phone} />
       </div>
 
       <div className="flex flex-col gap-1">

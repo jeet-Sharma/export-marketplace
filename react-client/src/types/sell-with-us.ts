@@ -24,11 +24,14 @@ export type WizardDocumentFiles = Record<string, File | undefined>;
 export interface SellWithUsFormValues {
   name: string;
   email: string;
+  phone: string;
   password: string;
   confirmPassword: string;
   legalName: string;
   gstNumber: string;
   iecNumber: string;
+  companyPhone: string;
+  companyEmail: string;
   address: string;
   sourceCountry: string;
   /** Selected destination country ids (WizardCountry.id values). */

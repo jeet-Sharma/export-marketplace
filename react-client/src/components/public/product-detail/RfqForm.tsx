@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { FormEvent } from "react";
+import type * as React from "react";
 import Panel from "@/components/ui/Panel";
 import Input from "@/components/ui/Input";
 import Button from "@/components/ui/Button";
@@ -17,7 +17,7 @@ export interface RfqFormProps {
 export default function RfqForm({ countries = [], productName }: RfqFormProps) {
   const [submitted, setSubmitted] = useState(false);
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  function handleSubmit(event: React.SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmitted(true);
   }

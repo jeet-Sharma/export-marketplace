@@ -34,12 +34,16 @@ export default function PublicHeader() {
           </nav>
 
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-            <Button variant="ghost" size="sm" className="hidden sm:inline-flex">
-              Login
-            </Button>
-            <Button variant="ghost" size="sm" className="hidden sm:inline-flex">
-              Signup
-            </Button>
+            <Link href={routes.login}>
+              <Button variant="ghost" size="sm" className="hidden sm:inline-flex">
+                Login
+              </Button>
+            </Link>
+            <Link href={routes.signup}>
+              <Button variant="ghost" size="sm" className="hidden sm:inline-flex">
+                Signup
+              </Button>
+            </Link>
             <Link href={routes.sellWithUs}>
               <Button variant="accent" size="sm">
                 Sell with us

@@ -50,6 +50,7 @@ export default function Step6Review({ values }: WizardStepProps) {
         </h3>
         <ReviewRow label="Name" value={values.name || "\u2014"} />
         <ReviewRow label="Email" value={values.email || "\u2014"} />
+        <ReviewRow label="Phone" value={values.phone || "\u2014"} />
       </section>
 
       <section className="rounded border border-line bg-panel px-4 py-1">
@@ -59,6 +60,8 @@ export default function Step6Review({ values }: WizardStepProps) {
         <ReviewRow label="Legal name" value={values.legalName || "\u2014"} />
         <ReviewRow label="GST number" value={values.gstNumber || "\u2014"} />
         <ReviewRow label="IEC number" value={values.iecNumber || "\u2014"} />
+        <ReviewRow label="Phone" value={values.companyPhone || "\u2014"} />
+        <ReviewRow label="Email" value={values.companyEmail || "\u2014"} />
         <ReviewRow label="Address" value={values.address || "\u2014"} />
       </section>
 
