@@ -1,4 +1,4 @@
-import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn, type Relation } from 'typeorm';
 import { CurrencyEntity } from './currency.entity.js';
 
 /**
@@ -22,7 +22,7 @@ export class ExchangeRateEntity {
 
   @ManyToOne(() => CurrencyEntity)
   @JoinColumn({ name: 'from_currency' })
-  fromCurrencyRef?: CurrencyEntity;
+  fromCurrencyRef?: Relation<CurrencyEntity>;
 
   @Index()
   @Column({ name: 'to_currency', type: 'char', length: 3 })
@@ -30,7 +30,7 @@ export class ExchangeRateEntity {
 
   @ManyToOne(() => CurrencyEntity)
   @JoinColumn({ name: 'to_currency' })
-  toCurrencyRef?: CurrencyEntity;
+  toCurrencyRef?: Relation<CurrencyEntity>;
 
   @Column({ type: 'numeric', precision: 18, scale: 8, comment: 'd_rate domain' })
   rate!: string;

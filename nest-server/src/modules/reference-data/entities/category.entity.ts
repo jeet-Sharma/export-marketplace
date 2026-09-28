@@ -1,4 +1,4 @@
-import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn, type Relation, UpdateDateColumn } from 'typeorm';
 
 /**
  * PART 1.4 — category (Data_Modeling_Complete.md, Document 6 v3).
@@ -21,7 +21,7 @@ export class CategoryEntity {
 
   @ManyToOne(() => CategoryEntity, { nullable: true })
   @JoinColumn({ name: 'parent_id' })
-  parent?: CategoryEntity | null;
+  parent?: Relation<CategoryEntity> | null;
 
   @Column({ type: 'text' })
   name!: string;

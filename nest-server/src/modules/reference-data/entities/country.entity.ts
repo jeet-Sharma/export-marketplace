@@ -1,4 +1,4 @@
-import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryColumn, UpdateDateColumn } from 'typeorm';
+import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryColumn, type Relation, UpdateDateColumn } from 'typeorm';
 import { CurrencyEntity } from './currency.entity.js';
 
 /**
@@ -30,7 +30,7 @@ export class CountryEntity {
 
   @ManyToOne(() => CurrencyEntity, { nullable: true })
   @JoinColumn({ name: 'default_currency' })
-  defaultCurrencyRef?: CurrencyEntity;
+  defaultCurrencyRef?: Relation<CurrencyEntity>;
 
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive!: boolean;
