@@ -18,6 +18,30 @@ jobs:
     defaults:
       run:
         working-directory: nest-server
+    # Postgres is required from here on: AuthModule (the first
+    # controller-bearing module needing a live DataSource) made
+    # test/*.e2e-spec.ts's previous DatabaseModule mock unworkable — see
+    # app.module.ts and test/app.e2e-spec.ts for why.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: export_marketplace
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d export_marketplace"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: export_marketplace
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -37,6 +61,9 @@ jobs:
 
       - name: Run unit tests
         run: npm test
+
+      - name: Run database migrations
+        run: npm run migration:run
 
       - name: Run end-to-end tests
         run: npm run test:e2e
