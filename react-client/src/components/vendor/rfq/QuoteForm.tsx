@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { FormEvent } from "react";
+import type * as React from "react";
 import Panel from "@/components/ui/Panel";
 import Input from "@/components/ui/Input";
 import Button from "@/components/ui/Button";
@@ -49,7 +49,7 @@ export default function QuoteForm({ rfq, onClear, onSubmit }: QuoteFormProps) {
 
   const selectedRfq = rfq;
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  function handleSubmit(event: React.SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
     onSubmit?.({ rfq: selectedRfq, unitPrice, leadTimeDays: leadTime, notes });
     onClear();

@@ -1,3 +1,4 @@
+import { forwardRef } from "react";
 import type { InputHTMLAttributes, ReactNode } from "react";
 
 export interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "id"> {
@@ -8,17 +9,12 @@ export interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 
 }
 
 // Generic text input with an optional leading adornment (used for search).
-export default function Input({
-  value,
-  onChange,
-  placeholder,
-  type = "text",
-  adornment,
-  label,
-  id,
-  className = "",
-  ...rest
-}: InputProps) {
+// forwardRef so form libraries (React Hook Form's `register()`) can attach
+// their ref directly to the underlying <input> DOM node.
+const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
+  { value, onChange, placeholder, type = "text", adornment, label, id, className = "", ...rest },
+  ref,
+) {
   return (
     <div className={`flex flex-col gap-1 ${className}`}>
       {label && (
@@ -31,6 +27,7 @@ export default function Input({
           <span className="text-text-dim text-[13px]">{adornment}</span>
         )}
         <input
+          ref={ref}
           id={id}
           type={type}
           value={value}
@@ -42,4 +39,6 @@ export default function Input({
       </div>
     </div>
   );
-}
+});
+
+export default Input;
