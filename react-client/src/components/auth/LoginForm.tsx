@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import type * as React from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Input from "@/components/ui/Input";
@@ -10,36 +11,15 @@ import FieldError from "@/components/sellWithUs/FieldError";
 import GoogleAuthButton from "@/components/auth/GoogleAuthButton";
 import { loginMeta } from "@/data/auth";
 import { getLoginBlockReason, resolvePostLoginRoute } from "@/lib/auth";
+import { loginSchema } from "@/lib/auth-schemas";
 import { routes } from "@/config/routes";
-import type { AuthenticatedUser, LoginFormErrors, LoginFormValues } from "@/types/auth";
+import type { AuthenticatedUser, LoginFormValues } from "@/types/auth";
 
 const INITIAL_VALUES: LoginFormValues = {
   email: "",
   password: "",
   rememberMe: false,
 };
-
-/**
- * Client-side field validation, run before any auth call is attempted.
- * Rules mirror the account step of the Sell With Us wizard (email format,
- * password required) — there is no min-length check here because login
- * verifies an existing password, it doesn't set a new one.
- */
-function validate(values: LoginFormValues): LoginFormErrors {
-  const errors: LoginFormErrors = {};
-
-  if (!values.email.trim()) {
-    errors.email = "Enter your email address";
-  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email.trim())) {
-    errors.email = "Enter a valid email address";
-  }
-
-  if (!values.password) {
-    errors.password = "Enter your password";
-  }
-
-  return errors;
-}
 
 /**
  * Stand-in for a real credential check. There is no auth API in this
@@ -56,46 +36,37 @@ async function authenticate(values: LoginFormValues): Promise<AuthenticatedUser>
 
 export default function LoginForm() {
   const router = useRouter();
-  const [values, setValues] = useState<LoginFormValues>(INITIAL_VALUES);
-  const [errors, setErrors] = useState<LoginFormErrors>({});
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | undefined>();
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm<LoginFormValues>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: INITIAL_VALUES,
+    mode: "onSubmit",
+  });
 
-  function handleChange<K extends keyof LoginFormValues>(field: K, value: LoginFormValues[K]) {
-    setValues((prev) => ({ ...prev, [field]: value }));
-    setErrors((prev) => ({ ...prev, [field]: undefined, form: undefined }));
-  }
-
-  async function handleSubmit(event: React.SyntheticEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    const fieldErrors = validate(values);
-    if (Object.keys(fieldErrors).length > 0) {
-      setErrors(fieldErrors);
-      return;
-    }
-
-    setIsSubmitting(true);
-    setErrors({});
+  async function onSubmit(values: LoginFormValues) {
+    setFormError(undefined);
 
     try {
       const user = await authenticate(values);
 
       const blockReason = getLoginBlockReason(user.status);
       if (blockReason) {
-        setErrors({ form: blockReason });
+        setFormError(blockReason);
         return;
       }
 
       router.push(resolvePostLoginRoute(user.userType));
     } catch {
-      setErrors({ form: loginMeta.genericAuthError });
-    } finally {
-      setIsSubmitting(false);
+      setFormError(loginMeta.genericAuthError);
     }
   }
 
   return (
-    <form className="flex flex-col gap-5" onSubmit={handleSubmit} noValidate>
+    <form className="flex flex-col gap-5" onSubmit={handleSubmit(onSubmit)} noValidate>
       <div>
         <h1 className="font-heading font-bold text-ink text-[24px] leading-[1.2]">
           {loginMeta.heading}
@@ -105,19 +76,18 @@ export default function LoginForm() {
         </p>
       </div>
 
-      <FieldError message={errors.form} />
+      <FieldError message={formError} />
 
       <div className="flex flex-col gap-1">
         <Input
           id="login-email"
           label="Email"
           type="email"
-          value={values.email}
-          onChange={(event) => handleChange("email", event.target.value)}
           placeholder="jane@company.com"
           autoComplete="email"
+          {...register("email")}
         />
-        <FieldError message={errors.email} />
+        <FieldError message={errors.email?.message} />
       </div>
 
       <div className="flex flex-col gap-1">
@@ -125,12 +95,11 @@ export default function LoginForm() {
           id="login-password"
           label="Password"
           type="password"
-          value={values.password}
-          onChange={(event) => handleChange("password", event.target.value)}
           placeholder="Your password"
           autoComplete="current-password"
+          {...register("password")}
         />
-        <FieldError message={errors.password} />
+        <FieldError message={errors.password?.message} />
       </div>
 
       <div className="flex items-center justify-between">
@@ -138,9 +107,8 @@ export default function LoginForm() {
           <input
             id="login-remember-me"
             type="checkbox"
-            checked={values.rememberMe}
-            onChange={(event) => handleChange("rememberMe", event.target.checked)}
             className="h-4 w-4 accent-saffron"
+            {...register("rememberMe")}
           />
           <span className="font-body text-text text-[13px]">Remember me</span>
         </label>

@@ -2,9 +2,10 @@
 // Only the fields the login flow actually needs are modeled here — this is
 // not a full ORM entity, just what the client needs to authenticate and
 // route a signed-in user to their panel.
+import type { UserTypeValue } from "@/config/userTypes";
 
 /** `users.user_type` — which panel/dashboard opens by default after login. */
-export type UserType = "PLATFORM" | "VENDOR" | "BUYER";
+export type UserType = UserTypeValue;
 
 /** `users.auth_provider` — how this account's identity is verified. */
 export type AuthProvider = "LOCAL" | "GOOGLE";

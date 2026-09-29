@@ -1,29 +1,32 @@
+import { useFormContext } from "react-hook-form";
 import WizardStepShell from "@/components/sellWithUs/WizardStepShell";
 import DocumentUploadRow from "@/components/sellWithUs/DocumentUploadRow";
 import { requiredDocuments } from "@/data/sellWithUs";
-import type { SellWithUsFormErrors, WizardStepProps, WizardStepValidator } from "@/types/sell-with-us";
+import type { SellWithUsFormValues } from "@/types/sell-with-us";
 
 // Step 5: required document uploads (GST certificate, IEC certificate).
 // Files live in values.documents keyed by document id, e.g.
-// { "gst-certificate": File, "iec-certificate": File }.
-export const validateDocuments: WizardStepValidator = (values) => {
-  const errors: SellWithUsFormErrors = {};
-  const documents = values.documents;
+// { "gst-certificate": File, "iec-certificate": File }. Required-ness is
+// enforced by lib/sell-with-us-schemas.ts (documentsSchema), which reports
+// errors nested under `documents.<docId>` — read here via
+// errors.documents?.[doc.id] since react-hook-form mirrors a record
+// schema's shape in its error tree.
+export default function Step5Documents() {
+  const {
+    watch,
+    setValue,
+    formState: { errors },
+  } = useFormContext<SellWithUsFormValues>();
 
-  requiredDocuments.forEach((doc) => {
-    if (!documents[doc.id]) {
-      errors[doc.id] = `Upload your ${doc.label.toLowerCase()}`;
-    }
-  });
-
-  return errors;
-};
-
-export default function Step5Documents({ values, errors, onChange }: WizardStepProps) {
-  const documents = values.documents;
+  const documents = watch("documents");
+  const documentErrors = errors.documents as
+    | Record<string, { message?: string } | undefined>
+    | undefined;
 
   function handleFileChange(docId: string, file: File | null) {
-    onChange("documents", { ...documents, [docId]: file ?? undefined });
+    setValue("documents", { ...documents, [docId]: file ?? undefined }, {
+      shouldValidate: true,
+    });
   }
 
   return (
@@ -39,7 +42,7 @@ export default function Step5Documents({ values, errors, onChange }: WizardStepP
           helpText={doc.helpText}
           file={documents[doc.id] ?? null}
           onFileChange={(file) => handleFileChange(doc.id, file)}
-          error={errors[doc.id]}
+          error={documentErrors?.[doc.id]?.message}
         />
       ))}
     </WizardStepShell>

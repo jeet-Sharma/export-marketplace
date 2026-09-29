@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import type * as React from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Input from "@/components/ui/Input";
@@ -10,8 +11,9 @@ import FieldError from "@/components/sellWithUs/FieldError";
 import GoogleAuthButton from "@/components/auth/GoogleAuthButton";
 import { signupMeta } from "@/data/auth";
 import { resolvePostSignupRoute } from "@/lib/auth";
+import { signupSchema } from "@/lib/auth-schemas";
 import { routes } from "@/config/routes";
-import type { SignupFormErrors, SignupFormValues } from "@/types/auth";
+import type { SignupFormValues } from "@/types/auth";
 
 const INITIAL_VALUES: SignupFormValues = {
   fullName: "",
@@ -20,49 +22,6 @@ const INITIAL_VALUES: SignupFormValues = {
   password: "",
   confirmPassword: "",
 };
-
-/**
- * Client-side field validation. Rules mirror Step1Account.tsx's account
- * step (same name/email/phone/password/confirm-password checks) since
- * this form collects the same identity fields — kept as its own function
- * rather than importing that step's validator because that one is typed
- * against SellWithUsFormValues, not SignupFormValues, and pulling in the
- * whole wizard just for four shared rules would be a bigger coupling than
- * duplicating four `if` checks.
- */
-function validate(values: SignupFormValues): SignupFormErrors {
-  const errors: SignupFormErrors = {};
-
-  if (!values.fullName.trim()) {
-    errors.fullName = "Enter your full name";
-  }
-
-  if (!values.email.trim()) {
-    errors.email = "Enter your email address";
-  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email.trim())) {
-    errors.email = "Enter a valid email address";
-  }
-
-  if (!values.phone.trim()) {
-    errors.phone = "Enter your phone number";
-  } else if (!/^[0-9+\-\s()]{7,15}$/.test(values.phone.trim())) {
-    errors.phone = "Enter a valid phone number";
-  }
-
-  if (!values.password) {
-    errors.password = "Enter a password";
-  } else if (values.password.length < 8) {
-    errors.password = "Password must be at least 8 characters";
-  }
-
-  if (!values.confirmPassword) {
-    errors.confirmPassword = "Confirm your password";
-  } else if (values.confirmPassword !== values.password) {
-    errors.confirmPassword = "Passwords do not match";
-  }
-
-  return errors;
-}
 
 /**
  * Stand-in for a real account-creation call. There is no auth API in this
@@ -80,39 +39,30 @@ async function createAccount(values: SignupFormValues): Promise<void> {
 
 export default function SignupForm() {
   const router = useRouter();
-  const [values, setValues] = useState<SignupFormValues>(INITIAL_VALUES);
-  const [errors, setErrors] = useState<SignupFormErrors>({});
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | undefined>();
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm<SignupFormValues>({
+    resolver: zodResolver(signupSchema),
+    defaultValues: INITIAL_VALUES,
+    mode: "onSubmit",
+  });
 
-  function handleChange<K extends keyof SignupFormValues>(field: K, value: SignupFormValues[K]) {
-    setValues((prev) => ({ ...prev, [field]: value }));
-    setErrors((prev) => ({ ...prev, [field]: undefined, form: undefined }));
-  }
-
-  async function handleSubmit(event: React.SyntheticEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    const fieldErrors = validate(values);
-    if (Object.keys(fieldErrors).length > 0) {
-      setErrors(fieldErrors);
-      return;
-    }
-
-    setIsSubmitting(true);
-    setErrors({});
+  async function onSubmit(values: SignupFormValues) {
+    setFormError(undefined);
 
     try {
       await createAccount(values);
       router.push(resolvePostSignupRoute());
     } catch {
-      setErrors({ form: signupMeta.genericAuthError });
-    } finally {
-      setIsSubmitting(false);
+      setFormError(signupMeta.genericAuthError);
     }
   }
 
   return (
-    <form className="flex flex-col gap-5" onSubmit={handleSubmit} noValidate>
+    <form className="flex flex-col gap-5" onSubmit={handleSubmit(onSubmit)} noValidate>
       <div>
         <h1 className="font-heading font-bold text-ink text-[24px] leading-[1.2]">
           {signupMeta.heading}
@@ -122,18 +72,17 @@ export default function SignupForm() {
         </p>
       </div>
 
-      <FieldError message={errors.form} />
+      <FieldError message={formError} />
 
       <div className="flex flex-col gap-1">
         <Input
           id="signup-full-name"
           label="Full name"
-          value={values.fullName}
-          onChange={(event) => handleChange("fullName", event.target.value)}
           placeholder="Jane Doe"
           autoComplete="name"
+          {...register("fullName")}
         />
-        <FieldError message={errors.fullName} />
+        <FieldError message={errors.fullName?.message} />
       </div>
 
       <div className="flex flex-col gap-1">
@@ -141,12 +90,11 @@ export default function SignupForm() {
           id="signup-email"
           label="Email"
           type="email"
-          value={values.email}
-          onChange={(event) => handleChange("email", event.target.value)}
           placeholder="jane@company.com"
           autoComplete="email"
+          {...register("email")}
         />
-        <FieldError message={errors.email} />
+        <FieldError message={errors.email?.message} />
       </div>
 
       <div className="flex flex-col gap-1">
@@ -154,12 +102,11 @@ export default function SignupForm() {
           id="signup-phone"
           label="Phone number"
           type="tel"
-          value={values.phone}
-          onChange={(event) => handleChange("phone", event.target.value)}
           placeholder="+91 98765 43210"
           autoComplete="tel"
+          {...register("phone")}
         />
-        <FieldError message={errors.phone} />
+        <FieldError message={errors.phone?.message} />
       </div>
 
       <div className="flex flex-col gap-1">
@@ -167,12 +114,11 @@ export default function SignupForm() {
           id="signup-password"
           label="Password"
           type="password"
-          value={values.password}
-          onChange={(event) => handleChange("password", event.target.value)}
           placeholder="At least 8 characters"
           autoComplete="new-password"
+          {...register("password")}
         />
-        <FieldError message={errors.password} />
+        <FieldError message={errors.password?.message} />
       </div>
 
       <div className="flex flex-col gap-1">
@@ -180,12 +126,11 @@ export default function SignupForm() {
           id="signup-confirm-password"
           label="Confirm password"
           type="password"
-          value={values.confirmPassword}
-          onChange={(event) => handleChange("confirmPassword", event.target.value)}
           placeholder="Re-enter your password"
           autoComplete="new-password"
+          {...register("confirmPassword")}
         />
-        <FieldError message={errors.confirmPassword} />
+        <FieldError message={errors.confirmPassword?.message} />
       </div>
 
       <Button variant="accent" size="md" type="submit" disabled={isSubmitting}>

@@ -1,4 +1,5 @@
 import { routes } from "@/config/routes";
+import { USER_TYPE } from "@/config/userTypes";
 import type { AuthenticatedUser, UserType } from "@/types/auth";
 
 // Post-login routing + account-status gating. Kept as pure functions (like
@@ -13,7 +14,7 @@ import type { AuthenticatedUser, UserType } from "@/types/auth";
  * has no dashboard yet, so they land back on the public storefront.
  */
 export function resolvePostLoginRoute(userType: UserType): string {
-  if (userType === "PLATFORM" || userType === "VENDOR") {
+  if (userType === USER_TYPE.platform || userType === USER_TYPE.vendor) {
     return routes.vendorDashboard;
   }
   return routes.home;

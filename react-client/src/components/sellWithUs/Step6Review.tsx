@@ -1,3 +1,4 @@
+import { useFormContext } from "react-hook-form";
 import Badge from "@/components/ui/Badge";
 import WizardStepShell from "@/components/sellWithUs/WizardStepShell";
 import {
@@ -5,7 +6,7 @@ import {
   destinationCountries,
   requiredDocuments,
 } from "@/data/sellWithUs";
-import type { WizardStepProps } from "@/types/sell-with-us";
+import type { SellWithUsFormValues } from "@/types/sell-with-us";
 
 // Step 6: read-only summary of every prior step, pulled live from wizard
 // state — nothing here is re-entered, it all reflects what was typed /
@@ -26,11 +27,14 @@ function ReviewRow({ label, value }: ReviewRowProps) {
   );
 }
 
-// Accepts the full WizardStepProps (even though only `values` is read) so
+// Reads the full form state via useFormContext (no props of its own) so
 // this stays interchangeable with the other steps in SellWithUsWizard's
-// STEP_COMPONENTS array — a consistent interface for a consistent list,
-// rather than a special-cased signature that would need a cast to fit.
-export default function Step6Review({ values }: WizardStepProps) {
+// STEP_COMPONENTS array — every step is a plain no-props component,
+// sharing one react-hook-form instance via context instead of prop drilling.
+export default function Step6Review() {
+  const { watch } = useFormContext<SellWithUsFormValues>();
+  const values = watch();
+
   const sourceLabel =
     sourceCountries.find((country) => country.id === values.sourceCountry)?.label ??
     "\u2014";

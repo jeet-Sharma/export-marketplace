@@ -40,28 +40,8 @@ export interface SellWithUsFormValues {
 }
 
 /**
- * Validation errors for the wizard. Most keys are SellWithUsFormValues
- * field names, but Step 5 (Documents) keys its errors by RequiredDocument
- * id instead (e.g. "gst-certificate") since each required document needs
- * its own independent error message, not one shared field-level error.
+ * Field names belonging to each wizard step, used to scope
+ * react-hook-form's `trigger()` call on "Next" to just that step's fields
+ * instead of validating the whole multi-step form at once.
  */
-export type SellWithUsFormErrors = Partial<Record<keyof SellWithUsFormValues, string>> &
-  Record<string, string | undefined>;
-
-/**
- * Standard prop shape every wizard step component receives. Every step
- * gets the full form state (not just the fields it owns) because Step 6
- * (Review) needs to read fields set on every earlier step — this mirrors
- * how the values were already threaded through at runtime, just typed now.
- */
-export interface WizardStepProps {
-  values: SellWithUsFormValues;
-  errors: SellWithUsFormErrors;
-  onChange: <K extends keyof SellWithUsFormValues>(
-    field: K,
-    value: SellWithUsFormValues[K],
-  ) => void;
-}
-
-/** A step's validate function: given the current values, return its errors. */
-export type WizardStepValidator = (values: SellWithUsFormValues) => SellWithUsFormErrors;
+export type SellWithUsStepFields = (keyof SellWithUsFormValues)[];

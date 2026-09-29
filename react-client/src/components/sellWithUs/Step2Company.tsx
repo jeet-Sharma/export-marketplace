@@ -1,53 +1,17 @@
+import { useFormContext } from "react-hook-form";
 import Input from "@/components/ui/Input";
 import WizardStepShell from "@/components/sellWithUs/WizardStepShell";
 import FieldError from "@/components/sellWithUs/FieldError";
-import type { SellWithUsFormErrors, WizardStepProps, WizardStepValidator } from "@/types/sell-with-us";
+import type { SellWithUsFormValues } from "@/types/sell-with-us";
 
-// Step 2: company legal identity. GST and IEC follow the same real-world
-// format checks used elsewhere in the app's profile data (see
-// data/profile.ts for reference values).
-const GSTIN_PATTERN = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
-const IEC_PATTERN = /^[A-Z0-9]{10}$/;
+// Step 2: company legal identity. Validation rules (GSTIN/IEC format
+// checks etc) live in lib/sell-with-us-schemas.ts (companySchema).
+export default function Step2Company() {
+  const {
+    register,
+    formState: { errors },
+  } = useFormContext<SellWithUsFormValues>();
 
-export const validateCompany: WizardStepValidator = (values) => {
-  const errors: SellWithUsFormErrors = {};
-
-  if (!values.legalName.trim()) {
-    errors.legalName = "Enter the company's legal name";
-  }
-
-  if (!values.gstNumber.trim()) {
-    errors.gstNumber = "Enter the GST number";
-  } else if (!GSTIN_PATTERN.test(values.gstNumber.trim().toUpperCase())) {
-    errors.gstNumber = "Enter a valid 15-character GSTIN";
-  }
-
-  if (!values.iecNumber.trim()) {
-    errors.iecNumber = "Enter the IEC number";
-  } else if (!IEC_PATTERN.test(values.iecNumber.trim().toUpperCase())) {
-    errors.iecNumber = "Enter a valid 10-character IEC number";
-  }
-
-  if (!values.companyPhone.trim()) {
-    errors.companyPhone = "Enter a company phone number";
-  } else if (!/^[0-9+\-\s()]{7,15}$/.test(values.companyPhone.trim())) {
-    errors.companyPhone = "Enter a valid phone number";
-  }
-
-  if (!values.companyEmail.trim()) {
-    errors.companyEmail = "Enter a company email address";
-  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.companyEmail.trim())) {
-    errors.companyEmail = "Enter a valid email address";
-  }
-
-  if (!values.address.trim()) {
-    errors.address = "Enter the registered address";
-  }
-
-  return errors;
-};
-
-export default function Step2Company({ values, errors, onChange }: WizardStepProps) {
   return (
     <WizardStepShell
       title="Company details"
@@ -57,11 +21,10 @@ export default function Step2Company({ values, errors, onChange }: WizardStepPro
         <Input
           id="company-legal-name"
           label="Company legal name"
-          value={values.legalName}
-          onChange={(event) => onChange("legalName", event.target.value)}
           placeholder="ABC Exports Private Limited"
+          {...register("legalName")}
         />
-        <FieldError message={errors.legalName} />
+        <FieldError message={errors.legalName?.message} />
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -69,22 +32,20 @@ export default function Step2Company({ values, errors, onChange }: WizardStepPro
           <Input
             id="company-gst"
             label="GST number"
-            value={values.gstNumber}
-            onChange={(event) => onChange("gstNumber", event.target.value)}
             placeholder="33ABCDE1234F1Z5"
+            {...register("gstNumber")}
           />
-          <FieldError message={errors.gstNumber} />
+          <FieldError message={errors.gstNumber?.message} />
         </div>
 
         <div className="flex flex-col gap-1">
           <Input
             id="company-iec"
             label="IEC number"
-            value={values.iecNumber}
-            onChange={(event) => onChange("iecNumber", event.target.value)}
             placeholder="0414512345"
+            {...register("iecNumber")}
           />
-          <FieldError message={errors.iecNumber} />
+          <FieldError message={errors.iecNumber?.message} />
         </div>
       </div>
 
@@ -94,12 +55,11 @@ export default function Step2Company({ values, errors, onChange }: WizardStepPro
             id="company-phone"
             label="Phone number"
             type="tel"
-            value={values.companyPhone}
-            onChange={(event) => onChange("companyPhone", event.target.value)}
             placeholder="+91 98765 43210"
             autoComplete="tel"
+            {...register("companyPhone")}
           />
-          <FieldError message={errors.companyPhone} />
+          <FieldError message={errors.companyPhone?.message} />
         </div>
 
         <div className="flex flex-col gap-1">
@@ -107,12 +67,11 @@ export default function Step2Company({ values, errors, onChange }: WizardStepPro
             id="company-email"
             label="Email ID"
             type="email"
-            value={values.companyEmail}
-            onChange={(event) => onChange("companyEmail", event.target.value)}
             placeholder="contact@company.com"
             autoComplete="email"
+            {...register("companyEmail")}
           />
-          <FieldError message={errors.companyEmail} />
+          <FieldError message={errors.companyEmail?.message} />
         </div>
       </div>
 
@@ -120,11 +79,10 @@ export default function Step2Company({ values, errors, onChange }: WizardStepPro
         <Input
           id="company-address"
           label="Registered address"
-          value={values.address}
-          onChange={(event) => onChange("address", event.target.value)}
           placeholder="Plot 44, Industrial Estate, Erode, Tamil Nadu 638003, India"
+          {...register("address")}
         />
-        <FieldError message={errors.address} />
+        <FieldError message={errors.address?.message} />
       </div>
     </WizardStepShell>
   );
