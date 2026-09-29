@@ -9,9 +9,11 @@ import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
  * (`role == 'VENDOR_CHECKER'`), so an admin can change what a role can do
  * without a code release.
  *
- * No seed rows (SUPER_ADMIN, VENDOR_OWNER, BUYER, etc.) are inserted in
- * this database-only pass — bootstrap/seed data is a deliberate follow-up
- * once the auth layer exists.
+ * Only the BUYER row is seeded so far (see the SeedBuyerRole migration),
+ * since buyer registration is the one auth flow that exists today. The
+ * rest of the catalog (SUPER_ADMIN, VENDOR_OWNER, VENDOR_MAKER,
+ * VENDOR_CHECKER, ADMIN, etc., and any role_permission rows) is added when
+ * the vendor/platform auth flows are built.
  *
  * Schema is owned by the CreateCompaniesPeopleAccess migration.
  */

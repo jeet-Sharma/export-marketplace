@@ -10,6 +10,7 @@ import { ReferenceDataModule } from './modules/reference-data/reference-data.mod
 import { IdentityModule } from './modules/identity/identity.module.js';
 import { CatalogModule } from './modules/catalog/catalog.module.js';
 import { InventoryModule } from './modules/inventory/inventory.module.js';
+import { AuthModule } from './modules/auth/auth.module.js';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
@@ -44,6 +45,14 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     IdentityModule,
     CatalogModule,
     InventoryModule,
+    // AuthModule (POST /auth/register) is the first module whose
+    // controller/service actually reaches Identity entities through Nest
+    // DI transactions (DataSource.transaction, not @InjectRepository) —
+    // see AuthModule's own doc comment. Placed after
+    // Identity/Catalog/Inventory since it depends on RoleEntity being
+    // seeded by the SeedBuyerRole migration, which itself depends on
+    // CreateCompaniesPeopleAccess having already run.
+    AuthModule,
   ],
   controllers: [AppController],
   providers: [AppService],

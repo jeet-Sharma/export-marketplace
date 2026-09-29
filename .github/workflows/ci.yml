@@ -14,10 +14,13 @@ jobs:
     defaults:
       run:
         working-directory: nest-server
-    # Postgres for the e2e suite (test/app.e2e-spec.ts boots the real
-    # AppModule against this — see db.config.ts, synchronize is disabled
-    # everywhere, so the schema below is created via migrations, not
-    # entity auto-sync). Standard port 5432; POSTGRES_* env vars below
+    # Postgres is required for the e2e suite (test/app.e2e-spec.ts boots
+    # the real AppModule against this — see db.config.ts, synchronize is
+    # disabled everywhere, so the schema below is created via migrations,
+    # not entity auto-sync). AuthModule was the first controller-bearing
+    # module needing a live DataSource, which made the previous
+    # DatabaseModule mock unworkable — see app.module.ts and
+    # test/app.e2e-spec.ts. Standard port 5432; POSTGRES_* env vars below
     # match this service's defaults, same as docker-compose.yml locally.
     services:
       postgres:

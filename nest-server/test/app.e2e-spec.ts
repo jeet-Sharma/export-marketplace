@@ -1,18 +1,26 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types.js';
 import { AppModule } from '../src/app.module.js';
 
-// Runs against a real Postgres instance (see db.config.ts / DatabaseModule)
-// with the schema already migrated — same as running the app normally
-// (docker-compose's postgres service locally, a dedicated Postgres service
-// in CI; see .github/workflows/ci.yml). No DatabaseModule override: every
-// domain entity (Identity, Reference Data, Catalog, Inventory) uses
-// Postgres-specific column types (char, jsonb, numeric with precision,
-// generated/STORED columns) that an in-memory SQLite substitute cannot
-// represent, and `synchronize` is hard-disabled everywhere (db.config.ts)
-// because the schema is owned by migrations, not entity auto-sync.
+// Boots the full AppModule, including the real DatabaseModule — this
+// requires a reachable Postgres with migrations applied (see
+// "npm run infra:up" + "npm run migration:run", and the "API" job in
+// .github/workflows/ci.yml, which provisions both before this runs).
+//
+// A DatabaseModule mock was used here previously so e2e tests could run
+// without any DB infrastructure. That stopped being possible once every
+// domain entity (Identity, Reference Data, Catalog, Inventory) started
+// using Postgres-specific column types (char, jsonb, numeric with
+// precision, generated/STORED columns) that an in-memory SQLite substitute
+// cannot represent, and once AuthModule (the first controller-bearing
+// module needing a live DataSource) was added to AppModule — see
+// app.module.ts's comment on AuthModule. `synchronize` is hard-disabled
+// everywhere (db.config.ts) because the schema is owned by migrations, not
+// entity auto-sync. If a future module needs to be tested without touching
+// Postgres, prefer a focused unit test with a mocked repository over
+// re-introducing a DatabaseModule-wide mock here.
 describe('AppController (e2e)', () => {
   let app: INestApplication<App>;
 
@@ -22,6 +30,9 @@ describe('AppController (e2e)', () => {
     }).compile();
 
     app = moduleFixture.createNestApplication();
+    // Mirrors main.ts's global pipe — main.ts isn't executed in tests, so
+    // the same ValidationPipe options are applied here explicitly.
+    app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
     await app.init();
   }, 15000);
 

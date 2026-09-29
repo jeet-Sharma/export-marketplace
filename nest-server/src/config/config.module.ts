@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import appConfig from './app.config.js';
 import awsConfig from './aws.config.js';
 import dbConfig from './db.config.js';
 
@@ -21,8 +22,8 @@ import dbConfig from './db.config.js';
       isGlobal: true,
       envFilePath: '.env',
       ignoreEnvFile: process.env.NODE_ENV === 'test',
-      load: [awsConfig, dbConfig],
+      load: [appConfig, awsConfig, dbConfig],
     }),
   ],
 })
-export class AppConfigModule {}
+export class AppConfigModule { }
