@@ -25,7 +25,7 @@ export default function HeroSection() {
             <Input
               id="hero-search"
               placeholder={heroContent.searchPlaceholder}
-              adornment="\u{1F50D}"
+              adornment={"\u{1F50D}"}
               className="flex-1"
               aria-label="Search products, suppliers, HS code or country"
             />

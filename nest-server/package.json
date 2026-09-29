@@ -25,7 +25,14 @@
     "localstack:logs": "docker compose logs -f localstack",
     "infra:up": "docker compose up -d",
     "infra:down": "docker compose down",
-    "infra:logs": "docker compose logs -f"
+    "infra:logs": "docker compose logs -f",
+    "typeorm": "typeorm-ts-node-esm -d src/config/typeorm.datasource.ts",
+    "migration:generate": "npm run typeorm -- migration:generate",
+    "migration:run": "npm run typeorm -- migration:run",
+    "migration:revert": "npm run typeorm -- migration:revert",
+    "typeorm:docker": "typeorm -d dist/config/typeorm.datasource.js",
+    "migration:run:docker": "npm run typeorm:docker -- migration:run",
+    "migration:revert:docker": "npm run typeorm:docker -- migration:revert"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1138.0",
@@ -58,6 +65,8 @@
     "prettier": "^3.4.2",
     "source-map-support": "^0.5.21",
     "supertest": "^7.0.0",
+    "ts-node": "^10.9.2",
+    "typeorm-ts-node-esm": "^0.3.20",
     "typescript": "^6.0.2",
     "vite-tsconfig-paths": "^5.1.4",
     "vitest": "^4.1.2"

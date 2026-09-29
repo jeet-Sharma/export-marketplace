@@ -1,0 +1,66 @@
+import { existsSync, readFileSync } from 'fs';
+import { DataSource } from 'typeorm';
+import { fileURLToPath } from 'node:url';
+import { dirname } from 'node:path';
+
+// __dirname is not available in ES modules (this file compiles to ESM —
+// package.json has "type": "module", tsconfig targets nodenext). Rebuild
+// it from import.meta.url so the glob paths below resolve correctly both
+// in dev (typeorm-ts-node-esm against src/**/*.ts) and in the compiled
+// Docker image (plain node ESM against dist/**/*.js).
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// Minimal .env loader for the CLI context only (no dotenv dependency —
+// see backend-rules.md: don't add a dependency for something already
+// solved). The running Nest app loads .env via @nestjs/config instead
+// (see AppConfigModule); this only covers `npm run migration:*`.
+function loadDotEnvIfPresent(): void {
+  if (!existsSync('.env')) return;
+  for (const line of readFileSync('.env', 'utf8').split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eq = trimmed.indexOf('=');
+    if (eq === -1) continue;
+    const key = trimmed.slice(0, eq).trim();
+    const value = trimmed.slice(eq + 1).trim();
+    if (process.env[key] === undefined) process.env[key] = value;
+  }
+}
+
+loadDotEnvIfPresent();
+
+/**
+ * Plain TypeORM DataSource used only by the TypeORM CLI (migration:run,
+ * migration:generate, migration:revert — see package.json scripts).
+ *
+ * This is separate from DatabaseModule's TypeOrmModule.forRootAsync, which
+ * is what the running Nest app actually connects with. The CLI can't go
+ * through Nest's DI/ConfigService, so it reads process.env directly here
+ * instead, mirroring the same defaults as src/config/db.config.ts.
+ *
+ * Migrations are the source of truth for the domain schema (Data_Modeling_Complete.md,
+ * "Document 6 — Complete Data Model v3") because that schema relies on
+ * PostgreSQL features synchronize cannot express reliably: custom domains,
+ * generated/STORED columns, exclusion constraints, and partial unique
+ * indexes. `synchronize` is not set here (defaults to false) and is also
+ * forced off on the app's own DataSource — see db.config.ts.
+ */
+const isProd = process.env.NODE_ENV === 'production';
+
+export default new DataSource({
+  type: 'postgres',
+  host: process.env.POSTGRES_HOST ?? 'localhost',
+  port: parseInt(process.env.POSTGRES_PORT ?? '5432', 10),
+  username: process.env.POSTGRES_USER ?? 'postgres',
+  password: process.env.POSTGRES_PASSWORD ?? 'postgres',
+  database: process.env.POSTGRES_DB ?? 'export_marketplace',
+  ssl: isProd ? { rejectUnauthorized: false } : false,
+  // Extension-agnostic so this DataSource works both in local dev (run via
+  // typeorm-ts-node-esm against src/**/*.ts) and inside the production
+  // Docker image (run via plain `typeorm` against the compiled dist/**/*.js
+  // — see package.json's migration:run:docker script and Dockerfile, which
+  // ships dist/ only, no src/ and no ts-node).
+  entities: [__dirname + '/../modules/**/*.entity.{ts,js}'],
+  migrations: [__dirname + '/../database/migrations/*.{ts,js}'],
+  logging: process.env.TYPEORM_LOGGING === 'true',
+});

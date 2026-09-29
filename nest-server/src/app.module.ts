@@ -26,8 +26,17 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     // real AWS in production. See docker-compose.yml and .env.example.
     StorageModule,
     MessagingModule,
+    // Note: ReferenceDataModule (Data_Modeling_Complete.md Part 1 entities)
+    // is intentionally NOT imported here yet. AppModule's e2e test
+    // (test/app.e2e-spec.ts) overrides DatabaseModule with a no-op mock to
+    // avoid requiring live Postgres, and TypeOrmModule.forFeature (used by
+    // ReferenceDataModule) cannot be satisfied by that mock. The entities
+    // are still registered with the real DataSource via db.config.ts's
+    // `entities` array, so migrations/schema work today; wire
+    // ReferenceDataModule into a controller/service-bearing module (and
+    // provision Postgres in CI for e2e) when the first consumer is built.
   ],
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule {}
+export class AppModule { }
