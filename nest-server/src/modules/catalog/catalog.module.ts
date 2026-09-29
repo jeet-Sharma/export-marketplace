@@ -5,19 +5,32 @@ import { ProductTargetCountryEntity } from './entities/product-target-country.en
 import { ProductPriceTierEntity } from './entities/product-price-tier.entity.js';
 import { ProductMediaEntity } from './entities/product-media.entity.js';
 import { ProductApprovalLogEntity } from './entities/product-approval-log.entity.js';
+import { IdentityModule } from '../identity/identity.module.js';
+import { ProductsService } from './products.service.js';
+import { ProductsController } from './products.controller.js';
+import { ProductPriceTiersService } from './product-price-tiers.service.js';
+import { ProductPriceTiersController } from './product-price-tiers.controller.js';
+import { ProductTargetCountriesService } from './product-target-countries.service.js';
+import { ProductTargetCountriesController } from './product-target-countries.controller.js';
+import { ProductMediaService } from './product-media.service.js';
+import { ProductMediaController } from './product-media.controller.js';
+import { ProductApprovalLogService } from './product-approval-log.service.js';
 
 /**
  * PART 3 — Vendor Catalog (Data_Modeling_Complete.md, Document 6 v3).
  *
  * Registers the 5 catalog entities as TypeORM entities: product,
  * product_target_country, product_price_tier, product_media,
- * product_approval_log.
+ * product_approval_log — plus the services/controllers implementing the
+ * Maker -> Checker -> Admin approval workflow (Part 3.1) and the three
+ * child resources (price tiers, target countries, media).
  *
- * No controller or service yet — this is a database-schema-only pass (see
- * the CreateVendorCatalog migration for the actual schema). No
- * self-approval enforcement, no submit-time tier-gap validation, no
- * search indexing beyond the generated tsvector column, and no bootstrap
- * data (no sample products) are implemented here.
+ * IdentityModule is imported for OrganizationEntity (self-approval's
+ * requires_second_approver lookup, ProductsService) and
+ * VendorTargetCountryEntity (H-16's vendor-country pre-check,
+ * ProductTargetCountriesService) — both entities are owned by that
+ * module, made injectable here the standard way (its exported
+ * TypeOrmModule re-export), not duplicated.
  */
 @Module({
   imports: [
@@ -28,6 +41,20 @@ import { ProductApprovalLogEntity } from './entities/product-approval-log.entity
       ProductMediaEntity,
       ProductApprovalLogEntity,
     ]),
+    IdentityModule,
+  ],
+  controllers: [
+    ProductsController,
+    ProductPriceTiersController,
+    ProductTargetCountriesController,
+    ProductMediaController,
+  ],
+  providers: [
+    ProductsService,
+    ProductPriceTiersService,
+    ProductTargetCountriesService,
+    ProductMediaService,
+    ProductApprovalLogService,
   ],
   exports: [TypeOrmModule],
 })

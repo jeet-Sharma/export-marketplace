@@ -3,20 +3,23 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types.js';
 import { AppModule } from '../src/app.module.js';
-import { DatabaseModule } from '../src/modules/database/database.module.js';
 
+// Runs against a real Postgres instance (see db.config.ts / DatabaseModule)
+// with the schema already migrated — same as running the app normally
+// (docker-compose's postgres service locally, a dedicated Postgres service
+// in CI; see .github/workflows/ci.yml). No DatabaseModule override: every
+// domain entity (Identity, Reference Data, Catalog, Inventory) uses
+// Postgres-specific column types (char, jsonb, numeric with precision,
+// generated/STORED columns) that an in-memory SQLite substitute cannot
+// represent, and `synchronize` is hard-disabled everywhere (db.config.ts)
+// because the schema is owned by migrations, not entity auto-sync.
 describe('AppController (e2e)', () => {
   let app: INestApplication<App>;
 
   beforeEach(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    })
-      // Replace the real DatabaseModule (which needs a live Postgres) with an
-      // empty no-op module so e2e tests run without any DB infrastructure.
-      .overrideModule(DatabaseModule)
-      .useModule({ module: class DatabaseModuleMock {} })
-      .compile();
+    }).compile();
 
     app = moduleFixture.createNestApplication();
     await app.init();
