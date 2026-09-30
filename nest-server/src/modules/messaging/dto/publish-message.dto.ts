@@ -1,15 +1,13 @@
-import { IsObject, IsOptional, IsString } from 'class-validator';
+import { IsObject, IsOptional, IsString, MaxLength } from 'class-validator';
 
 /**
- * Body for POST /messaging/publish.
+ * Request body for POST /messaging/publish.
  *
- * Decorated with class-validator (now installed for AuthModule's DTOs —
- * see register-buyer.dto.ts) so this class isn't "empty" from
- * ValidationPipe's perspective. main.ts's global pipe runs with
- * whitelist + forbidNonWhitelisted for every controller: a plain,
- * undecorated class has no recognized properties, so every field on an
- * otherwise-valid request body would be stripped/rejected as
- * non-whitelisted before this controller ever ran.
+ * class-validator decorators are required now that main.ts installs a global
+ * ValidationPipe with whitelist + forbidNonWhitelisted: without them, the
+ * pipe would strip every property off this DTO (payload/messageGroupId are
+ * not "known" properties) and break the endpoint. `payload` is an arbitrary
+ * JSON object, so it is validated as an object rather than by shape.
  */
 export class PublishMessageDto {
   @IsObject()
@@ -17,5 +15,6 @@ export class PublishMessageDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(128)
   messageGroupId?: string;
 }

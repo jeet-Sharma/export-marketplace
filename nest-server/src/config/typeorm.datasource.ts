@@ -1,14 +1,6 @@
 import { existsSync, readFileSync } from 'fs';
 import { DataSource } from 'typeorm';
-import { fileURLToPath } from 'node:url';
-import { dirname } from 'node:path';
-
-// __dirname is not available in ES modules (this file compiles to ESM —
-// package.json has "type": "module", tsconfig targets nodenext). Rebuild
-// it from import.meta.url so the glob paths below resolve correctly both
-// in dev (typeorm-ts-node-esm against src/**/*.ts) and in the compiled
-// Docker image (plain node ESM against dist/**/*.js).
-const __dirname = dirname(fileURLToPath(import.meta.url));
+import { ENTITIES } from './entities.js';
 
 // Minimal .env loader for the CLI context only (no dotenv dependency —
 // see backend-rules.md: don't add a dependency for something already
@@ -36,7 +28,9 @@ loadDotEnvIfPresent();
  * This is separate from DatabaseModule's TypeOrmModule.forRootAsync, which
  * is what the running Nest app actually connects with. The CLI can't go
  * through Nest's DI/ConfigService, so it reads process.env directly here
- * instead, mirroring the same defaults as src/config/db.config.ts.
+ * instead, mirroring the same defaults as src/config/db.config.ts. The
+ * entity list is imported (ENTITIES) rather than re-declared, so the CLI and
+ * the app can never disagree about which entities exist.
  *
  * Migrations are the source of truth for the domain schema (Data_Modeling_Complete.md,
  * "Document 6 — Complete Data Model v3") because that schema relies on
@@ -47,6 +41,16 @@ loadDotEnvIfPresent();
  */
 const isProd = process.env.NODE_ENV === 'production';
 
+// Auto-detect which migration set to load from THIS file's own extension,
+// rather than an externally-set env var. When this module is the compiled
+// dist/config/typeorm.datasource.js (production image, run via the plain
+// `typeorm` CLI), import.meta.url ends in ".js" → use the compiled
+// migrations. When it's the .ts source (dev/CI via typeorm-ts-node-esm),
+// use the TypeScript migrations. This makes `migration:run:prod` correct no
+// matter how it's invoked — no caller has to remember to set a flag.
+const runningCompiled = import.meta.url.endsWith('.js');
+const migrationsGlob = runningCompiled ? 'dist/database/migrations/*.js' : 'src/database/migrations/*.ts';
+
 export default new DataSource({
   type: 'postgres',
   host: process.env.POSTGRES_HOST ?? 'localhost',
@@ -55,12 +59,7 @@ export default new DataSource({
   password: process.env.POSTGRES_PASSWORD ?? 'postgres',
   database: process.env.POSTGRES_DB ?? 'export_marketplace',
   ssl: isProd ? { rejectUnauthorized: false } : false,
-  // Extension-agnostic so this DataSource works both in local dev (run via
-  // typeorm-ts-node-esm against src/**/*.ts) and inside the production
-  // Docker image (run via plain `typeorm` against the compiled dist/**/*.js
-  // — see package.json's migration:run:docker script and Dockerfile, which
-  // ships dist/ only, no src/ and no ts-node).
-  entities: [__dirname + '/../modules/**/*.entity.{ts,js}'],
-  migrations: [__dirname + '/../database/migrations/*.{ts,js}'],
+  entities: ENTITIES, // single source of truth — see config/entities.ts
+  migrations: [migrationsGlob],
   logging: process.env.TYPEORM_LOGGING === 'true',
 });

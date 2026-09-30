@@ -14,15 +14,29 @@ import { AuthModule } from './modules/auth/auth.module.js';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
+// Observe (distributed tracing/telemetry) is only enabled when real
+// credentials are supplied via env. Previously it started with the
+// placeholder YOUR_APP_KEY/YOUR_APP_SECRET, which made it retry and log a
+// "Telemetry rejected (401)" error on every boot for no benefit. With no
+// credentials, it is simply not imported.
+const observeAppKey = process.env.OBSERVE_APP_KEY;
+const observeAppSecret = process.env.OBSERVE_APP_SECRET;
+export const observeEnabled = Boolean(observeAppKey && observeAppSecret);
+const observeImports =
+  observeAppKey && observeAppSecret
+    ? [
+      ObserveModule.forRoot({
+        appKey: observeAppKey,
+        appSecret: observeAppSecret,
+        serviceId: 'export-marketplace',
+      }),
+    ]
+    : [];
+
 @Module({
   imports: [
-    // Distributed tracing, auto-correlated logs, request/job metrics, error
-    // telemetry, alarms, and more — out of the box. Sign up at https://observe.nestjs.com
-    ObserveModule.forRoot({
-      appKey: 'YOUR_APP_KEY',
-      appSecret: 'YOUR_APP_SECRET',
-      serviceId: 'export-marketplace',
-    }),
+    ...observeImports,
+    // Modules that set up infrastructure services used by other modules: 
     // Config must come before DatabaseModule so ConfigService is available
     // when TypeORM's async factory runs.
     AppConfigModule,

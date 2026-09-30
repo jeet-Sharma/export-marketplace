@@ -32,7 +32,8 @@
     "migration:revert": "npm run typeorm -- migration:revert",
     "typeorm:docker": "typeorm -d dist/config/typeorm.datasource.js",
     "migration:run:docker": "npm run typeorm:docker -- migration:run",
-    "migration:revert:docker": "npm run typeorm:docker -- migration:revert"
+    "migration:revert:docker": "npm run typeorm:docker -- migration:revert",
+    "migration:run:prod": "typeorm migration:run -d dist/config/typeorm.datasource.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1138.0",
@@ -41,6 +42,7 @@
     "@nestjs/common": "^12.0.1",
     "@nestjs/config": "^12.0.1",
     "@nestjs/core": "^12.0.1",
+    "@nestjs/jwt": "^12.0.1",
     "@nestjs/observe": "^0.1.8",
     "@nestjs/platform-express": "^12.0.1",
     "@nestjs/typeorm": "12.0.1",
@@ -48,6 +50,7 @@
     "argon2": "^0.45.1",
     "class-transformer": "0.5.1",
     "class-validator": "0.15.1",
+    "nodemailer": "^10.0.12",
     "pg": "8.16.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
@@ -61,6 +64,7 @@
     "@types/express": "^5.0.0",
     "@types/multer": "^2.2.0",
     "@types/node": "^24.0.0",
+    "@types/nodemailer": "^8.0.2",
     "@types/pg": "8.11.14",
     "@types/supertest": "^7.0.0",
     "@vitest/coverage-v8": "^4.1.2",

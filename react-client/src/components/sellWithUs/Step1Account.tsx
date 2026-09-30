@@ -1,42 +1,19 @@
+import { useFormContext } from "react-hook-form";
 import Input from "@/components/ui/Input";
 import WizardStepShell from "@/components/sellWithUs/WizardStepShell";
 import FieldError from "@/components/sellWithUs/FieldError";
-import type { SellWithUsFormErrors, WizardStepProps, WizardStepValidator } from "@/types/sell-with-us";
+import type { SellWithUsFormValues } from "@/types/sell-with-us";
 
-// Step 1: account credentials. Validation rules:
-// - name required
-// - email required + must look like an email
-// - password required, min 8 chars
-// - confirm password required + must match password
-export const validateAccount: WizardStepValidator = (values) => {
-  const errors: SellWithUsFormErrors = {};
+// Step 1: account credentials. Validation rules live in
+// lib/sell-with-us-schemas.ts (accountSchema) — this component only
+// renders fields and reads errors from the shared react-hook-form context
+// provided by SellWithUsWizard.tsx.
+export default function Step1Account() {
+  const {
+    register,
+    formState: { errors },
+  } = useFormContext<SellWithUsFormValues>();
 
-  if (!values.name.trim()) {
-    errors.name = "Enter your full name";
-  }
-
-  if (!values.email.trim()) {
-    errors.email = "Enter your email address";
-  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email.trim())) {
-    errors.email = "Enter a valid email address";
-  }
-
-  if (!values.password) {
-    errors.password = "Enter a password";
-  } else if (values.password.length < 8) {
-    errors.password = "Password must be at least 8 characters";
-  }
-
-  if (!values.confirmPassword) {
-    errors.confirmPassword = "Confirm your password";
-  } else if (values.confirmPassword !== values.password) {
-    errors.confirmPassword = "Passwords do not match";
-  }
-
-  return errors;
-};
-
-export default function Step1Account({ values, errors, onChange }: WizardStepProps) {
   return (
     <WizardStepShell
       title="Create your account"
@@ -46,12 +23,11 @@ export default function Step1Account({ values, errors, onChange }: WizardStepPro
         <Input
           id="account-name"
           label="Full name"
-          value={values.name}
-          onChange={(event) => onChange("name", event.target.value)}
           placeholder="Jane Doe"
           autoComplete="name"
+          {...register("name")}
         />
-        <FieldError message={errors.name} />
+        <FieldError message={errors.name?.message} />
       </div>
 
       <div className="flex flex-col gap-1">
@@ -59,12 +35,23 @@ export default function Step1Account({ values, errors, onChange }: WizardStepPro
           id="account-email"
           label="Email"
           type="email"
-          value={values.email}
-          onChange={(event) => onChange("email", event.target.value)}
           placeholder="jane@company.com"
           autoComplete="email"
+          {...register("email")}
         />
-        <FieldError message={errors.email} />
+        <FieldError message={errors.email?.message} />
+      </div>
+
+      <div className="flex flex-col gap-1">
+        <Input
+          id="account-phone"
+          label="Phone number"
+          type="tel"
+          placeholder="+91 98765 43210"
+          autoComplete="tel"
+          {...register("phone")}
+        />
+        <FieldError message={errors.phone?.message} />
       </div>
 
       <div className="flex flex-col gap-1">
@@ -72,12 +59,11 @@ export default function Step1Account({ values, errors, onChange }: WizardStepPro
           id="account-password"
           label="Password"
           type="password"
-          value={values.password}
-          onChange={(event) => onChange("password", event.target.value)}
           placeholder="At least 8 characters"
           autoComplete="new-password"
+          {...register("password")}
         />
-        <FieldError message={errors.password} />
+        <FieldError message={errors.password?.message} />
       </div>
 
       <div className="flex flex-col gap-1">
@@ -85,12 +71,11 @@ export default function Step1Account({ values, errors, onChange }: WizardStepPro
           id="account-confirm-password"
           label="Confirm password"
           type="password"
-          value={values.confirmPassword}
-          onChange={(event) => onChange("confirmPassword", event.target.value)}
           placeholder="Re-enter your password"
           autoComplete="new-password"
+          {...register("confirmPassword")}
         />
-        <FieldError message={errors.confirmPassword} />
+        <FieldError message={errors.confirmPassword?.message} />
       </div>
     </WizardStepShell>
   );

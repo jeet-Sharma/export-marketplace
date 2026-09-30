@@ -1,11 +1,12 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { AppModule, ObserveInstrument } from './app.module.js';
+import { AppModule, ObserveInstrument, observeEnabled } from './app.module.js';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, {
-    instrument: ObserveInstrument,
-  });
+  // Only attach the Observe instrument when Observe is actually configured
+  // (real OBSERVE_APP_KEY/OBSERVE_APP_SECRET). Otherwise boot without it —
+  // see app.module.ts for why placeholder credentials are no longer used.
+  const app = await NestFactory.create(AppModule, observeEnabled ? { instrument: ObserveInstrument } : {});
   // Global request-body validation via class-validator/class-transformer,
   // introduced for POST /auth/register's RegisterBuyerDto. Applies to every
   // controller from here on — see backend-rules.md: this is an

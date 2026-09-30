@@ -1,28 +1,28 @@
+import { useFormContext } from "react-hook-form";
 import WizardStepShell from "@/components/sellWithUs/WizardStepShell";
 import FieldError from "@/components/sellWithUs/FieldError";
-import { destinationCountries, sellWithUsMeta } from "@/data/sellWithUs";
-import type { SellWithUsFormErrors, WizardStepProps, WizardStepValidator } from "@/types/sell-with-us";
+import { destinationCountries } from "@/data/sellWithUs";
+import type { SellWithUsFormValues } from "@/types/sell-with-us";
 
 // Step 4: destination checklist. At least one destination is required —
-// this is the step that blocks Next with sellWithUsMeta.destinationsError.
-export const validateDestinations: WizardStepValidator = (values) => {
-  const errors: SellWithUsFormErrors = {};
+// enforced by lib/sell-with-us-schemas.ts (destinationsSchema). Checkbox
+// group backed by a string[] field, so selection is read/written via
+// watch/setValue rather than a plain register() (which only maps 1:1 to a
+// single input's value/checked).
+export default function Step4Destinations() {
+  const {
+    watch,
+    setValue,
+    formState: { errors },
+  } = useFormContext<SellWithUsFormValues>();
 
-  if (values.destinations.length === 0) {
-    errors.destinations = sellWithUsMeta.destinationsError;
-  }
-
-  return errors;
-};
-
-export default function Step4Destinations({ values, errors, onChange }: WizardStepProps) {
-  const selected = values.destinations;
+  const selected = watch("destinations");
 
   function toggleDestination(id: string) {
     const next = selected.includes(id)
       ? selected.filter((item) => item !== id)
       : [...selected, id];
-    onChange("destinations", next);
+    setValue("destinations", next, { shouldValidate: true });
   }
 
   return (
@@ -58,7 +58,7 @@ export default function Step4Destinations({ values, errors, onChange }: WizardSt
             </label>
           );
         })}
-        <FieldError message={errors.destinations} />
+        <FieldError message={errors.destinations?.message} />
       </fieldset>
     </WizardStepShell>
   );
