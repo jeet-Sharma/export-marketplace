@@ -254,14 +254,27 @@ export class AuthService {
       throw new InternalServerErrorException('Registration could not be completed. Please try again.');
     }
 
-    // The transaction has committed at this point. Only now hand the raw
-    // token to the email provider; sending before commit could create an
-    // email link for a token that was rolled back and never became usable.
-    await this.emailService.sendVerificationEmail({
-      email: created.email,
-      fullName: created.fullName,
-      token: rawToken,
-    });
+    // The transaction has committed at this point, so the account already
+    // exists. Send the verification email AFTER commit (sending before could
+    // produce a link for a token that was rolled back). A delivery failure
+    // must NOT fail the request: the account is real, and failing here would
+    // strand the buyer — a retry hits the users_email_uq index and returns
+    // 409, so they could neither log in nor re-register. Instead, log the
+    // failure and let the buyer trigger a new email via
+    // POST /auth/resend-verification, which is built for exactly this.
+    try {
+      await this.emailService.sendVerificationEmail({
+        email: created.email,
+        fullName: created.fullName,
+        token: rawToken,
+      });
+    } catch (error) {
+      this.logger.error(
+        `Registration succeeded for ${created.email} but the verification email failed to send. ` +
+        `The buyer can request a new one via /auth/resend-verification.`,
+        error instanceof Error ? error.stack : undefined,
+      );
+    }
 
     // Dev-only fallback for local testing. Production never logs the raw
     // token; it exists only in the verification email link.

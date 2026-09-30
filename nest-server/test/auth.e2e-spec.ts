@@ -61,6 +61,30 @@ describe('AuthController (e2e)', () => {
     await cleanupUser(dataSource, email);
   });
 
+  it('POST /auth/register still succeeds (201) when the verification email fails to send', async () => {
+    // A mail outage must not strand the buyer: the account is committed, so
+    // registration returns 201 and the buyer can recover via
+    // /auth/resend-verification. See auth.service.ts registerBuyer().
+    sendVerificationEmail.mockRejectedValueOnce(new Error('SMTP unavailable'));
+    const email = `mailfail-${randomUUID()}@example.com`;
+
+    const response = await request(app.getHttpServer()).post('/auth/register').send({
+      fullName: 'Mail Outage Buyer',
+      email,
+      password: 'correct-horse-battery',
+    });
+
+    expect(response.status).toBe(201);
+    expect(response.body).toMatchObject({ email, status: 'PENDING' });
+
+    const [user] = (await dataSource.query(`SELECT status FROM users WHERE email = $1`, [email])) as Array<{
+      status: string;
+    }>;
+    expect(user.status).toBe('PENDING');
+
+    await cleanupUser(dataSource, email);
+  });
+
   it('POST /auth/resend-verification replaces an active token for a pending buyer', async () => {
     const email = `resend-${randomUUID()}@example.com`;
     const oldTokenHash = createHash('sha256').update('old-token').digest('hex');
