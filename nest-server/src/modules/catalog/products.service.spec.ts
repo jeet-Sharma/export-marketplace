@@ -19,6 +19,7 @@ describe('ProductsService', () => {
     save: ReturnType<typeof vi.fn>;
   };
   let orgRepository: { findOne: ReturnType<typeof vi.fn> };
+  let inventoryRepository: { create: ReturnType<typeof vi.fn>; save: ReturnType<typeof vi.fn> };
   let approvalLogService: { record: ReturnType<typeof vi.fn> };
   let dataSource: { transaction: ReturnType<typeof vi.fn> };
   let service: ProductsService;
@@ -55,16 +56,23 @@ describe('ProductsService', () => {
     // second approver" unless a test overrides this — matching the
     // migration's own column default (requires_second_approver = true).
     orgRepository = { findOne: vi.fn().mockResolvedValue({ requiresSecondApprover: true }) };
+    inventoryRepository = {
+      create: vi.fn((input) => input),
+      save: vi.fn((entity) => Promise.resolve(entity)),
+    };
     approvalLogService = { record: vi.fn() };
     dataSource = {
-      // review() runs inside dataSource.transaction — hand a manager whose
-      // getRepository resolves to the productRepository or orgRepository
+      // review()/create() run inside dataSource.transaction — hand a
+      // manager whose getRepository resolves to the product/org/inventory
       // mock above depending on which entity class is requested, so the
       // transactional code path is exercised without a real DB.
       transaction: vi.fn(async (work) => {
         const manager = {
-          getRepository: (entity: { name?: string }) =>
-            entity?.name === 'OrganizationEntity' ? orgRepository : productRepository,
+          getRepository: (entity: { name?: string }) => {
+            if (entity?.name === 'OrganizationEntity') return orgRepository;
+            if (entity?.name === 'InventoryEntity') return inventoryRepository;
+            return productRepository;
+          },
         };
         return work(manager);
       }),
@@ -99,6 +107,26 @@ describe('ProductsService', () => {
     });
   });
 
+  describe('create()', () => {
+    it('creates the product and a matching zero-quantity inventory row in the same transaction', async () => {
+      const dto = { categoryId: 1, basePrice: 10, moq: 5, unit: 'PIECE' } as never;
+
+      const result = await service.create(dto, ORG_A, MAKER);
+
+      expect(result.unit).toBe('PIECE');
+      expect(inventoryRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          organizationId: ORG_A,
+          quantityAvailable: '0',
+          quantityReserved: '0',
+          lowStockThreshold: '0',
+          unit: 'PIECE',
+        }),
+      );
+      expect(inventoryRepository.save).toHaveBeenCalled();
+    });
+  });
+
   describe('status transitions', () => {
     it('submit() moves a DRAFT product straight to PENDING_CHECKER', async () => {
       productRepository.findOne.mockResolvedValue(makeProduct({ status: 'DRAFT' }));
@@ -128,6 +156,21 @@ describe('ProductsService', () => {
       productRepository.findOne.mockResolvedValue(makeProduct({ status: 'PUBLISHED' }));
 
       await expect(service.submit('product-1', {}, ORG_A, MAKER)).rejects.toThrow(ConflictException);
+    });
+
+    it('submit() refuses a second live edit while one is already pending review', async () => {
+      productRepository.findOne.mockResolvedValue(
+        makeProduct({
+          status: 'PUBLISHED',
+          pendingStatus: 'PENDING_CHECKER',
+          pendingChanges: { basePrice: 1.11 },
+          pendingSubmittedBy: MAKER,
+        }),
+      );
+
+      await expect(
+        service.submit('product-1', { changes: { basePrice: 2.22 } }, ORG_A, MAKER),
+      ).rejects.toThrow(ConflictException);
     });
 
     it('submit() refuses a product that is already PENDING_ADMIN', async () => {

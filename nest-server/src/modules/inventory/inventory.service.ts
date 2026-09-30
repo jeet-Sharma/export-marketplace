@@ -124,7 +124,18 @@ export class InventoryService {
       const inventoryRepo = manager.getRepository(InventoryEntity);
       const movementRepo = manager.getRepository(StockMovementEntity);
 
-      const reservation = await reservationRepo.findOne({ where: { id: reservationId } });
+      // Pessimistic row lock: without it, two concurrent calls against the
+      // same reservation (e.g. a duplicate release request and an expiry
+      // sweep) can both read HELD/CONVERTED before either commits, both
+      // pass the status check below, and both apply the inventory
+      // give-back — double-crediting quantity_available. Locking makes the
+      // second call wait for the first to commit, so it re-reads the
+      // now-RELEASED status and correctly hits the ConflictException below
+      // instead of releasing the same stock twice.
+      const reservation = await reservationRepo.findOne({
+        where: { id: reservationId },
+        lock: { mode: 'pessimistic_write' },
+      });
       if (!reservation) {
         throw new NotFoundException(`Reservation ${reservationId} not found`);
       }
@@ -178,19 +189,30 @@ export class InventoryService {
    * row's status/order_id change.
    */
   async convertReservation(reservationId: string, orderId: string): Promise<StockReservationEntity> {
-    const reservation = await this.dataSource.getRepository(StockReservationEntity).findOne({
-      where: { id: reservationId },
-    });
-    if (!reservation) {
-      throw new NotFoundException(`Reservation ${reservationId} not found`);
-    }
-    if (reservation.status !== 'HELD') {
-      throw new ConflictException(`Reservation ${reservationId} is ${reservation.status}, cannot be converted.`);
-    }
+    return this.dataSource.transaction(async (manager) => {
+      const reservationRepo = manager.getRepository(StockReservationEntity);
 
-    reservation.status = 'CONVERTED';
-    reservation.orderId = orderId;
-    return this.dataSource.getRepository(StockReservationEntity).save(reservation);
+      // Pessimistic row lock, same reasoning as releaseReservation():
+      // without it, a concurrent release (payment failed) and a concurrent
+      // convert (payment captured) racing on the same HELD reservation
+      // could both pass their status check before either commits — one
+      // reservation would end up saved as CONVERTED after its stock was
+      // already given back by the other's release.
+      const reservation = await reservationRepo.findOne({
+        where: { id: reservationId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!reservation) {
+        throw new NotFoundException(`Reservation ${reservationId} not found`);
+      }
+      if (reservation.status !== 'HELD') {
+        throw new ConflictException(`Reservation ${reservationId} is ${reservation.status}, cannot be converted.`);
+      }
+
+      reservation.status = 'CONVERTED';
+      reservation.orderId = orderId;
+      return reservationRepo.save(reservation);
+    });
   }
 
   /**
@@ -204,7 +226,14 @@ export class InventoryService {
       const inventoryRepo = manager.getRepository(InventoryEntity);
       const movementRepo = manager.getRepository(StockMovementEntity);
 
-      const reservation = await reservationRepo.findOne({ where: { id: reservationId } });
+      // Pessimistic row lock — same reasoning as releaseReservation()/
+      // convertReservation(): prevents a concurrent release/consume race
+      // on the same reservation from both passing the status check and
+      // both decrementing quantity_reserved.
+      const reservation = await reservationRepo.findOne({
+        where: { id: reservationId },
+        lock: { mode: 'pessimistic_write' },
+      });
       if (!reservation) {
         throw new NotFoundException(`Reservation ${reservationId} not found`);
       }
@@ -264,6 +293,16 @@ export class InventoryService {
   ): Promise<StockMovementEntity> {
     if (!input.notes || input.notes.trim().length === 0) {
       throw new BadRequestException('notes is required for a manual adjustment or damage entry.');
+    }
+
+    // DAMAGE always removes stock — the migration's own CHECK only
+    // constrains notes, not sign, so the service enforces it: a caller
+    // submitting a positive quantityChange for DAMAGE would otherwise
+    // increase available stock while the audit trail records it as
+    // damage. ADJUSTMENT is intentionally left signed either way (a
+    // recount can find more or less than recorded).
+    if (movementType === 'DAMAGE' && Number(input.quantityChange) > 0) {
+      throw new BadRequestException('quantityChange for a DAMAGE entry must be negative or zero.');
     }
 
     return this.dataSource.transaction(async (manager) => {

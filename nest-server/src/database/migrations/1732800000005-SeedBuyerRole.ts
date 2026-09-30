@@ -24,6 +24,15 @@ export class SeedBuyerRole1732800000005 implements MigrationInterface {
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
+    // Delete any assignments first — once buyer registration has run,
+    // user_role rows reference this role.id via a FK, so deleting the role
+    // row first would fail on that constraint. Reverting this migration
+    // means "the BUYER role no longer exists", which also means nobody can
+    // hold it anymore, so removing the assignments is part of the same
+    // rollback, not a separate concern.
+    await queryRunner.query(
+      `DELETE FROM user_role WHERE role_id = (SELECT id FROM role WHERE code = 'BUYER')`,
+    );
     await queryRunner.query(`DELETE FROM role WHERE code = 'BUYER'`);
   }
 }

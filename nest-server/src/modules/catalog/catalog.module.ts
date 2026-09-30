@@ -6,6 +6,7 @@ import { ProductPriceTierEntity } from './entities/product-price-tier.entity.js'
 import { ProductMediaEntity } from './entities/product-media.entity.js';
 import { ProductApprovalLogEntity } from './entities/product-approval-log.entity.js';
 import { IdentityModule } from '../identity/identity.module.js';
+import { InventoryModule } from '../inventory/inventory.module.js';
 import { ProductsService } from './products.service.js';
 import { ProductsController } from './products.controller.js';
 import { ProductPriceTiersService } from './product-price-tiers.service.js';
@@ -31,6 +32,11 @@ import { ProductApprovalLogService } from './product-approval-log.service.js';
  * ProductTargetCountriesService) — both entities are owned by that
  * module, made injectable here the standard way (its exported
  * TypeOrmModule re-export), not duplicated.
+ *
+ * InventoryModule is imported so ProductsService.create() can open the
+ * matching `inventory` row (quantity 0) in the same transaction as the
+ * product insert — otherwise the first stock adjustment for a brand new
+ * product 404s (no inventory row exists to update).
  */
 @Module({
   imports: [
@@ -42,6 +48,7 @@ import { ProductApprovalLogService } from './product-approval-log.service.js';
       ProductApprovalLogEntity,
     ]),
     IdentityModule,
+    InventoryModule,
   ],
   controllers: [
     ProductsController,

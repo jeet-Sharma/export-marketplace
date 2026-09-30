@@ -273,5 +273,16 @@ describe('InventoryService', () => {
       expect(result.availableChange).toBe('-5');
       expect(result.createdBy).toBeNull();
     });
+
+    it('rejects a DAMAGE entry with a positive quantityChange', async () => {
+      await expect(
+        service.recordManualAdjustment(
+          PRODUCT_ID,
+          ORG_A,
+          { quantityChange: '5', notes: 'should not increase stock' },
+          'DAMAGE',
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
   });
 });

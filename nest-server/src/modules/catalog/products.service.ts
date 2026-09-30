@@ -4,6 +4,7 @@ import { DataSource, Repository } from 'typeorm';
 import { randomUUID } from 'node:crypto';
 import { ProductEntity } from './entities/product.entity.js';
 import { OrganizationEntity } from '../identity/entities/organization.entity.js';
+import { InventoryEntity } from '../inventory/entities/inventory.entity.js';
 import { ProductApprovalLogService } from './product-approval-log.service.js';
 import { CreateProductDto } from './dto/create-product.dto.js';
 import { UpdateProductDto } from './dto/update-product.dto.js';
@@ -44,22 +45,46 @@ export class ProductsService {
   /**
    * Maker creates a product. Starts in DRAFT (the column default) — no
    * status is accepted from the caller.
+   *
+   * Also opens the matching `inventory` row (quantity 0, same unit as the
+   * product) in the same transaction — inventory.product_id is NOT NULL
+   * UNIQUE with no default row created anywhere else, so without this the
+   * first stock adjustment for a brand new product would 404 (no row to
+   * update).
    */
   async create(dto: CreateProductDto, organizationId: string, userId: string): Promise<ProductEntity> {
-    const product = this.productRepository.create({
-      ...dto,
-      publicId: randomUUID(),
-      organizationId,
-      createdBy: userId,
-      categoryId: dto.categoryId.toString(),
-      basePrice: dto.basePrice.toString(),
-      moq: dto.moq.toString(),
-      weightKg: dto.weightKg?.toString() ?? null,
-      lengthCm: dto.lengthCm?.toString() ?? null,
-      widthCm: dto.widthCm?.toString() ?? null,
-      heightCm: dto.heightCm?.toString() ?? null,
+    return this.dataSource.transaction(async (manager) => {
+      const productRepo = manager.getRepository(ProductEntity);
+      const inventoryRepo = manager.getRepository(InventoryEntity);
+
+      const product = productRepo.create({
+        ...dto,
+        publicId: randomUUID(),
+        organizationId,
+        createdBy: userId,
+        categoryId: dto.categoryId.toString(),
+        basePrice: dto.basePrice.toString(),
+        moq: dto.moq.toString(),
+        weightKg: dto.weightKg?.toString() ?? null,
+        lengthCm: dto.lengthCm?.toString() ?? null,
+        widthCm: dto.widthCm?.toString() ?? null,
+        heightCm: dto.heightCm?.toString() ?? null,
+      });
+      const savedProduct = await productRepo.save(product);
+
+      await inventoryRepo.save(
+        inventoryRepo.create({
+          productId: savedProduct.id,
+          organizationId,
+          quantityAvailable: '0',
+          quantityReserved: '0',
+          lowStockThreshold: '0',
+          unit: savedProduct.unit,
+        }),
+      );
+
+      return savedProduct;
     });
-    return this.productRepository.save(product);
   }
 
   /**
@@ -111,6 +136,11 @@ export class ProductsService {
     }
 
     if (product.status === 'PUBLISHED' || product.status === 'APPROVED') {
+      if (product.pendingStatus) {
+        throw new ConflictException(
+          'This product already has an edit awaiting review — wait for it to be approved or rejected before submitting another.',
+        );
+      }
       if (!dto.changes || Object.keys(dto.changes).length === 0) {
         throw new ConflictException('An edit to a live product requires at least one changed field.');
       }
@@ -147,7 +177,18 @@ export class ProductsService {
       const productRepo = manager.getRepository(ProductEntity);
       const orgRepo = manager.getRepository(OrganizationEntity);
 
-      const product = await productRepo.findOne({ where: { id, organizationId } });
+      // Pessimistic row lock: without it, two concurrent reviewers can both
+      // read the same pending stage before either commits, both pass
+      // resolveReviewStage()'s check, and both write an approval-log row
+      // for a decision that should only ever happen once. Locking here
+      // makes the second reviewer's transaction wait for the first to
+      // commit, so it sees the now-updated status/pending_status and
+      // resolveReviewStage() correctly reports "nothing pending" instead
+      // of resolving the same stage twice.
+      const product = await productRepo.findOne({
+        where: { id, organizationId },
+        lock: { mode: 'pessimistic_write' },
+      });
       if (!product) {
         throw new NotFoundException(`Product ${id} not found`);
       }
