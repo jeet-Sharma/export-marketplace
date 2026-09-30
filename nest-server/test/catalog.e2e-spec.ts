@@ -367,6 +367,146 @@ describe('Catalog (e2e)', () => {
     });
   });
 
+  describe('unit change safety (Part 4.1) — must never silently corrupt stock', () => {
+    it('allows a unit change on a DRAFT product before any stock has been recorded', async () => {
+      const org = await createOrganization();
+      const { token } = await createVendorUserWithToken(org, ['VENDOR_MAKER']);
+
+      const created = await request(app.getHttpServer())
+        .post('/catalog/products')
+        .set(authHeader(token))
+        .send(baseProductPayload({ unit: 'KG' }));
+      expect(created.body.unit).toBe('KG');
+
+      const updated = await request(app.getHttpServer())
+        .patch(`/catalog/products/${created.body.id}`)
+        .set(authHeader(token))
+        .send({ unit: 'TON' });
+
+      expect(updated.status).toBe(200);
+      expect(updated.body.unit).toBe('TON');
+
+      const inventory = await request(app.getHttpServer())
+        .get(`/inventory/${created.body.id}`)
+        .set(authHeader(token));
+      expect(inventory.body.unit).toBe('TON');
+    });
+
+    it('refuses a unit change on a DRAFT product once real stock has been added via /inventory/:productId/adjust', async () => {
+      // This is exactly the corruption path the bug report describes: the
+      // adjust endpoint has no product-status gate, so a vendor can stock
+      // up a DRAFT product before it is ever submitted, then change its
+      // unit through PATCH — which must now be refused rather than
+      // silently reinterpreting the existing quantity under a new unit.
+      const org = await createOrganization();
+      const { token } = await createVendorUserWithToken(org, ['VENDOR_MAKER']);
+
+      const created = await request(app.getHttpServer())
+        .post('/catalog/products')
+        .set(authHeader(token))
+        .send(baseProductPayload({ unit: 'KG' }));
+      const productId = created.body.id;
+
+      const adjusted = await request(app.getHttpServer())
+        .post(`/inventory/${productId}/adjust`)
+        .set(authHeader(token))
+        .send({ movementType: 'ADJUSTMENT', quantityChange: 500, notes: 'initial stock received' });
+      expect(adjusted.status).toBe(201);
+
+      const updateAttempt = await request(app.getHttpServer())
+        .patch(`/catalog/products/${productId}`)
+        .set(authHeader(token))
+        .send({ unit: 'TON' });
+
+      expect(updateAttempt.status).toBe(409);
+
+      // Confirm nothing was corrupted: both the product's unit and the
+      // inventory's quantity/unit are exactly what they were before the
+      // refused request.
+      const productCheck = await request(app.getHttpServer())
+        .get(`/catalog/products/${productId}`)
+        .set(authHeader(token));
+      expect(productCheck.body.unit).toBe('KG');
+
+      const inventoryCheck = await request(app.getHttpServer())
+        .get(`/inventory/${productId}`)
+        .set(authHeader(token));
+      expect(inventoryCheck.body.unit).toBe('KG');
+      expect(inventoryCheck.body.quantityAvailable).toBe('500.000');
+    });
+
+    it('refuses an ADMIN-approved unit change on a live PUBLISHED product that already has stock', async () => {
+      const org = await createOrganization();
+      const { token: makerToken } = await createVendorUserWithToken(org, ['VENDOR_MAKER']);
+      const { token: checkerToken } = await createVendorUserWithToken(org, ['VENDOR_CHECKER']);
+      const { token: adminToken } = await createPlatformAdminWithToken();
+
+      const created = await request(app.getHttpServer())
+        .post('/catalog/products')
+        .set(authHeader(makerToken))
+        .send(baseProductPayload({ unit: 'KG' }));
+      const productId = created.body.id;
+
+      await request(app.getHttpServer())
+        .post(`/catalog/products/${productId}/submit`)
+        .set(authHeader(makerToken))
+        .send({});
+      await request(app.getHttpServer())
+        .post(`/catalog/products/${productId}/review`)
+        .set(authHeader(checkerToken))
+        .send({ action: 'APPROVED' });
+      await request(app.getHttpServer())
+        .post(`/catalog/products/${productId}/review`)
+        .set(authHeader(adminToken))
+        .send({ action: 'APPROVED' });
+      await request(app.getHttpServer())
+        .post(`/catalog/products/${productId}/publish`)
+        .set(authHeader(makerToken))
+        .send();
+
+      // Real stock arrives once the product is live.
+      await request(app.getHttpServer())
+        .post(`/inventory/${productId}/adjust`)
+        .set(authHeader(makerToken))
+        .send({ movementType: 'ADJUSTMENT', quantityChange: 750, notes: 'stock received after going live' });
+
+      const editSubmit = await request(app.getHttpServer())
+        .post(`/catalog/products/${productId}/submit`)
+        .set(authHeader(makerToken))
+        .send({ changes: { unit: 'TON' } });
+      expect(editSubmit.status).toBe(201);
+      expect(editSubmit.body.pendingStatus).toBe('PENDING_CHECKER');
+
+      await request(app.getHttpServer())
+        .post(`/catalog/products/${productId}/review`)
+        .set(authHeader(checkerToken))
+        .send({ action: 'APPROVED' });
+
+      const adminApproval = await request(app.getHttpServer())
+        .post(`/catalog/products/${productId}/review`)
+        .set(authHeader(adminToken))
+        .send({ action: 'APPROVED' });
+
+      expect(adminApproval.status).toBe(409);
+
+      // The product is still PUBLISHED, still KG, and the pending edit is
+      // untouched — the whole approval transaction rolled back rather
+      // than applying every other field while corrupting the unit.
+      const productCheck = await request(app.getHttpServer())
+        .get(`/catalog/products/${productId}`)
+        .set(authHeader(makerToken));
+      expect(productCheck.body.status).toBe('PUBLISHED');
+      expect(productCheck.body.unit).toBe('KG');
+      expect(productCheck.body.pendingStatus).toBe('PENDING_ADMIN');
+
+      const inventoryCheck = await request(app.getHttpServer())
+        .get(`/inventory/${productId}`)
+        .set(authHeader(makerToken));
+      expect(inventoryCheck.body.unit).toBe('KG');
+      expect(inventoryCheck.body.quantityAvailable).toBe('750.000');
+    });
+  });
+
   describe('price tier MOQ and gap validation at submit (Part 3.3)', () => {
     it('rejects submit when the first tier does not start at product.moq', async () => {
       const org = await createOrganization();

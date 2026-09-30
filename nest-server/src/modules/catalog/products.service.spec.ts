@@ -24,7 +24,9 @@ describe('ProductsService', () => {
     create: ReturnType<typeof vi.fn>;
     save: ReturnType<typeof vi.fn>;
     update: ReturnType<typeof vi.fn>;
+    findOne: ReturnType<typeof vi.fn>;
   };
+  let stockMovementRepository: { exists: ReturnType<typeof vi.fn> };
   let rolePermissionQueryBuilder: {
     innerJoin: ReturnType<typeof vi.fn>;
     where: ReturnType<typeof vi.fn>;
@@ -74,7 +76,13 @@ describe('ProductsService', () => {
       create: vi.fn((input) => input),
       save: vi.fn((entity) => Promise.resolve(entity)),
       update: vi.fn().mockResolvedValue({ affected: 1 }),
+      // Default: a fresh zero-quantity row — matches create()'s own
+      // default so unit-change tests that don't care about stock safety
+      // (i.e. everything except the dedicated "unsafe unit change" tests
+      // below) don't need to set this up themselves.
+      findOne: vi.fn().mockResolvedValue({ quantityAvailable: '0', quantityReserved: '0' }),
     };
+    stockMovementRepository = { exists: vi.fn().mockResolvedValue(false) };
     // Defaults to "caller holds the permission" so existing status-
     // transition tests (which don't care about role enforcement) keep
     // passing; role-enforcement tests below override this per-case.
@@ -99,6 +107,7 @@ describe('ProductsService', () => {
             if (entity?.name === 'OrganizationEntity') return orgRepository;
             if (entity?.name === 'InventoryEntity') return inventoryRepository;
             if (entity?.name === 'RolePermissionEntity') return rolePermissionRepository;
+            if (entity?.name === 'StockMovementEntity') return stockMovementRepository;
             return productRepository;
           },
         };
@@ -241,8 +250,19 @@ describe('ProductsService', () => {
       expect(inventoryRepository.update).not.toHaveBeenCalled();
     });
 
-    it('update() keeps inventory.unit in lockstep when a DRAFT product\'s unit changes', async () => {
+    it('update() does not touch inventory when the DTO unit matches the current unit', async () => {
       productRepository.findOne.mockResolvedValue(makeProduct({ status: 'DRAFT', unit: 'KG' }));
+
+      await service.update('product-1', { unit: 'KG' } as never, ORG_A);
+
+      expect(dataSource.transaction).not.toHaveBeenCalled();
+      expect(inventoryRepository.update).not.toHaveBeenCalled();
+    });
+
+    it('update() changes inventory.unit in lockstep when a DRAFT product\'s unit changes and inventory is empty', async () => {
+      productRepository.findOne.mockResolvedValue(makeProduct({ status: 'DRAFT', unit: 'KG' }));
+      inventoryRepository.findOne.mockResolvedValue({ quantityAvailable: '0', quantityReserved: '0' });
+      stockMovementRepository.exists.mockResolvedValue(false);
 
       const result = await service.update('product-1', { unit: 'TON' } as never, ORG_A);
 
@@ -251,6 +271,41 @@ describe('ProductsService', () => {
         { productId: 'product-1', organizationId: ORG_A },
         { unit: 'TON' },
       );
+    });
+
+    it('update() refuses a unit change when inventory already holds a non-zero quantity_available', async () => {
+      // A DRAFT product can be stocked via POST /inventory/:productId/adjust
+      // before ever being submitted — the adjustment endpoint has no
+      // product-status gate. Changing KG to TON here would silently
+      // reinterpret the existing quantity under a different unit.
+      productRepository.findOne.mockResolvedValue(makeProduct({ status: 'DRAFT', unit: 'KG' }));
+      inventoryRepository.findOne.mockResolvedValue({ quantityAvailable: '500', quantityReserved: '0' });
+
+      await expect(service.update('product-1', { unit: 'TON' } as never, ORG_A)).rejects.toThrow(
+        ConflictException,
+      );
+      expect(inventoryRepository.update).not.toHaveBeenCalled();
+      expect(productRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('update() refuses a unit change when inventory holds a non-zero quantity_reserved', async () => {
+      productRepository.findOne.mockResolvedValue(makeProduct({ status: 'DRAFT', unit: 'KG' }));
+      inventoryRepository.findOne.mockResolvedValue({ quantityAvailable: '0', quantityReserved: '50' });
+
+      await expect(service.update('product-1', { unit: 'TON' } as never, ORG_A)).rejects.toThrow(
+        ConflictException,
+      );
+    });
+
+    it('update() refuses a unit change when the inventory row has movement history, even at zero quantity', async () => {
+      productRepository.findOne.mockResolvedValue(makeProduct({ status: 'DRAFT', unit: 'KG' }));
+      inventoryRepository.findOne.mockResolvedValue({ quantityAvailable: '0', quantityReserved: '0' });
+      stockMovementRepository.exists.mockResolvedValue(true);
+
+      await expect(service.update('product-1', { unit: 'TON' } as never, ORG_A)).rejects.toThrow(
+        ConflictException,
+      );
+      expect(inventoryRepository.update).not.toHaveBeenCalled();
     });
   });
 
@@ -343,7 +398,7 @@ describe('ProductsService', () => {
       expect(result.status).toBe('PUBLISHED');
     });
 
-    it('syncs inventory.unit when an ADMIN-approved live edit changes the product unit', async () => {
+    it('syncs inventory.unit when an ADMIN-approved live edit changes the product unit and inventory is empty', async () => {
       productRepository.findOne.mockResolvedValue(
         makeProduct({
           status: 'PUBLISHED',
@@ -353,6 +408,8 @@ describe('ProductsService', () => {
           pendingSubmittedBy: MAKER,
         }),
       );
+      inventoryRepository.findOne.mockResolvedValue({ quantityAvailable: '0', quantityReserved: '0' });
+      stockMovementRepository.exists.mockResolvedValue(false);
 
       const result = await service.review(
         'product-1',
@@ -383,6 +440,81 @@ describe('ProductsService', () => {
 
       await service.review('product-1', { action: 'APPROVED' }, 'PLATFORM', ORG_A, CHECKER, ANY_REVIEWER_ROLES);
 
+      expect(inventoryRepository.update).not.toHaveBeenCalled();
+    });
+
+    it('refuses (and does not apply) an ADMIN-approved unit change when the PUBLISHED product already has real stock', async () => {
+      // This is exactly the case the bug report describes: a live,
+      // published product almost certainly has non-zero stock by the
+      // time someone proposes changing its unit. The whole approval must
+      // be refused rather than applying every other field change while
+      // silently corrupting the unit/quantity relationship.
+      productRepository.findOne.mockResolvedValue(
+        makeProduct({
+          status: 'PUBLISHED',
+          unit: 'KG',
+          basePrice: 10,
+          pendingStatus: 'PENDING_ADMIN',
+          pendingChanges: { unit: 'TON', basePrice: 12 },
+          pendingSubmittedBy: MAKER,
+        }),
+      );
+      inventoryRepository.findOne.mockResolvedValue({ quantityAvailable: '500', quantityReserved: '0' });
+
+      await expect(
+        service.review('product-1', { action: 'APPROVED' }, 'PLATFORM', ORG_A, CHECKER, ANY_REVIEWER_ROLES),
+      ).rejects.toThrow(ConflictException);
+
+      // Nothing was applied — not the unit change, not basePrice, not the
+      // status transition — the whole review() call rolled back.
+      expect(productRepository.save).not.toHaveBeenCalled();
+      expect(inventoryRepository.update).not.toHaveBeenCalled();
+      expect(approvalLogService.record).not.toHaveBeenCalled();
+    });
+
+    it('refuses an ADMIN-approved unit change when the product has movement history even at zero current stock', async () => {
+      productRepository.findOne.mockResolvedValue(
+        makeProduct({
+          status: 'PUBLISHED',
+          unit: 'KG',
+          pendingStatus: 'PENDING_ADMIN',
+          pendingChanges: { unit: 'TON' },
+          pendingSubmittedBy: MAKER,
+        }),
+      );
+      inventoryRepository.findOne.mockResolvedValue({ quantityAvailable: '0', quantityReserved: '0' });
+      stockMovementRepository.exists.mockResolvedValue(true);
+
+      await expect(
+        service.review('product-1', { action: 'APPROVED' }, 'PLATFORM', ORG_A, CHECKER, ANY_REVIEWER_ROLES),
+      ).rejects.toThrow(ConflictException);
+      expect(inventoryRepository.update).not.toHaveBeenCalled();
+    });
+
+    it('rejecting a pending unit-change edit is always allowed, even with real stock (nothing is applied on rejection)', async () => {
+      productRepository.findOne.mockResolvedValue(
+        makeProduct({
+          status: 'PUBLISHED',
+          unit: 'KG',
+          pendingStatus: 'PENDING_ADMIN',
+          pendingChanges: { unit: 'TON' },
+          pendingSubmittedBy: MAKER,
+        }),
+      );
+      inventoryRepository.findOne.mockResolvedValue({ quantityAvailable: '500', quantityReserved: '0' });
+
+      const result = await service.review(
+        'product-1',
+        { action: 'REJECTED', comments: 'Cannot change unit with active stock' },
+        'PLATFORM',
+        ORG_A,
+        CHECKER,
+        ANY_REVIEWER_ROLES,
+      );
+
+      expect(result.status).toBe('PUBLISHED');
+      expect(result.unit).toBe('KG');
+      expect(result.pendingChanges).toBeNull();
       expect(inventoryRepository.update).not.toHaveBeenCalled();
     });
   });

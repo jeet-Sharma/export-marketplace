@@ -7,6 +7,7 @@ import { ProductPriceTierEntity } from './entities/product-price-tier.entity.js'
 import { OrganizationEntity } from '../identity/entities/organization.entity.js';
 import { RolePermissionEntity } from '../identity/entities/role-permission.entity.js';
 import { InventoryEntity } from '../inventory/entities/inventory.entity.js';
+import { StockMovementEntity } from '../inventory/entities/stock-movement.entity.js';
 import { ProductApprovalLogService } from './product-approval-log.service.js';
 import { CreateProductDto } from './dto/create-product.dto.js';
 import { UpdateProductDto } from './dto/update-product.dto.js';
@@ -113,6 +114,12 @@ export class ProductsService {
       );
     }
 
+    // Captured BEFORE Object.assign(product, patch) below mutates
+    // product.unit — comparing dto.unit against the ALREADY-MUTATED
+    // product.unit would always read as equal and silently skip the
+    // safety check entirely.
+    const originalUnit = product.unit;
+
     const patch: Record<string, unknown> = { ...dto };
     if (dto.categoryId !== undefined) patch.categoryId = dto.categoryId.toString();
     if (dto.basePrice !== undefined) patch.basePrice = dto.basePrice.toString();
@@ -125,13 +132,23 @@ export class ProductsService {
     Object.assign(product, patch);
 
     // inventory.unit must stay in lockstep with product.unit (both are
-    // d_unit, and the two are meant to describe the same stock, Part 4.1).
-    // A DRAFT/REJECTED product's inventory row always holds zero quantity
-    // (nothing has shipped/reserved yet — create() opens it at 0, and it
-    // can only leave DRAFT via submit()), so overwriting the unit label
-    // here can never misrepresent real stock.
-    if (dto.unit !== undefined) {
+    // d_unit, and the two are meant to describe the same stock, Part 4.1)
+    // — but relabeling the unit can never be done blindly. A DRAFT
+    // product's inventory row is NOT guaranteed to be zero: the manual
+    // adjustment endpoint (POST /inventory/:productId/adjust) has no
+    // product-status gate, so a vendor can stock up a DRAFT product
+    // before ever submitting it. Changing KG to TON on a row already
+    // holding a real quantity would silently turn "500 KG" into "500
+    // TON" — a 1000x data corruption, not a relabeling — since there is
+    // no unit-conversion table to apply instead. assertUnitChangeIsSafe()
+    // refuses the edit outright (Part 0.12's lost-update-guard posture:
+    // refuse rather than silently corrupt) whenever real stock or
+    // movement history already exists; the vendor must zero out and
+    // rebuild the inventory row's history-free state first, or keep the
+    // original unit.
+    if (dto.unit !== undefined && dto.unit !== originalUnit) {
       return this.dataSource.transaction(async (manager) => {
+        await this.assertUnitChangeIsSafe(manager, id, organizationId);
         const savedProduct = await manager.getRepository(ProductEntity).save(product);
         await manager
           .getRepository(InventoryEntity)
@@ -268,8 +285,24 @@ export class ProductsService {
       // Captured before applyApproval() mutates product.unit, so this
       // reflects whether the ADMIN-approved edit actually changed the
       // unit — used below to keep inventory.unit in lockstep (Part 4.1:
-      // inventory.unit "Same as the product's unit").
+      // inventory.unit "Same as the product's unit"). A PUBLISHED
+      // product being edited here is exactly the case most likely to
+      // have REAL stock (reservations, movement history) already, so
+      // this is checked and refused BEFORE applyApproval() mutates
+      // anything — approving the rest of the edit while silently
+      // corrupting the unit is not an acceptable partial outcome.
       const unitBeforeApproval = product.unit;
+      const pendingUnitChange =
+        isEdit &&
+        dto.action === 'APPROVED' &&
+        typeof product.pendingChanges === 'object' &&
+        product.pendingChanges !== null &&
+        'unit' in product.pendingChanges &&
+        (product.pendingChanges as Record<string, unknown>).unit !== unitBeforeApproval;
+
+      if (pendingUnitChange) {
+        await this.assertUnitChangeIsSafe(manager, product.id, productOrganizationId);
+      }
 
       if (dto.action === 'APPROVED') {
         this.applyApproval(product, stage, isEdit);
@@ -419,6 +452,53 @@ export class ProductsService {
           `There is a gap between price tiers: one ends at ${current.maxQty}, the next starts at ${next.minQty}.`,
         );
       }
+    }
+  }
+
+  /**
+   * Refuses a product.unit change whenever it could silently corrupt
+   * existing stock data (Part 4.1/4.3): if inventory already holds a
+   * non-zero quantity_available/quantity_reserved, or any stock_movement
+   * row exists for this product, the unit is NOT relabeled — there is no
+   * unit-conversion table in this schema (KG/TON/PIECE/BOX/CARTON/LITRE/
+   * METRE aren't all even convertible into one another), so "update the
+   * label but leave the number" would misrepresent real stock, and
+   * "convert the number" would require business logic this schema
+   * doesn't define. A quantity of exactly 0 with no movement history
+   * (a fresh inventory row that has never been adjusted/reserved/shipped)
+   * is the only state where changing the unit is unambiguous — there is
+   * no existing quantity for the old unit to misrepresent.
+   */
+  private async assertUnitChangeIsSafe(
+    manager: EntityManager,
+    productId: string,
+    organizationId: string,
+  ): Promise<void> {
+    const inventory = await manager
+      .getRepository(InventoryEntity)
+      .findOne({ where: { productId, organizationId } });
+
+    // No inventory row at all (shouldn't happen — create() always opens
+    // one — but if it's somehow missing there's nothing to misrepresent).
+    if (!inventory) {
+      return;
+    }
+
+    if (Number(inventory.quantityAvailable) !== 0 || Number(inventory.quantityReserved) !== 0) {
+      throw new ConflictException(
+        'This product\'s unit cannot be changed while its inventory holds a non-zero quantity — ' +
+          'the stock would be silently reinterpreted under the new unit. Adjust stock to zero first.',
+      );
+    }
+
+    const hasMovementHistory = await manager
+      .getRepository(StockMovementEntity)
+      .exists({ where: { productId, organizationId } });
+    if (hasMovementHistory) {
+      throw new ConflictException(
+        "This product's unit cannot be changed once it has stock movement history — " +
+          'past movements were recorded under the current unit and would become ambiguous.',
+      );
     }
   }
 
