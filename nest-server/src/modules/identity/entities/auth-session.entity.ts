@@ -42,9 +42,12 @@ export class AuthSessionEntity {
   @Column({ name: 'expires_at', type: 'timestamptz' })
   expiresAt!: Date;
 
-  @Column({ name: 'revoked_at', type: 'timestamptz', nullable: true, comment: 'Set on logout, block, or password change' })
+  @Column({ name: 'revoked_at', type: 'timestamptz', nullable: true, comment: 'Set on logout, rotation, block, or password change' })
   revokedAt!: Date | null;
 
+  // ROTATED = the session was superseded by a refresh-token rotation (normal
+  // use), as opposed to LOGOUT (user chose to sign out). Kept distinct so the
+  // audit trail doesn't read every token refresh as a logout.
   @Column({ name: 'revoked_reason', type: 'text', nullable: true })
-  revokedReason!: 'LOGOUT' | 'USER_BLOCKED' | 'PASSWORD_CHANGED' | 'ADMIN' | null;
+  revokedReason!: 'LOGOUT' | 'ROTATED' | 'USER_BLOCKED' | 'PASSWORD_CHANGED' | 'ADMIN' | null;
 }

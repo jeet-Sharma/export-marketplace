@@ -12,11 +12,12 @@ import { UserEntity } from '../identity/entities/user.entity.js';
 import { EmailModule } from '../email/email.module.js';
 import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
+import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
 
 /**
- * Buyer registration and email verification only, built one endpoint at a
- * time. Deliberately NOT included in this pass: login, auth_session/JWT,
- * JwtAuthGuard/@CurrentUser(), and buyer profile/address APIs.
+ * Buyer registration, email verification, resend, login, and the
+ * JwtAuthGuard/@CurrentUser() request-auth primitives. Buyer profile/address
+ * APIs (which will consume this guard) are a separate module, not built here.
  *
  * TypeOrmModule.forFeature registers the entities this module's service
  * touches directly. UserEntity/BuyerProfileEntity/UserRoleEntity/
@@ -42,6 +43,10 @@ import { AuthService } from './auth.service.js';
     TypeOrmModule.forFeature([UserEntity, BuyerProfileEntity, UserRoleEntity, UserTokenEntity, RoleEntity, AuthSessionEntity]),
   ],
   controllers: [AuthController],
-  providers: [AuthService],
+  providers: [AuthService, JwtAuthGuard],
+  // Export JwtAuthGuard + JwtModule so feature modules (e.g. the upcoming
+  // BuyerModule) can protect their routes with @UseGuards(JwtAuthGuard)
+  // without re-configuring JWT verification.
+  exports: [JwtAuthGuard, JwtModule],
 })
 export class AuthModule { }
