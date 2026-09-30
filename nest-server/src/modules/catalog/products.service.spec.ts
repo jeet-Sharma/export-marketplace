@@ -20,7 +20,11 @@ describe('ProductsService', () => {
   };
   let priceTierRepository: { find: ReturnType<typeof vi.fn> };
   let orgRepository: { findOne: ReturnType<typeof vi.fn> };
-  let inventoryRepository: { create: ReturnType<typeof vi.fn>; save: ReturnType<typeof vi.fn> };
+  let inventoryRepository: {
+    create: ReturnType<typeof vi.fn>;
+    save: ReturnType<typeof vi.fn>;
+    update: ReturnType<typeof vi.fn>;
+  };
   let rolePermissionQueryBuilder: {
     innerJoin: ReturnType<typeof vi.fn>;
     where: ReturnType<typeof vi.fn>;
@@ -69,6 +73,7 @@ describe('ProductsService', () => {
     inventoryRepository = {
       create: vi.fn((input) => input),
       save: vi.fn((entity) => Promise.resolve(entity)),
+      update: vi.fn().mockResolvedValue({ affected: 1 }),
     };
     // Defaults to "caller holds the permission" so existing status-
     // transition tests (which don't care about role enforcement) keep
@@ -226,6 +231,27 @@ describe('ProductsService', () => {
 
       await expect(service.delist('product-1', ORG_A)).rejects.toThrow(ConflictException);
     });
+
+    it('update() does not touch the inventory row when unit is not part of the edit', async () => {
+      productRepository.findOne.mockResolvedValue(makeProduct({ status: 'DRAFT', unit: 'KG' }));
+
+      await service.update('product-1', { name: 'New Name' } as never, ORG_A);
+
+      expect(dataSource.transaction).not.toHaveBeenCalled();
+      expect(inventoryRepository.update).not.toHaveBeenCalled();
+    });
+
+    it('update() keeps inventory.unit in lockstep when a DRAFT product\'s unit changes', async () => {
+      productRepository.findOne.mockResolvedValue(makeProduct({ status: 'DRAFT', unit: 'KG' }));
+
+      const result = await service.update('product-1', { unit: 'TON' } as never, ORG_A);
+
+      expect(result.unit).toBe('TON');
+      expect(inventoryRepository.update).toHaveBeenCalledWith(
+        { productId: 'product-1', organizationId: ORG_A },
+        { unit: 'TON' },
+      );
+    });
   });
 
   describe('review() — self-approval (M-02)', () => {
@@ -315,6 +341,49 @@ describe('ProductsService', () => {
       expect(result.pendingChanges).toBeNull();
       expect(result.pendingStatus).toBeNull();
       expect(result.status).toBe('PUBLISHED');
+    });
+
+    it('syncs inventory.unit when an ADMIN-approved live edit changes the product unit', async () => {
+      productRepository.findOne.mockResolvedValue(
+        makeProduct({
+          status: 'PUBLISHED',
+          unit: 'KG',
+          pendingStatus: 'PENDING_ADMIN',
+          pendingChanges: { unit: 'TON' },
+          pendingSubmittedBy: MAKER,
+        }),
+      );
+
+      const result = await service.review(
+        'product-1',
+        { action: 'APPROVED' },
+        'PLATFORM',
+        ORG_A,
+        CHECKER,
+        ANY_REVIEWER_ROLES,
+      );
+
+      expect(result.unit).toBe('TON');
+      expect(inventoryRepository.update).toHaveBeenCalledWith(
+        { productId: 'product-1', organizationId: ORG_A },
+        { unit: 'TON' },
+      );
+    });
+
+    it('does not touch inventory.unit when an approved edit leaves unit unchanged', async () => {
+      productRepository.findOne.mockResolvedValue(
+        makeProduct({
+          status: 'PUBLISHED',
+          unit: 'KG',
+          pendingStatus: 'PENDING_ADMIN',
+          pendingChanges: { basePrice: 5.5 },
+          pendingSubmittedBy: MAKER,
+        }),
+      );
+
+      await service.review('product-1', { action: 'APPROVED' }, 'PLATFORM', ORG_A, CHECKER, ANY_REVIEWER_ROLES);
+
+      expect(inventoryRepository.update).not.toHaveBeenCalled();
     });
   });
 

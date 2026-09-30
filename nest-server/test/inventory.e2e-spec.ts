@@ -67,6 +67,13 @@ describe('Inventory (e2e)', () => {
     return rows[0].id;
   }
 
+  /**
+   * Creates a VENDOR user in the given org holding VENDOR_MAKER — the role
+   * that grants `inventory.manage` (see SeedApprovalRoles1732800000007) —
+   * so this fixture works for both read-only routes and the mutating
+   * adjust/resolve-alert routes without every existing test needing to
+   * think about roles.
+   */
   async function createVendorUserWithToken(organizationId: string): Promise<{ token: string; userId: string }> {
     const email = `e2e-inv-${randomUUID()}@example.com`;
     const userRows = (await dataSource.query(
@@ -77,6 +84,14 @@ describe('Inventory (e2e)', () => {
     )) as Array<{ id: string }>;
     const userId = userRows[0].id;
     createdUserIds.push(userId);
+
+    const roleRows = (await dataSource.query(`SELECT id FROM role WHERE code = 'VENDOR_MAKER'`)) as Array<{
+      id: string;
+    }>;
+    if (roleRows.length === 0) {
+      throw new Error('Role VENDOR_MAKER is not seeded — did SeedApprovalRoles1732800000007 run?');
+    }
+    await dataSource.query(`INSERT INTO user_role (user_id, role_id) VALUES ($1, $2)`, [userId, roleRows[0].id]);
 
     const token = await jwtService.signAsync(
       { sub: userId, publicId: randomUUID(), userType: 'VENDOR' },
@@ -217,6 +232,65 @@ describe('Inventory (e2e)', () => {
         .send({ movementType: 'ADJUSTMENT', quantityChange: 5, notes: 'recount' });
 
       expect(response.status).toBe(404);
+    });
+
+    it('rejects a zero quantityChange with 400 rather than an unhandled DB constraint error', async () => {
+      const org = await createOrganization();
+      const { token, userId } = await createVendorUserWithToken(org);
+      const productId = await createProductWithInventory(org, userId, '100');
+
+      const response = await request(app.getHttpServer())
+        .post(`/inventory/${productId}/adjust`)
+        .set(authHeader(token))
+        .send({ movementType: 'ADJUSTMENT', quantityChange: 0, notes: 'no actual change' });
+
+      expect(response.status).toBe(400);
+    });
+
+    it('rejects adjust() for a vendor member with no inventory.manage-granting role', async () => {
+      const org = await createOrganization();
+      const email = `e2e-inv-norole-${randomUUID()}@example.com`;
+      const userRows = (await dataSource.query(
+        `INSERT INTO users (public_id, user_type, organization_id, full_name, email, auth_provider, status, email_verified)
+         VALUES ($1, 'VENDOR', $2, 'E2E No-Role Vendor User', $3, 'LOCAL', 'ACTIVE', true)
+         RETURNING id`,
+        [randomUUID(), org, email],
+      )) as Array<{ id: string }>;
+      const userId = userRows[0].id;
+      createdUserIds.push(userId);
+      const productId = await createProductWithInventory(org, userId, '100');
+
+      const token = await jwtService.signAsync(
+        { sub: userId, publicId: randomUUID(), userType: 'VENDOR' },
+        { secret: process.env.AUTH_ACCESS_SECRET },
+      );
+
+      const response = await request(app.getHttpServer())
+        .post(`/inventory/${productId}/adjust`)
+        .set(authHeader(token))
+        .send({ movementType: 'ADJUSTMENT', quantityChange: 5, notes: 'should be forbidden' });
+
+      expect(response.status).toBe(403);
+
+      // Confirm nothing changed.
+      const inventoryCheck = await request(app.getHttpServer())
+        .get(`/inventory/${productId}`)
+        .set(authHeader(token));
+      expect(inventoryCheck.body.quantityAvailable).toBe('100.000');
+    });
+
+    it('rejects any catalog/inventory access once the organization is SUSPENDED, even with a valid token', async () => {
+      const org = await createOrganization();
+      const { token, userId } = await createVendorUserWithToken(org);
+      const productId = await createProductWithInventory(org, userId, '100');
+
+      await dataSource.query(`UPDATE organization SET status = 'SUSPENDED' WHERE id = $1`, [org]);
+
+      const response = await request(app.getHttpServer())
+        .get(`/inventory/${productId}`)
+        .set(authHeader(token));
+
+      expect(response.status).toBe(401);
     });
   });
 

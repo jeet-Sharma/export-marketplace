@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { InventoryService } from './inventory.service.js';
 
 /**
@@ -339,6 +339,68 @@ describe('InventoryService', () => {
           'DAMAGE',
         ),
       ).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejects a zero quantityChange for ADJUSTMENT — would violate the DB\'s nonzero-movement CHECK', async () => {
+      await expect(
+        service.recordManualAdjustment(
+          PRODUCT_ID,
+          ORG_A,
+          { quantityChange: '0', notes: 'no actual change' },
+          'ADJUSTMENT',
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(inventoryRepository.exists).not.toHaveBeenCalled();
+    });
+
+    it('rejects a zero quantityChange for DAMAGE', async () => {
+      await expect(
+        service.recordManualAdjustment(
+          PRODUCT_ID,
+          ORG_A,
+          { quantityChange: '0', notes: 'no actual damage' },
+          'DAMAGE',
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('assertCanManageInventory (inventory.manage permission)', () => {
+    let rolePermissionQueryBuilder: {
+      innerJoin: ReturnType<typeof vi.fn>;
+      where: ReturnType<typeof vi.fn>;
+      andWhere: ReturnType<typeof vi.fn>;
+      getCount: ReturnType<typeof vi.fn>;
+    };
+
+    beforeEach(() => {
+      rolePermissionQueryBuilder = {
+        innerJoin: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        andWhere: vi.fn().mockReturnThis(),
+        getCount: vi.fn().mockResolvedValue(1),
+      };
+      dataSource.getRepository = vi.fn((entity: { name?: string }) => {
+        if (entity?.name === 'RolePermissionEntity') {
+          return { createQueryBuilder: vi.fn(() => rolePermissionQueryBuilder) };
+        }
+        return entity?.name === 'StockReservationEntity' ? reservationRepository : inventoryRepository;
+      });
+    });
+
+    it('rejects a caller with no roles at all, without querying the database', async () => {
+      await expect(service.assertCanManageInventory([])).rejects.toThrow(ForbiddenException);
+      expect(rolePermissionQueryBuilder.getCount).not.toHaveBeenCalled();
+    });
+
+    it('rejects a caller whose roles do not grant inventory.manage', async () => {
+      rolePermissionQueryBuilder.getCount.mockResolvedValue(0);
+
+      await expect(service.assertCanManageInventory(['VENDOR_CHECKER'])).rejects.toThrow(ForbiddenException);
+    });
+
+    it('allows a caller holding VENDOR_MAKER', async () => {
+      await expect(service.assertCanManageInventory(['VENDOR_MAKER'])).resolves.toBeUndefined();
     });
   });
 });

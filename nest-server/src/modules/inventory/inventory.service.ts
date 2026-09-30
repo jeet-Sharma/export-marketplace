@@ -1,9 +1,22 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
+import { RolePermissionEntity } from '../identity/entities/role-permission.entity.js';
 import { InventoryEntity } from './entities/inventory.entity.js';
 import { StockReservationEntity } from './entities/stock-reservation.entity.js';
 import { StockMovementEntity } from './entities/stock-movement.entity.js';
+
+/**
+ * Part 2.11's "Starting permission set for vendor roles" table lists
+ * `inventory.manage` under VENDOR_MAKER; VENDOR_OWNER holds everything a
+ * Maker does, so both are granted it (see the migration seed). Any
+ * organization member without one of these roles — e.g. a bare
+ * VENDOR_CHECKER, or a user with no roles at all — must not be able to
+ * change stock levels or resolve alerts, since checking req.user.
+ * organizationId alone (the prior state) only confirmed WHICH org, not
+ * whether the caller was allowed to write to it at all.
+ */
+const INVENTORY_MANAGE_PERMISSION = 'inventory.manage';
 
 export interface ManualAdjustmentInput {
   quantityChange: string;
@@ -42,6 +55,34 @@ export class InventoryService {
       throw new NotFoundException(`Inventory for product ${productId} not found`);
     }
     return inventory;
+  }
+
+  /**
+   * Confirms the caller holds `inventory.manage` via any of their roles
+   * (VENDOR_MAKER/VENDOR_OWNER per the seed migration) — checked against
+   * the actual grant, not a hardcoded role-name switch, matching
+   * ProductsService.assertCanReviewStage()'s pattern. Called by
+   * InventoryController before any inventory-mutating action (manual
+   * adjustment, alert resolution); read-only routes are unaffected —
+   * every organization member can still view stock/movements/alerts.
+   */
+  async assertCanManageInventory(callerRoles: string[]): Promise<void> {
+    if (callerRoles.length === 0) {
+      throw new ForbiddenException('You do not have permission to manage inventory.');
+    }
+
+    const grant = await this.dataSource
+      .getRepository(RolePermissionEntity)
+      .createQueryBuilder('rolePermission')
+      .innerJoin('rolePermission.role', 'role')
+      .innerJoin('rolePermission.permission', 'permission')
+      .where('role.code IN (:...roles)', { roles: callerRoles })
+      .andWhere('permission.code = :permissionCode', { permissionCode: INVENTORY_MANAGE_PERMISSION })
+      .getCount();
+
+    if (grant === 0) {
+      throw new ForbiddenException('You do not have permission to manage inventory.');
+    }
   }
 
   /**
@@ -313,8 +354,17 @@ export class InventoryService {
     // increase available stock while the audit trail records it as
     // damage. ADJUSTMENT is intentionally left signed either way (a
     // recount can find more or less than recorded).
+    // A zero quantityChange (either movement type) would write
+    // available_change = 0 and reserved_change = 0, which the migration's
+    // own CHECK (available_change <> 0 OR reserved_change <> 0) refuses —
+    // caught here as a clean 400 instead of an unhandled DB constraint
+    // error. DAMAGE is additionally restricted to strictly negative, not
+    // just non-zero, since damage can never increase stock.
+    if (Number(input.quantityChange) === 0) {
+      throw new BadRequestException('quantityChange must not be zero.');
+    }
     if (movementType === 'DAMAGE' && Number(input.quantityChange) > 0) {
-      throw new BadRequestException('quantityChange for a DAMAGE entry must be negative or zero.');
+      throw new BadRequestException('quantityChange for a DAMAGE entry must be negative.');
     }
 
     return this.dataSource.transaction(async (manager) => {

@@ -123,6 +123,23 @@ export class ProductsService {
     if (dto.heightCm !== undefined) patch.heightCm = dto.heightCm.toString();
 
     Object.assign(product, patch);
+
+    // inventory.unit must stay in lockstep with product.unit (both are
+    // d_unit, and the two are meant to describe the same stock, Part 4.1).
+    // A DRAFT/REJECTED product's inventory row always holds zero quantity
+    // (nothing has shipped/reserved yet — create() opens it at 0, and it
+    // can only leave DRAFT via submit()), so overwriting the unit label
+    // here can never misrepresent real stock.
+    if (dto.unit !== undefined) {
+      return this.dataSource.transaction(async (manager) => {
+        const savedProduct = await manager.getRepository(ProductEntity).save(product);
+        await manager
+          .getRepository(InventoryEntity)
+          .update({ productId: id, organizationId }, { unit: savedProduct.unit });
+        return savedProduct;
+      });
+    }
+
     return this.productRepository.save(product);
   }
 
@@ -248,6 +265,12 @@ export class ProductsService {
         ? (product.pendingChanges as Record<string, unknown>)
         : this.snapshotProduct(product);
 
+      // Captured before applyApproval() mutates product.unit, so this
+      // reflects whether the ADMIN-approved edit actually changed the
+      // unit — used below to keep inventory.unit in lockstep (Part 4.1:
+      // inventory.unit "Same as the product's unit").
+      const unitBeforeApproval = product.unit;
+
       if (dto.action === 'APPROVED') {
         this.applyApproval(product, stage, isEdit);
       } else {
@@ -255,6 +278,12 @@ export class ProductsService {
       }
 
       const saved = await productRepo.save(product);
+
+      if (saved.unit !== unitBeforeApproval) {
+        await manager
+          .getRepository(InventoryEntity)
+          .update({ productId: saved.id, organizationId: productOrganizationId }, { unit: saved.unit });
+      }
 
       await this.approvalLogService.record(
         {

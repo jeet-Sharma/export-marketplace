@@ -21,6 +21,7 @@ describe('JwtAuthGuard', () => {
     getMany: ReturnType<typeof vi.fn>;
   };
   let userRoleRepository: { createQueryBuilder: ReturnType<typeof vi.fn> };
+  let organizationRepository: { findOne: ReturnType<typeof vi.fn> };
   let dataSource: { getRepository: ReturnType<typeof vi.fn> };
   let guard: JwtAuthGuard;
 
@@ -58,10 +59,15 @@ describe('JwtAuthGuard', () => {
       getMany: vi.fn().mockResolvedValue([{ role: { code: 'VENDOR_CHECKER' } }]),
     };
     userRoleRepository = { createQueryBuilder: vi.fn(() => userRoleQueryBuilder) };
+    // Default: the vendor's organization is APPROVED (active), matching
+    // the default userRepository mock above (organizationId: 'org-a').
+    organizationRepository = { findOne: vi.fn().mockResolvedValue({ id: 'org-a', status: 'APPROVED' }) };
     dataSource = {
-      getRepository: vi.fn((entity: { name?: string }) =>
-        entity?.name === 'UserRoleEntity' ? userRoleRepository : userRepository,
-      ),
+      getRepository: vi.fn((entity: { name?: string }) => {
+        if (entity?.name === 'UserRoleEntity') return userRoleRepository;
+        if (entity?.name === 'OrganizationEntity') return organizationRepository;
+        return userRepository;
+      }),
     };
 
     guard = new JwtAuthGuard(jwtService as never, configService as never, dataSource as never);
@@ -115,6 +121,42 @@ describe('JwtAuthGuard', () => {
     const context = makeContext({ authorization: 'Bearer sometoken' });
 
     await expect(guard.canActivate(context as never)).rejects.toThrow(UnauthorizedException);
+  });
+
+  it('throws UnauthorizedException when the user\'s organization is SUSPENDED', async () => {
+    jwtService.verifyAsync.mockResolvedValue({ sub: 'user-1', publicId: 'pid', userType: 'VENDOR' });
+    organizationRepository.findOne.mockResolvedValue({ id: 'org-a', status: 'SUSPENDED' });
+    const context = makeContext({ authorization: 'Bearer sometoken' });
+
+    await expect(guard.canActivate(context as never)).rejects.toThrow(UnauthorizedException);
+  });
+
+  it('throws UnauthorizedException when the user\'s organization is BLOCKED', async () => {
+    jwtService.verifyAsync.mockResolvedValue({ sub: 'user-1', publicId: 'pid', userType: 'VENDOR' });
+    organizationRepository.findOne.mockResolvedValue({ id: 'org-a', status: 'BLOCKED' });
+    const context = makeContext({ authorization: 'Bearer sometoken' });
+
+    await expect(guard.canActivate(context as never)).rejects.toThrow(UnauthorizedException);
+  });
+
+  it('throws UnauthorizedException when the user\'s organization no longer exists', async () => {
+    jwtService.verifyAsync.mockResolvedValue({ sub: 'user-1', publicId: 'pid', userType: 'VENDOR' });
+    organizationRepository.findOne.mockResolvedValue(null);
+    const context = makeContext({ authorization: 'Bearer sometoken' });
+
+    await expect(guard.canActivate(context as never)).rejects.toThrow(UnauthorizedException);
+  });
+
+  it('does not check organization status for a buyer (organizationId null)', async () => {
+    jwtService.verifyAsync.mockResolvedValue({ sub: 'user-2', publicId: 'pid', userType: 'BUYER' });
+    userRepository.findOne.mockResolvedValue({ id: 'user-2', organizationId: null, userType: 'BUYER', status: 'ACTIVE' });
+    userRoleQueryBuilder.getMany.mockResolvedValue([]);
+    const context = makeContext({ authorization: 'Bearer buyertoken' });
+
+    const result = await guard.canActivate(context as never);
+
+    expect(result).toBe(true);
+    expect(organizationRepository.findOne).not.toHaveBeenCalled();
   });
 
   it('populates req.user with organizationId, userType, and role codes for a valid vendor token', async () => {

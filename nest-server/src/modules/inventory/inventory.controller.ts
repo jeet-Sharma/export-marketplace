@@ -32,7 +32,8 @@ export class InventoryController {
   }
 
   @Post('alerts/:alertId/resolve')
-  resolveAlert(@Param('alertId') alertId: string, @Req() req: AuthenticatedRequest) {
+  async resolveAlert(@Param('alertId') alertId: string, @Req() req: AuthenticatedRequest) {
+    await this.inventoryService.assertCanManageInventory(req.user.roles);
     return this.stockAlertsService.resolve(alertId, requireOrganizationId(req.user));
   }
 
@@ -47,11 +48,12 @@ export class InventoryController {
   }
 
   @Post(':productId/adjust')
-  adjust(
+  async adjust(
     @Param('productId') productId: string,
     @Body() dto: AdjustInventoryDto,
     @Req() req: AuthenticatedRequest,
   ) {
+    await this.inventoryService.assertCanManageInventory(req.user.roles);
     return this.inventoryService.recordManualAdjustment(
       productId,
       requireOrganizationId(req.user),

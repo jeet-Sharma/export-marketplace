@@ -8,6 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { DataSource } from 'typeorm';
 import type { AuthConfig } from '../../config/auth.config.js';
+import { OrganizationEntity } from '../../modules/identity/entities/organization.entity.js';
 import { UserEntity } from '../../modules/identity/entities/user.entity.js';
 import { UserRoleEntity } from '../../modules/identity/entities/user-role.entity.js';
 import type { AuthenticatedRequest, RequestContext } from '../types/request-context.type.js';
@@ -63,6 +64,22 @@ export class JwtAuthGuard implements CanActivate {
     const user = await this.dataSource.getRepository(UserEntity).findOne({ where: { id: payload.sub } });
     if (!user || user.status === 'BLOCKED' || user.status === 'ANONYMISED') {
       throw new UnauthorizedException('Account is not active.');
+    }
+
+    // A user's own status can be ACTIVE while their organization is
+    // SUSPENDED/BLOCKED (Part 2.1) — e.g. a platform admin suspends a
+    // vendor for a compliance issue without individually blocking every
+    // employee's login. Without this check, every vendor/platform member
+    // of a suspended organization would keep full catalog/inventory access
+    // as long as their own access token stays valid. Buyers have no
+    // organization (organizationId is null) and are unaffected.
+    if (user.organizationId) {
+      const organization = await this.dataSource
+        .getRepository(OrganizationEntity)
+        .findOne({ where: { id: user.organizationId } });
+      if (!organization || organization.status !== 'APPROVED') {
+        throw new UnauthorizedException('Organization is not active.');
+      }
     }
 
     const userRoles = await this.dataSource
