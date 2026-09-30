@@ -1,16 +1,12 @@
 name: CI
-
 on:
   push:
   pull_request:
-
 permissions:
   contents: read
-
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-
 jobs:
   api:
     name: API
@@ -18,10 +14,14 @@ jobs:
     defaults:
       run:
         working-directory: nest-server
-    # Postgres is required from here on: AuthModule (the first
-    # controller-bearing module needing a live DataSource) made
-    # test/*.e2e-spec.ts's previous DatabaseModule mock unworkable — see
-    # app.module.ts and test/app.e2e-spec.ts for why.
+    # Postgres is required for the e2e suite (test/app.e2e-spec.ts boots
+    # the real AppModule against this — see db.config.ts, synchronize is
+    # disabled everywhere, so the schema below is created via migrations,
+    # not entity auto-sync). AuthModule was the first controller-bearing
+    # module needing a live DataSource, which made the previous
+    # DatabaseModule mock unworkable — see app.module.ts and
+    # test/app.e2e-spec.ts. Standard port 5432; POSTGRES_* env vars below
+    # match this service's defaults, same as docker-compose.yml locally.
     services:
       postgres:
         image: postgres:17-alpine
@@ -32,11 +32,12 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd="pg_isready -U postgres -d export_marketplace"
-          --health-interval=5s
-          --health-timeout=5s
-          --health-retries=10
+          --health-cmd "pg_isready -U postgres -d export_marketplace"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     env:
+      NODE_ENV: test
       POSTGRES_HOST: localhost
       POSTGRES_PORT: 5432
       POSTGRES_USER: postgres
@@ -45,32 +46,24 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
           cache-dependency-path: nest-server/package-lock.json
-
       - name: Install dependencies
         run: npm ci
-
       - name: Lint
         run: npm run lint
-
       - name: Run unit tests
         run: npm test
-
       - name: Run database migrations
         run: npm run migration:run
-
       - name: Run end-to-end tests
         run: npm run test:e2e
-
       - name: Build
         run: npm run build
-
   client:
     name: Client
     runs-on: ubuntu-latest
@@ -80,19 +73,15 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
           cache-dependency-path: react-client/package-lock.json
-
       - name: Install dependencies
         run: npm ci
-
       - name: Lint
         run: npm run lint
-
       - name: Build
         run: npm run build
