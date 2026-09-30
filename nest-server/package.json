@@ -37,6 +37,7 @@
     "@nestjs/observe": "^0.1.8",
     "@nestjs/platform-express": "^12.0.1",
     "@nestjs/typeorm": "12.0.1",
+    "@nestjs/swagger": "^12.0.2",
     "@smithy/node-http-handler": "^4.12.1",
     "pg": "8.16.0",
     "reflect-metadata": "^0.2.2",
