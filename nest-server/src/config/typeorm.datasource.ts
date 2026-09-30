@@ -41,6 +41,16 @@ loadDotEnvIfPresent();
  */
 const isProd = process.env.NODE_ENV === 'production';
 
+// Auto-detect which migration set to load from THIS file's own extension,
+// rather than an externally-set env var. When this module is the compiled
+// dist/config/typeorm.datasource.js (production image, run via the plain
+// `typeorm` CLI), import.meta.url ends in ".js" → use the compiled
+// migrations. When it's the .ts source (dev/CI via typeorm-ts-node-esm),
+// use the TypeScript migrations. This makes `migration:run:prod` correct no
+// matter how it's invoked — no caller has to remember to set a flag.
+const runningCompiled = import.meta.url.endsWith('.js');
+const migrationsGlob = runningCompiled ? 'dist/database/migrations/*.js' : 'src/database/migrations/*.ts';
+
 export default new DataSource({
   type: 'postgres',
   host: process.env.POSTGRES_HOST ?? 'localhost',
@@ -50,14 +60,6 @@ export default new DataSource({
   database: process.env.POSTGRES_DB ?? 'export_marketplace',
   ssl: isProd ? { rejectUnauthorized: false } : false,
   entities: ENTITIES, // single source of truth — see config/entities.ts
-  // Migration source depends on how this DataSource is loaded:
-  //   - dev/CI:  via typeorm-ts-node-esm against the .ts sources
-  //   - prod:    via the plain `typeorm` CLI against compiled dist/*.js
-  //              (the production image has no ts-node — see Dockerfile).
-  // MIGRATIONS_COMPILED=true selects the compiled path.
-  migrations:
-    process.env.MIGRATIONS_COMPILED === 'true'
-      ? ['dist/database/migrations/*.js']
-      : ['src/database/migrations/*.ts'],
+  migrations: [migrationsGlob],
   logging: process.env.TYPEORM_LOGGING === 'true',
 });

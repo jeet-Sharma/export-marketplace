@@ -85,7 +85,7 @@ describe('AuthController (e2e)', () => {
     await cleanupUser(dataSource, email);
   });
 
-  it('POST /auth/resend-verification replaces an active token for a pending buyer', async () => {
+  it('POST /auth/resend-verification issues a new token and keeps the prior one valid', async () => {
     const email = `resend-${randomUUID()}@example.com`;
     const oldTokenHash = createHash('sha256').update('old-token').digest('hex');
     const userRows = (await dataSource.query(
@@ -97,7 +97,7 @@ describe('AuthController (e2e)', () => {
     const userId = userRows[0].id;
 
     // Backdate the existing token past the resend cooldown so this happy-path
-    // replacement is not throttled (see the cooldown test below).
+    // resend is not throttled (see the cooldown test below).
     await dataSource.query(
       `INSERT INTO user_token (user_id, token_type, token_hash, expires_at, created_at)
        VALUES ($1, 'EMAIL_VERIFY', $2, now() + interval '1 hour', now() - interval '10 minutes')`,
@@ -113,23 +113,26 @@ describe('AuthController (e2e)', () => {
       expect.objectContaining({ email, fullName: 'Resend Buyer', token: expect.any(String) }),
     );
 
+    // A new token is added; the prior token is intentionally left valid
+    // (unused) so a later mail failure can never strand the buyer with a
+    // dead link. Both are unused single-use tokens.
     const tokens = (await dataSource.query(
       `SELECT token_hash, used_at FROM user_token WHERE user_id = $1 AND token_type = 'EMAIL_VERIFY' ORDER BY id`,
       [userId],
     )) as Array<{ token_hash: string; used_at: Date | null }>;
     expect(tokens).toHaveLength(2);
     expect(tokens[0].token_hash).toBe(oldTokenHash);
-    expect(tokens[0].used_at).not.toBeNull();
-    expect(tokens[1].used_at).toBeNull();
+    expect(tokens.every((t) => t.used_at === null)).toBe(true);
 
     await dataSource.query(`DELETE FROM user_token WHERE user_id = $1`, [userId]);
     await dataSource.query(`DELETE FROM users WHERE id = $1`, [userId]);
   });
 
-  it('POST /auth/resend-verification leaves the existing token valid when the email fails to send', async () => {
-    // If delivery fails, the buyer's previously delivered link must remain
-    // usable — the old token must NOT be invalidated, and no new token is
-    // persisted. See auth.service.ts resendVerification() (send-before-write).
+  it('POST /auth/resend-verification keeps all tokens valid when the email fails to send', async () => {
+    // If delivery fails, no link is destroyed: the prior token stays valid
+    // AND the newly persisted token stays valid. The buyer is never stranded.
+    // See auth.service.ts resendVerification() (lock-first, additive token,
+    // send-after-commit).
     sendVerificationEmail.mockRejectedValueOnce(new Error('SMTP unavailable'));
     const email = `resend-fail-${randomUUID()}@example.com`;
     const oldTokenHash = createHash('sha256').update(`old-${randomUUID()}`).digest('hex');
@@ -153,14 +156,14 @@ describe('AuthController (e2e)', () => {
     expect(response.status).toBe(201);
     expect(response.body).toEqual({ message: 'If an eligible account exists, a verification email has been sent.' });
 
-    // The old token is still the only token and is still unused/valid.
+    // Both the old and the newly persisted token remain valid (unused).
     const tokens = (await dataSource.query(
       `SELECT token_hash, used_at FROM user_token WHERE user_id = $1 AND token_type = 'EMAIL_VERIFY' ORDER BY id`,
       [userId],
     )) as Array<{ token_hash: string; used_at: Date | null }>;
-    expect(tokens).toHaveLength(1);
+    expect(tokens).toHaveLength(2);
     expect(tokens[0].token_hash).toBe(oldTokenHash);
-    expect(tokens[0].used_at).toBeNull();
+    expect(tokens.every((t) => t.used_at === null)).toBe(true);
 
     await dataSource.query(`DELETE FROM user_token WHERE user_id = $1`, [userId]);
     await dataSource.query(`DELETE FROM users WHERE id = $1`, [userId]);

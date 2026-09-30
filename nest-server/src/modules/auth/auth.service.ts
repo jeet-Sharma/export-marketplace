@@ -320,92 +320,91 @@ export class AuthService {
     const email = emailInput.toLowerCase();
     const genericResponse = { message: 'If an eligible account exists, a verification email has been sent.' };
 
-    // Step 1: look up the account only (no writes yet). Unknown, verified,
-    // blocked, anonymised, and non-buyer accounts all return the same
-    // response to prevent email-account enumeration.
-    const user = await this.dataSource.getRepository(UserEntity).createQueryBuilder('user').where('lower(user.email) = :email', { email }).getOne();
-    if (!user || user.userType !== 'BUYER' || user.emailVerified || user.status !== 'PENDING') {
-      return genericResponse;
-    }
-
-    // Per-account cooldown. This endpoint is unauthenticated, so without a
-    // throttle anyone who knows the address could spam mail, repeatedly
-    // invalidate the buyer's link, and accumulate token rows. If a
-    // verification token was issued within the cooldown window, silently
-    // do nothing more and return the same generic response (so the throttle
-    // itself does not reveal whether the account exists). The still-valid
-    // recent link remains usable.
-    const mostRecentToken = await this.dataSource
-      .getRepository(UserTokenEntity)
-      .createQueryBuilder('token')
-      .where('token.userId = :userId', { userId: user.id })
-      .andWhere('token.tokenType = :tokenType', { tokenType: 'EMAIL_VERIFY' })
-      .orderBy('token.createdAt', 'DESC')
+    // Step 1: cheap unlocked eligibility read. Unknown, verified, blocked,
+    // anonymised, and non-buyer accounts all return the same response to
+    // prevent email-account enumeration, without opening a transaction.
+    const candidate = await this.dataSource
+      .getRepository(UserEntity)
+      .createQueryBuilder('user')
+      .where('lower(user.email) = :email', { email })
       .getOne();
-    if (
-      mostRecentToken &&
-      Date.now() - mostRecentToken.createdAt.getTime() < RESEND_COOLDOWN_SECONDS * 1000
-    ) {
+    if (!candidate || candidate.userType !== 'BUYER' || candidate.emailVerified || candidate.status !== 'PENDING') {
       return genericResponse;
     }
 
     const rawToken = randomBytes(EMAIL_VERIFY_TOKEN_BYTES).toString('hex');
     const tokenHash = createHash('sha256').update(rawToken).digest('hex');
 
-    // Step 2: send the new email BEFORE touching the database. If delivery
-    // fails, we must NOT have invalidated the buyer's existing (still valid)
-    // verification link — otherwise a mail outage would leave them with a
-    // dead old link and no new one. Only a successful send proceeds to
-    // step 3.
-    try {
-      await this.emailService.sendVerificationEmail({
-        email: user.email,
-        fullName: user.fullName,
-        token: rawToken,
-      });
-    } catch (error) {
-      this.logger.error(
-        `Resend verification email failed for ${user.email}; the existing token was left untouched.`,
-        error instanceof Error ? error.stack : undefined,
-      );
-      // Same generic response — don't reveal that the account exists, and
-      // the buyer's previous link (if any) is still usable.
-      return genericResponse;
-    }
-
-    // Step 3: the email is out. Now invalidate any prior unused tokens and
-    // persist the new one, atomically. A concurrent resend is serialised by
-    // the row lock on the user.
-    await this.dataSource.transaction(async (manager) => {
+    // Step 2: reserve the send inside a transaction that LOCKS the user row
+    // first. This serialises concurrent unauthenticated requests for the
+    // same buyer: they queue on the lock, and the cooldown is re-checked
+    // while the lock is held, so only ONE request per window passes and
+    // persists a token. Doing the cooldown check unlocked (as before) let
+    // every concurrent request pass it at once and flood the inbox.
+    //
+    // The new token is INSERTED but prior tokens are NOT invalidated here.
+    // Keeping older unused tokens valid means a subsequent mail-send failure
+    // (step 3) can never leave the buyer with a dead link — every issued
+    // link stays usable until it is spent or expires. Tokens are single-use
+    // and short-lived, so a few coexisting is harmless.
+    const shouldSend = await this.dataSource.transaction(async (manager) => {
       await manager
         .getRepository(UserEntity)
         .createQueryBuilder('user')
         .setLock('pessimistic_write')
-        .where('user.id = :userId', { userId: user.id })
+        .where('user.id = :userId', { userId: candidate.id })
         .getOne();
 
-      await manager
+      const mostRecentToken = await manager
         .getRepository(UserTokenEntity)
-        .createQueryBuilder()
-        .update(UserTokenEntity)
-        .set({ usedAt: new Date() })
-        .where('user_id = :userId', { userId: user.id })
-        .andWhere('token_type = :tokenType', { tokenType: 'EMAIL_VERIFY' })
-        .andWhere('used_at IS NULL')
-        .execute();
+        .createQueryBuilder('token')
+        .where('token.userId = :userId', { userId: candidate.id })
+        .andWhere('token.tokenType = :tokenType', { tokenType: 'EMAIL_VERIFY' })
+        .orderBy('token.createdAt', 'DESC')
+        .getOne();
+
+      // Cooldown, now evaluated under the lock so it is race-safe.
+      if (mostRecentToken && Date.now() - mostRecentToken.createdAt.getTime() < RESEND_COOLDOWN_SECONDS * 1000) {
+        return false;
+      }
 
       await manager.getRepository(UserTokenEntity).save(
         manager.getRepository(UserTokenEntity).create({
-          userId: user.id,
+          userId: candidate.id,
           tokenType: 'EMAIL_VERIFY',
           tokenHash,
           expiresAt: new Date(Date.now() + EMAIL_VERIFY_EXPIRY_HOURS * 60 * 60 * 1000),
         }),
       );
+      return true;
     });
 
+    // Throttled by the cooldown — same generic response, nothing sent.
+    if (!shouldSend) {
+      return genericResponse;
+    }
+
+    // Step 3: send after commit. A failure here leaves the just-persisted
+    // token (and any earlier valid ones) usable, so the buyer is never
+    // stranded; it just means this particular email didn't arrive. The
+    // cooldown row is already committed, which also prevents a failed send
+    // from being retried into a flood.
+    try {
+      await this.emailService.sendVerificationEmail({
+        email: candidate.email,
+        fullName: candidate.fullName,
+        token: rawToken,
+      });
+    } catch (error) {
+      this.logger.error(
+        `Resend verification email failed for ${candidate.email}; the token was persisted and remains valid.`,
+        error instanceof Error ? error.stack : undefined,
+      );
+      return genericResponse;
+    }
+
     if (this.isDev) {
-      this.logger.log(`[dev only] Email verification token for ${user.email}: ${rawToken}`);
+      this.logger.log(`[dev only] Email verification token for ${candidate.email}: ${rawToken}`);
     }
 
     return genericResponse;
