@@ -6,6 +6,7 @@ import TableToolbar from "@/components/vendor/TableToolbar";
 import StatRow from "@/components/vendor/dashboard/StatRow";
 import OrderTable from "@/components/vendor/orders/OrderTable";
 import { orderBook, orderStats, ordersMeta } from "@/data/orders";
+import { vendorProfile } from "@/data/seedData";
 
 export default function OrdersPage() {
   const [query, setQuery] = useState("");
@@ -26,6 +27,8 @@ export default function OrdersPage() {
         title="Orders"
         breadcrumb="Vendor Panel / Order Management"
         actionLabel="+ New Order"
+        verified={vendorProfile.verified}
+        verifiedLabel="Verified Supplier"
       />
 
       <main className="w-full px-4 py-6 sm:px-6">

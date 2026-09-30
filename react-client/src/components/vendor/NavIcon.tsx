@@ -11,7 +11,9 @@ export type NavIconName =
   | "analytics"
   | "documents"
   | "profile"
-  | "bell";
+  | "bell"
+  | "wishlist"
+  | "cart";
 
 const PATHS: Record<NavIconName, JSX.Element> = {
   dashboard: (
@@ -64,6 +66,18 @@ const PATHS: Record<NavIconName, JSX.Element> = {
     <>
       <path d="M18 16V11a6 6 0 1 0-12 0v5l-2 3h16z" />
       <path d="M10 22h4" />
+    </>
+  ),
+  wishlist: (
+    <>
+      <path d="M12 21s-7.5-4.6-10-9.2C.4 8.6 2 5 5.5 5c2 0 3.4 1.1 4.5 2.6C11.1 6.1 12.5 5 14.5 5 18 5 19.6 8.6 22 11.8 19.5 16.4 12 21 12 21z" />
+    </>
+  ),
+  cart: (
+    <>
+      <circle cx="9" cy="20" r="1.4" fill="currentColor" stroke="none" />
+      <circle cx="17" cy="20" r="1.4" fill="currentColor" stroke="none" />
+      <path d="M3 4h2l2.4 11.2a2 2 0 0 0 2 1.6h7.2a2 2 0 0 0 2-1.6L21 8H6" />
     </>
   ),
 };

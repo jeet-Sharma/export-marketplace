@@ -35,3 +35,24 @@ export interface VerificationChecklistItem {
   label: string;
   status: DocumentStatus;
 }
+
+/** Buyer's saved shipping/contact profile — the buyer-portal counterpart
+ * to CompanyProfile above. */
+export interface BuyerProfile {
+  fullName: string;
+  companyName: string;
+  initials: string;
+  email: string;
+  phone: string;
+  country: string;
+  address: string;
+  panelStatus: DocumentStatus;
+}
+
+/** One saved payment method on the buyer's profile. */
+export interface PaymentMethod {
+  id: string;
+  label: string;
+  detail: string;
+  isDefault: boolean;
+}

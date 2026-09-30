@@ -3,7 +3,6 @@ import PublicHeader from "@/components/public/PublicHeader";
 import PublicFooter from "@/components/public/PublicFooter";
 import Panel from "@/components/ui/Panel";
 import Badge from "@/components/ui/Badge";
-import Button from "@/components/ui/Button";
 import ProductGallery from "@/components/public/product-detail/ProductGallery";
 import PriceTiers from "@/components/public/product-detail/PriceTiers";
 import ComplianceFacts from "@/components/public/product-detail/ComplianceFacts";
@@ -11,6 +10,7 @@ import CountryLogistics from "@/components/public/product-detail/CountryLogistic
 import SupplierCard from "@/components/public/product-detail/SupplierCard";
 import ShippingInfo from "@/components/public/product-detail/ShippingInfo";
 import RfqForm from "@/components/public/product-detail/RfqForm";
+import AddToCartActions from "@/components/public/product-detail/AddToCartActions";
 import { routes } from "@/config/routes";
 import type { Product } from "@/lib/products";
 
@@ -75,17 +75,12 @@ export default function ProductDetailPage({ product }: ProductDetailPageProps) {
                 <CountryLogistics countryLogistics={product.countryLogistics} />
               </div>
 
-              <div className="flex gap-2 pt-2">
-                <Button variant="accent" size="md" className="flex-1">
-                  Add to Cart / Buy Now
-                </Button>
-                <Button variant="ghost" size="md" className="flex-1">
-                  Request Quote
-                </Button>
-              </div>
+              <AddToCartActions product={product} />
             </Panel>
 
-            <RfqForm countries={countries} productName={product.name} />
+            <div id="rfq-form">
+              <RfqForm countries={countries} productName={product.name} />
+            </div>
           </div>
 
           {/* Right column: supplier + shipping info */}
