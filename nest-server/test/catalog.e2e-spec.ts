@@ -56,6 +56,11 @@ describe('Catalog (e2e)', () => {
       await dataSource.query(`DELETE FROM product_price_tier WHERE organization_id = $1`, [orgId]);
       await dataSource.query(`DELETE FROM product_target_country WHERE organization_id = $1`, [orgId]);
       await dataSource.query(`DELETE FROM product_media WHERE organization_id = $1`, [orgId]);
+      // stock_movement and stock_alert also FK to product(id, organization_id)
+      // — the /inventory/:productId/adjust calls used by unit-change-safety
+      // tests create these rows, so they must clear before product does.
+      await dataSource.query(`DELETE FROM stock_movement WHERE organization_id = $1`, [orgId]);
+      await dataSource.query(`DELETE FROM stock_alert WHERE organization_id = $1`, [orgId]);
       await dataSource.query(`DELETE FROM inventory WHERE organization_id = $1`, [orgId]);
       await dataSource.query(`DELETE FROM product WHERE organization_id = $1`, [orgId]);
       await dataSource.query(`DELETE FROM vendor_target_country WHERE organization_id = $1`, [orgId]);
@@ -477,10 +482,12 @@ describe('Catalog (e2e)', () => {
       expect(editSubmit.status).toBe(201);
       expect(editSubmit.body.pendingStatus).toBe('PENDING_CHECKER');
 
-      await request(app.getHttpServer())
+      const checkerApproval = await request(app.getHttpServer())
         .post(`/catalog/products/${productId}/review`)
         .set(authHeader(checkerToken))
         .send({ action: 'APPROVED' });
+      expect(checkerApproval.status).toBe(201);
+      expect(checkerApproval.body.pendingStatus).toBe('PENDING_ADMIN');
 
       const adminApproval = await request(app.getHttpServer())
         .post(`/catalog/products/${productId}/review`)

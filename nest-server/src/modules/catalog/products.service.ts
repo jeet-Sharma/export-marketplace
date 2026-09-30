@@ -292,8 +292,14 @@ export class ProductsService {
       // anything — approving the rest of the edit while silently
       // corrupting the unit is not an acceptable partial outcome.
       const unitBeforeApproval = product.unit;
+      // Only the ADMIN stage's approval of an EDIT actually copies
+      // pending_changes onto the live columns (applyApproval()'s isEdit
+      // branch) — CHECKER-stage approval of the same edit only advances
+      // pending_status to PENDING_ADMIN and never touches product.unit or
+      // inventory at all, so it must not be blocked by this check.
       const pendingUnitChange =
         isEdit &&
+        stage === 'ADMIN' &&
         dto.action === 'APPROVED' &&
         typeof product.pendingChanges === 'object' &&
         product.pendingChanges !== null &&
