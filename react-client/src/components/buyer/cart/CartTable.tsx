@@ -3,7 +3,7 @@ import Table, { cellClassName } from "@/components/ui/Table";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import { cartMeta } from "@/data/buyerCart";
-import { getLineTotal } from "@/lib/cart";
+import { getLineTotal, parseMoqToNumber } from "@/lib/cart";
 import { formatStatValue } from "@/lib/formatters";
 import type { CartItem } from "@/types/cart";
 
@@ -36,17 +36,28 @@ export default function CartTable({ items = [], onQuantityChange, onRemove }: Ca
               {formatStatValue(item.unitPrice, "currency")}
             </td>
             <td className={`px-4 py-3 ${cellClassName()}`}>
-              <Input
-                id={`cart-quantity-${item.id}`}
-                type="number"
-                min={1}
-                value={item.quantity}
-                onChange={(event) =>
-                  onQuantityChange?.(item, Math.max(1, Number(event.target.value) || 1))
-                }
-                className="w-24"
-                aria-label={`Quantity for ${item.name}`}
-              />
+              {(() => {
+                // Enforce the product's own MOQ as the input's floor
+                // instead of a flat 1 — a buyer shouldn't be able to
+                // type in a quantity below what the supplier requires.
+                const moq = parseMoqToNumber(item.moq);
+                return (
+                  <>
+                    <Input
+                      id={`cart-quantity-${item.id}`}
+                      type="number"
+                      min={moq}
+                      value={item.quantity}
+                      onChange={(event) =>
+                        onQuantityChange?.(item, Math.max(moq, Number(event.target.value) || moq))
+                      }
+                      className="w-24"
+                      aria-label={`Quantity for ${item.name}`}
+                    />
+                    <p className="font-body text-text-dim text-[11px] mt-1">MOQ: {item.moq}</p>
+                  </>
+                );
+              })()}
             </td>
             <td
               className={`px-4 py-3 font-heading font-medium ${cellClassName()}`}

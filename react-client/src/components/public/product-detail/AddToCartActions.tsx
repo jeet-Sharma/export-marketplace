@@ -23,12 +23,16 @@ export default function AddToCartActions({ product }: AddToCartActionsProps) {
   const [added, setAdded] = useState(false);
 
   function handleAddToCart() {
-    addItem(product, 1);
+    // No explicit quantity — useCart.addItem defaults to (and enforces)
+    // the product's own MOQ, so a buyer can never add fewer units than
+    // the supplier requires, and the line item picks up whichever price
+    // tier that quantity actually qualifies for.
+    addItem(product);
     setAdded(true);
   }
 
   function handleBuyNow() {
-    addItem(product, 1);
+    addItem(product);
     router.push(routes.buyerCart);
   }
 

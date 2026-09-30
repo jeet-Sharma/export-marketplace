@@ -9,13 +9,17 @@ import type { AuthenticatedUser, UserType } from "@/types/auth";
 
 /**
  * Where a signed-in user lands, based on `user_type` (Data_Modeling_2.md
- * 2.5): PLATFORM and VENDOR both open a panel under /vendor today (the
- * vendor dashboard shell is the only internal panel built so far); BUYER
- * has no dashboard yet, so they land back on the public storefront.
+ * 2.5): PLATFORM and VENDOR both open the vendor panel; BUYER opens the
+ * buyer panel (dashboard, orders, wishlist, cart, RFQs — see
+ * app/buyer/**). Anything else (shouldn't occur, but kept as a safe
+ * fallback rather than an unhandled case) lands on the public storefront.
  */
 export function resolvePostLoginRoute(userType: UserType): string {
   if (userType === USER_TYPE.platform || userType === USER_TYPE.vendor) {
     return routes.vendorDashboard;
+  }
+  if (userType === USER_TYPE.buyer) {
+    return routes.buyerDashboard;
   }
   return routes.home;
 }

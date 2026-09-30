@@ -5,8 +5,9 @@ import PageHeader from "@/components/vendor/PageHeader";
 import CartTable from "@/components/buyer/cart/CartTable";
 import CheckoutSummary from "@/components/buyer/cart/CheckoutSummary";
 import { buyerProfileSummary } from "@/data/buyerSeedData";
-import { getCartItemCount, getCartTotals } from "@/lib/cart";
+import { cartItemsToOrders, getCartItemCount, getCartTotals } from "@/lib/cart";
 import { useCart } from "@/lib/useCart";
+import { useBuyerOrders } from "@/lib/useBuyerOrders";
 
 // Cart / checkout — no vendor-side equivalent, so this follows the buyer
 // portal's general page shape (PageHeader + two-column main content),
@@ -16,10 +17,21 @@ import { useCart } from "@/lib/useCart";
 // useState seeded from static data, so a product added from the public
 // product detail page's "Add to Cart"/"Buy Now" buttons shows up here.
 export default function CartPage() {
-  const { items, updateQuantity, removeItem } = useCart();
+  const { items, updateQuantity, removeItem, clearCart } = useCart();
+  const { addOrder } = useBuyerOrders();
 
   const totals = useMemo(() => getCartTotals(items), [items]);
   const itemCount = useMemo(() => getCartItemCount(items), [items]);
+
+  // Turns the current cart into real order history (see
+  // lib/cart.ts cartItemsToOrders) and empties the cart, instead of
+  // "Place Order" only showing a confirmation message while the cart and
+  // order history stayed exactly as they were before.
+  function handlePlaceOrder() {
+    const orders = cartItemsToOrders(items);
+    orders.forEach(addOrder);
+    clearCart();
+  }
 
   return (
     <>
@@ -40,7 +52,11 @@ export default function CartPage() {
             />
           </div>
           <div className="lg:col-span-1">
-            <CheckoutSummary totals={totals} itemCount={itemCount} />
+            <CheckoutSummary
+              totals={totals}
+              itemCount={itemCount}
+              onPlaceOrder={handlePlaceOrder}
+            />
           </div>
         </div>
       </main>
