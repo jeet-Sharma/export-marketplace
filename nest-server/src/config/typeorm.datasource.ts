@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'fs';
 import { DataSource } from 'typeorm';
-import { ENTITIES } from './db.config.js';
+import { ENTITIES } from './entities.js';
 
 // Minimal .env loader for the CLI context only (no dotenv dependency —
 // see backend-rules.md: don't add a dependency for something already
@@ -49,7 +49,7 @@ export default new DataSource({
   password: process.env.POSTGRES_PASSWORD ?? 'postgres',
   database: process.env.POSTGRES_DB ?? 'export_marketplace',
   ssl: isProd ? { rejectUnauthorized: false } : false,
-  entities: ENTITIES, // single source of truth — see db.config.ts
+  entities: ENTITIES, // single source of truth — see config/entities.ts
   migrations: ['src/database/migrations/*.ts'],
   logging: process.env.TYPEORM_LOGGING === 'true',
 });

@@ -1,25 +1,6 @@
 import { registerAs } from '@nestjs/config';
 import type { DataSourceOptions } from 'typeorm';
-import { AuditLogEntity } from '../modules/identity/entities/audit-log.entity.js';
-import { AuthSessionEntity } from '../modules/identity/entities/auth-session.entity.js';
-import { BuyerAddressEntity } from '../modules/identity/entities/buyer-address.entity.js';
-import { BuyerProfileEntity } from '../modules/identity/entities/buyer-profile.entity.js';
-import { OrganizationStatusHistoryEntity } from '../modules/identity/entities/organization-status-history.entity.js';
-import { OrganizationEntity } from '../modules/identity/entities/organization.entity.js';
-import { PermissionEntity } from '../modules/identity/entities/permission.entity.js';
-import { RolePermissionEntity } from '../modules/identity/entities/role-permission.entity.js';
-import { RoleEntity } from '../modules/identity/entities/role.entity.js';
-import { UserRoleEntity } from '../modules/identity/entities/user-role.entity.js';
-import { UserSocialAccountEntity } from '../modules/identity/entities/user-social-account.entity.js';
-import { UserTokenEntity } from '../modules/identity/entities/user-token.entity.js';
-import { UserEntity } from '../modules/identity/entities/user.entity.js';
-import { VendorBankAccountEntity } from '../modules/identity/entities/vendor-bank-account.entity.js';
-import { VendorTargetCountryEntity } from '../modules/identity/entities/vendor-target-country.entity.js';
-import { CategoryEntity } from '../modules/reference-data/entities/category.entity.js';
-import { CountryEntity } from '../modules/reference-data/entities/country.entity.js';
-import { CurrencyEntity } from '../modules/reference-data/entities/currency.entity.js';
-import { HsCodeEntity } from '../modules/reference-data/entities/hs-code.entity.js';
-import { ExchangeRateEntity } from '../modules/reference-data/entities/exchange-rate.entity.js';
+import { ENTITIES } from './entities.js';
 
 export interface DbConfig {
   host: string;
@@ -30,36 +11,6 @@ export interface DbConfig {
   ssl: boolean;
   logging: boolean;
 }
-
-/**
- * The single, authoritative list of TypeORM entities. Both the running app
- * (buildDataSourceOptions below) and the migration CLI
- * (src/config/typeorm.datasource.ts) import this exact array, so they can
- * never disagree about which entities exist. Add a new entity here once and
- * both consumers pick it up.
- */
-export const ENTITIES = [
-  CurrencyEntity,
-  CountryEntity,
-  ExchangeRateEntity,
-  CategoryEntity,
-  HsCodeEntity,
-  OrganizationEntity,
-  OrganizationStatusHistoryEntity,
-  VendorTargetCountryEntity,
-  VendorBankAccountEntity,
-  UserEntity,
-  AuthSessionEntity,
-  UserTokenEntity,
-  UserSocialAccountEntity,
-  BuyerProfileEntity,
-  BuyerAddressEntity,
-  RoleEntity,
-  PermissionEntity,
-  RolePermissionEntity,
-  UserRoleEntity,
-  AuditLogEntity,
-];
 
 /**
  * PostgreSQL / TypeORM configuration, namespaced under "db" in ConfigService.
