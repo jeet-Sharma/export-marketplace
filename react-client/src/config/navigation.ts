@@ -71,3 +71,40 @@ export const sidebarNav: NavGroup[] = [
     items: [{ id: "profile", label: "Profile", icon: "profile", href: "/vendor/profile" }],
   },
 ];
+
+// Signed-in buyer footer identity, shown in the buyer sidebar footer — the
+// buyer-side counterpart to vendorCompany above. Mirrors its shape exactly
+// (name/initials/status) so Sidebar.tsx's company footer renders either
+// one unmodified via its `company` prop.
+export const buyerCompany = {
+  name: "Priya Sharma",
+  initials: "PS",
+  status: "Verified Buyer",
+};
+
+export const buyerBrand = {
+  name: "ExportHub",
+  panelLabel: "Buyer Panel",
+};
+
+// Buyer sidebar navigation, grouped exactly like sidebarNav above but
+// pointed at /buyer/** routes and buyer-specific concepts (wishlist, cart,
+// sent RFQs) instead of vendor's product/inventory management.
+export const buyerNav: NavGroup[] = [
+  {
+    id: "shopping",
+    heading: "Shopping",
+    items: [
+      { id: "dashboard", label: "Dashboard", icon: "dashboard", href: "/buyer/dashboard" },
+      { id: "orders", label: "Orders", icon: "orders", href: "/buyer/orders" },
+      { id: "wishlist", label: "Wishlist", icon: "wishlist", href: "/buyer/wishlist" },
+      { id: "cart", label: "Cart", icon: "cart", href: "/buyer/cart" },
+      { id: "rfq", label: "RFQs", icon: "rfq", href: "/buyer/rfqs" },
+    ],
+  },
+  {
+    id: "account",
+    heading: "Account",
+    items: [{ id: "profile", label: "Profile", icon: "profile", href: "/buyer/profile" }],
+  },
+];

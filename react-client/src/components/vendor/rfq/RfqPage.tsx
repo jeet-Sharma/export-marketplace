@@ -7,6 +7,7 @@ import StatRow from "@/components/vendor/dashboard/StatRow";
 import RfqTable from "@/components/vendor/rfq/RfqTable";
 import QuoteForm from "@/components/vendor/rfq/QuoteForm";
 import { rfqRequests, rfqStats, rfqMeta } from "@/data/rfq";
+import { vendorProfile } from "@/data/seedData";
 import type { RfqRequest } from "@/types/rfq";
 
 export default function RfqPage() {
@@ -29,6 +30,8 @@ export default function RfqPage() {
         title="RFQ"
         breadcrumb="Vendor Panel / Requests for Quotation"
         actionLabel="+ New Quote"
+        verified={vendorProfile.verified}
+        verifiedLabel="Verified Supplier"
       />
 
       <main className="w-full px-4 py-6 sm:px-6">

@@ -1,22 +1,36 @@
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import NavIcon from "@/components/vendor/NavIcon";
-import { vendorProfile } from "@/data/seedData";
 
 export interface PageHeaderProps {
   title: string;
   breadcrumb?: string;
   actionLabel?: string;
   onAction?: () => void;
+  /**
+   * Shows the verification badge when true. Required (no default) since
+   * this component is shared by both the vendor and buyer portals — a
+   * silent fallback to one portal's profile data would show the wrong
+   * badge on the other portal's pages if a caller forgot to pass it.
+   * Callers pass their own portal's profile flag, e.g.
+   * vendorProfile.verified or buyerProfileSummary.verified.
+   */
+  verified: boolean;
+  /** Badge label shown when `verified` is true, e.g. "Verified Supplier"
+   * or "Verified Buyer". */
+  verifiedLabel: string;
 }
 
-// Shared vendor page top bar: title + breadcrumb on the left,
-// verification badge, notifications and a primary action on the right.
+// Shared page top bar (used by both the vendor and buyer portals): title +
+// breadcrumb on the left, verification badge, notifications and a primary
+// action on the right.
 export default function PageHeader({
   title,
   breadcrumb,
   actionLabel,
   onAction,
+  verified,
+  verifiedLabel,
 }: PageHeaderProps) {
   return (
     <header className="bg-panel border-b border-line">
@@ -34,8 +48,8 @@ export default function PageHeader({
           </div>
 
           <div className="flex items-center gap-3">
-            {vendorProfile.verified && (
-              <Badge tone="teal">{"\u2713"} Verified Supplier</Badge>
+            {verified && (
+              <Badge tone="teal">{"\u2713"} {verifiedLabel}</Badge>
             )}
             <button
               type="button"

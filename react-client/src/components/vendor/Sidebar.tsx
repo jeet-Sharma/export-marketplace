@@ -10,6 +10,8 @@ export interface SidebarProps {
   nav?: NavGroup[];
   brand?: typeof appBrand;
   company?: typeof vendorCompany;
+  /** Accessible label for the nav landmark — override per portal (vendor/buyer). */
+  navLabel?: string;
   className?: string;
 }
 
@@ -20,6 +22,7 @@ export default function Sidebar({
   nav = sidebarNav,
   brand = appBrand,
   company = vendorCompany,
+  navLabel = "Vendor navigation",
   className = "",
 }: SidebarProps) {
   const pathname = usePathname();
@@ -42,7 +45,7 @@ export default function Sidebar({
       </p>
 
       {/* Grouped navigation */}
-      <nav aria-label="Vendor navigation" className="flex-1 mt-4">
+      <nav aria-label={navLabel} className="flex-1 mt-4">
         {nav.map((group) => (
           <div key={group.id} className="mb-5">
             <p

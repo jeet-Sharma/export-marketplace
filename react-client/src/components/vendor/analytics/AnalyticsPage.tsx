@@ -10,6 +10,7 @@ import {
   topProducts,
   analyticsMeta,
 } from "@/data/analytics";
+import { vendorProfile } from "@/data/seedData";
 import { formatStatValue } from "@/lib/formatters";
 
 const PRODUCT_COLUMNS = ["Product", "Orders", "Revenue"];
@@ -21,6 +22,8 @@ export default function AnalyticsPage() {
         title="Analytics"
         breadcrumb="Vendor Panel / Analytics"
         actionLabel="Export Report"
+        verified={vendorProfile.verified}
+        verifiedLabel="Verified Supplier"
       />
 
       <main className="w-full px-4 py-6 sm:px-6">

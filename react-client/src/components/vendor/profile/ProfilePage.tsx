@@ -7,6 +7,7 @@ import StatusPill from "@/components/vendor/StatusPill";
 import CompanyForm from "@/components/vendor/profile/CompanyForm";
 import VerificationPanel from "@/components/vendor/profile/VerificationPanel";
 import { companyProfile, teamMembers, profileMeta } from "@/data/profile";
+import { vendorProfile } from "@/data/seedData";
 
 export default function ProfilePage() {
   return (
@@ -15,6 +16,8 @@ export default function ProfilePage() {
         title="Profile"
         breadcrumb="Vendor Panel / Company Profile"
         actionLabel="+ Invite Member"
+        verified={vendorProfile.verified}
+        verifiedLabel="Verified Supplier"
       />
 
       <main className="w-full px-4 py-6 sm:px-6">

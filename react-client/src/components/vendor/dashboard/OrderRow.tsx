@@ -1,6 +1,5 @@
 import Button from "@/components/ui/Button";
-import { cellClassName } from "@/components/ui/Table";
-import StatusPill from "@/components/vendor/StatusPill";
+import OrderRowShell from "@/components/shared/OrderRowShell";
 import type { RecentOrder } from "@/types/order";
 
 export interface OrderRowActionHandlers {
@@ -90,21 +89,13 @@ export default function OrderRow({
   isActionPending,
 }: OrderRowProps) {
   return (
-    <tr>
-      <td
-        className={`px-4 py-3 font-heading font-semibold ${cellClassName({ emphasis: true })}`}
-      >
-        {order.id}
-      </td>
-      <td className={`px-4 py-3 ${cellClassName()}`}>{order.product}</td>
-      <td className={`px-4 py-3 ${cellClassName()}`}>
-        <span>{order.buyer}</span>
-        <span className="text-text-dim"> ({order.country})</span>
-      </td>
-      <td className={`px-4 py-3 ${cellClassName()}`}>
-        <StatusPill status={order.status} />
-      </td>
-      <td className={`px-4 py-3 ${cellClassName()}`}>
+    <OrderRowShell
+      id={order.id}
+      product={order.product}
+      counterpartyName={order.buyer}
+      country={order.country}
+      status={order.status}
+      actions={
         <RowActions
           order={order}
           onAccept={onAccept}
@@ -113,7 +104,7 @@ export default function OrderRow({
           onInvoice={onInvoice}
           isActionPending={isActionPending}
         />
-      </td>
-    </tr>
+      }
+    />
   );
 }
