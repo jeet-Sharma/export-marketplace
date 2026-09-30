@@ -169,6 +169,36 @@ describe('AuthController (e2e)', () => {
     await dataSource.query(`DELETE FROM users WHERE id = $1`, [userId]);
   });
 
+  it('POST /auth/resend-verification is a no-op once the account is already active', async () => {
+    // Models the race where verifyEmail activates the buyer between resend's
+    // unlocked eligibility read and its locked re-check: an ACTIVE/verified
+    // account must not get a new token or email, since verification would
+    // reject any link issued for it. See the locked re-check in
+    // auth.service.ts resendVerification().
+    const email = `active-${randomUUID()}@example.com`;
+    const userRows = (await dataSource.query(
+      `INSERT INTO users (public_id, user_type, full_name, email, password_hash, auth_provider, status, email_verified)
+       VALUES ($1, 'BUYER', 'Already Active Buyer', $2, 'test-hash', 'LOCAL', 'ACTIVE', true)
+       RETURNING id`,
+      [randomUUID(), email],
+    )) as Array<{ id: string }>;
+    const userId = userRows[0].id;
+
+    const response = await request(app.getHttpServer()).post('/auth/resend-verification').send({ email });
+
+    expect(response.status).toBe(201);
+    expect(response.body).toEqual({ message: 'If an eligible account exists, a verification email has been sent.' });
+    expect(sendVerificationEmail).not.toHaveBeenCalled();
+
+    const tokens = (await dataSource.query(
+      `SELECT id FROM user_token WHERE user_id = $1 AND token_type = 'EMAIL_VERIFY'`,
+      [userId],
+    )) as Array<{ id: string }>;
+    expect(tokens).toHaveLength(0);
+
+    await dataSource.query(`DELETE FROM users WHERE id = $1`, [userId]);
+  });
+
   it('POST /auth/resend-verification is throttled by the per-account cooldown', async () => {
     // A token issued just now (within the cooldown window) must cause the
     // next resend to be a no-op: no email sent, no new token, existing token

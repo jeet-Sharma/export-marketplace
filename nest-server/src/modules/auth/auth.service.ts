@@ -348,12 +348,28 @@ export class AuthService {
     // link stays usable until it is spent or expires. Tokens are single-use
     // and short-lived, so a few coexisting is harmless.
     const shouldSend = await this.dataSource.transaction(async (manager) => {
-      await manager
+      const lockedUser = await manager
         .getRepository(UserEntity)
         .createQueryBuilder('user')
         .setLock('pessimistic_write')
         .where('user.id = :userId', { userId: candidate.id })
         .getOne();
+
+      // Re-check eligibility on the LOCKED row. The step-1 read was
+      // unlocked, so between then and now verifyEmail could have activated
+      // this buyer (or an admin blocked them). Without this re-check we'd
+      // store and email a token for an already-active account, which
+      // verification then rejects — handing the buyer a dead link. Bail out
+      // (same generic response) if the account is no longer an eligible
+      // pending buyer.
+      if (
+        !lockedUser ||
+        lockedUser.userType !== 'BUYER' ||
+        lockedUser.emailVerified ||
+        lockedUser.status !== 'PENDING'
+      ) {
+        return false;
+      }
 
       const mostRecentToken = await manager
         .getRepository(UserTokenEntity)
