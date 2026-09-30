@@ -18,8 +18,8 @@ import { VendorTargetCountryEntity } from '../modules/identity/entities/vendor-t
 import { CategoryEntity } from '../modules/reference-data/entities/category.entity.js';
 import { CountryEntity } from '../modules/reference-data/entities/country.entity.js';
 import { CurrencyEntity } from '../modules/reference-data/entities/currency.entity.js';
-import { ExchangeRateEntity } from '../modules/reference-data/entities/exchange-rate.entity.js';
 import { HsCodeEntity } from '../modules/reference-data/entities/hs-code.entity.js';
+import { ExchangeRateEntity } from '../modules/reference-data/entities/exchange-rate.entity.js';
 
 export interface DbConfig {
   host: string;
@@ -30,6 +30,36 @@ export interface DbConfig {
   ssl: boolean;
   logging: boolean;
 }
+
+/**
+ * The single, authoritative list of TypeORM entities. Both the running app
+ * (buildDataSourceOptions below) and the migration CLI
+ * (src/config/typeorm.datasource.ts) import this exact array, so they can
+ * never disagree about which entities exist. Add a new entity here once and
+ * both consumers pick it up.
+ */
+export const ENTITIES = [
+  CurrencyEntity,
+  CountryEntity,
+  ExchangeRateEntity,
+  CategoryEntity,
+  HsCodeEntity,
+  OrganizationEntity,
+  OrganizationStatusHistoryEntity,
+  VendorTargetCountryEntity,
+  VendorBankAccountEntity,
+  UserEntity,
+  AuthSessionEntity,
+  UserTokenEntity,
+  UserSocialAccountEntity,
+  BuyerProfileEntity,
+  BuyerAddressEntity,
+  RoleEntity,
+  PermissionEntity,
+  RolePermissionEntity,
+  UserRoleEntity,
+  AuditLogEntity,
+];
 
 /**
  * PostgreSQL / TypeORM configuration, namespaced under "db" in ConfigService.
@@ -77,28 +107,7 @@ export function buildDataSourceOptions(cfg: DbConfig): DataSourceOptions {
     // against these entities would fight the migrations on every boot.
     synchronize: false,
     logging: cfg.logging,
-    entities: [
-      CurrencyEntity,
-      CountryEntity,
-      ExchangeRateEntity,
-      CategoryEntity,
-      HsCodeEntity,
-      OrganizationEntity,
-      OrganizationStatusHistoryEntity,
-      VendorTargetCountryEntity,
-      VendorBankAccountEntity,
-      UserEntity,
-      AuthSessionEntity,
-      UserTokenEntity,
-      UserSocialAccountEntity,
-      BuyerProfileEntity,
-      BuyerAddressEntity,
-      RoleEntity,
-      PermissionEntity,
-      RolePermissionEntity,
-      UserRoleEntity,
-      AuditLogEntity,
-    ],
+    entities: ENTITIES,
     // No `migrations` array here: this DataSource (the one the running app
     // connects with) never runs migrations itself — that's done exclusively
     // via the CLI DataSource in src/config/typeorm.datasource.ts ("npm run

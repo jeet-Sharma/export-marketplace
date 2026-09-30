@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'fs';
 import { DataSource } from 'typeorm';
+import { ENTITIES } from './db.config.js';
 
 // Minimal .env loader for the CLI context only (no dotenv dependency —
 // see backend-rules.md: don't add a dependency for something already
@@ -27,7 +28,9 @@ loadDotEnvIfPresent();
  * This is separate from DatabaseModule's TypeOrmModule.forRootAsync, which
  * is what the running Nest app actually connects with. The CLI can't go
  * through Nest's DI/ConfigService, so it reads process.env directly here
- * instead, mirroring the same defaults as src/config/db.config.ts.
+ * instead, mirroring the same defaults as src/config/db.config.ts. The
+ * entity list is imported (ENTITIES) rather than re-declared, so the CLI and
+ * the app can never disagree about which entities exist.
  *
  * Migrations are the source of truth for the domain schema (Data_Modeling_Complete.md,
  * "Document 6 — Complete Data Model v3") because that schema relies on
@@ -46,7 +49,7 @@ export default new DataSource({
   password: process.env.POSTGRES_PASSWORD ?? 'postgres',
   database: process.env.POSTGRES_DB ?? 'export_marketplace',
   ssl: isProd ? { rejectUnauthorized: false } : false,
-  entities: ['src/modules/**/*.entity.ts'],
+  entities: ENTITIES, // single source of truth — see db.config.ts
   migrations: ['src/database/migrations/*.ts'],
   logging: process.env.TYPEORM_LOGGING === 'true',
 });
