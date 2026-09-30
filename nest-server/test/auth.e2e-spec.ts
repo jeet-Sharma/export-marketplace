@@ -96,9 +96,11 @@ describe('AuthController (e2e)', () => {
     )) as Array<{ id: string }>;
     const userId = userRows[0].id;
 
+    // Backdate the existing token past the resend cooldown so this happy-path
+    // replacement is not throttled (see the cooldown test below).
     await dataSource.query(
-      `INSERT INTO user_token (user_id, token_type, token_hash, expires_at)
-       VALUES ($1, 'EMAIL_VERIFY', $2, now() + interval '1 hour')`,
+      `INSERT INTO user_token (user_id, token_type, token_hash, expires_at, created_at)
+       VALUES ($1, 'EMAIL_VERIFY', $2, now() + interval '1 hour', now() - interval '10 minutes')`,
       [userId, oldTokenHash],
     );
 
@@ -119,6 +121,87 @@ describe('AuthController (e2e)', () => {
     expect(tokens[0].token_hash).toBe(oldTokenHash);
     expect(tokens[0].used_at).not.toBeNull();
     expect(tokens[1].used_at).toBeNull();
+
+    await dataSource.query(`DELETE FROM user_token WHERE user_id = $1`, [userId]);
+    await dataSource.query(`DELETE FROM users WHERE id = $1`, [userId]);
+  });
+
+  it('POST /auth/resend-verification leaves the existing token valid when the email fails to send', async () => {
+    // If delivery fails, the buyer's previously delivered link must remain
+    // usable — the old token must NOT be invalidated, and no new token is
+    // persisted. See auth.service.ts resendVerification() (send-before-write).
+    sendVerificationEmail.mockRejectedValueOnce(new Error('SMTP unavailable'));
+    const email = `resend-fail-${randomUUID()}@example.com`;
+    const oldTokenHash = createHash('sha256').update(`old-${randomUUID()}`).digest('hex');
+    const userRows = (await dataSource.query(
+      `INSERT INTO users (public_id, user_type, full_name, email, password_hash, auth_provider, status)
+       VALUES ($1, 'BUYER', 'Resend Fail Buyer', $2, 'test-hash', 'LOCAL', 'PENDING')
+       RETURNING id`,
+      [randomUUID(), email],
+    )) as Array<{ id: string }>;
+    const userId = userRows[0].id;
+
+    // Backdate past the cooldown so the email send is actually attempted.
+    await dataSource.query(
+      `INSERT INTO user_token (user_id, token_type, token_hash, expires_at, created_at)
+       VALUES ($1, 'EMAIL_VERIFY', $2, now() + interval '1 hour', now() - interval '10 minutes')`,
+      [userId, oldTokenHash],
+    );
+
+    const response = await request(app.getHttpServer()).post('/auth/resend-verification').send({ email });
+
+    expect(response.status).toBe(201);
+    expect(response.body).toEqual({ message: 'If an eligible account exists, a verification email has been sent.' });
+
+    // The old token is still the only token and is still unused/valid.
+    const tokens = (await dataSource.query(
+      `SELECT token_hash, used_at FROM user_token WHERE user_id = $1 AND token_type = 'EMAIL_VERIFY' ORDER BY id`,
+      [userId],
+    )) as Array<{ token_hash: string; used_at: Date | null }>;
+    expect(tokens).toHaveLength(1);
+    expect(tokens[0].token_hash).toBe(oldTokenHash);
+    expect(tokens[0].used_at).toBeNull();
+
+    await dataSource.query(`DELETE FROM user_token WHERE user_id = $1`, [userId]);
+    await dataSource.query(`DELETE FROM users WHERE id = $1`, [userId]);
+  });
+
+  it('POST /auth/resend-verification is throttled by the per-account cooldown', async () => {
+    // A token issued just now (within the cooldown window) must cause the
+    // next resend to be a no-op: no email sent, no new token, existing token
+    // untouched — this is the anti-abuse throttle on an unauthenticated
+    // endpoint. See auth.service.ts RESEND_COOLDOWN_SECONDS.
+    const email = `cooldown-${randomUUID()}@example.com`;
+    const recentTokenHash = createHash('sha256').update(`recent-${randomUUID()}`).digest('hex');
+    const userRows = (await dataSource.query(
+      `INSERT INTO users (public_id, user_type, full_name, email, password_hash, auth_provider, status)
+       VALUES ($1, 'BUYER', 'Cooldown Buyer', $2, 'test-hash', 'LOCAL', 'PENDING')
+       RETURNING id`,
+      [randomUUID(), email],
+    )) as Array<{ id: string }>;
+    const userId = userRows[0].id;
+
+    // Issued "now" — inside the cooldown window.
+    await dataSource.query(
+      `INSERT INTO user_token (user_id, token_type, token_hash, expires_at, created_at)
+       VALUES ($1, 'EMAIL_VERIFY', $2, now() + interval '1 hour', now())`,
+      [userId, recentTokenHash],
+    );
+
+    const response = await request(app.getHttpServer()).post('/auth/resend-verification').send({ email });
+
+    // Same generic response, but no side effects occurred.
+    expect(response.status).toBe(201);
+    expect(response.body).toEqual({ message: 'If an eligible account exists, a verification email has been sent.' });
+    expect(sendVerificationEmail).not.toHaveBeenCalled();
+
+    const tokens = (await dataSource.query(
+      `SELECT token_hash, used_at FROM user_token WHERE user_id = $1 AND token_type = 'EMAIL_VERIFY' ORDER BY id`,
+      [userId],
+    )) as Array<{ token_hash: string; used_at: Date | null }>;
+    expect(tokens).toHaveLength(1);
+    expect(tokens[0].token_hash).toBe(recentTokenHash);
+    expect(tokens[0].used_at).toBeNull();
 
     await dataSource.query(`DELETE FROM user_token WHERE user_id = $1`, [userId]);
     await dataSource.query(`DELETE FROM users WHERE id = $1`, [userId]);

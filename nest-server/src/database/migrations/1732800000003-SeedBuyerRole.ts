@@ -24,6 +24,16 @@ export class SeedBuyerRole1732800000003 implements MigrationInterface {
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
+    // Remove the dependent user_role assignments FIRST. Once any buyer has
+    // registered, user_role.role_id references this role, and deleting the
+    // role directly would fail on that foreign key — breaking
+    // migration:revert. Reverting this seed necessarily un-assigns the BUYER
+    // role from every user that has it (there is no other role for them to
+    // fall back to; the seed and its assignments are one logical unit).
+    await queryRunner.query(`
+      DELETE FROM user_role
+       WHERE role_id = (SELECT id FROM role WHERE code = 'BUYER')
+    `);
     await queryRunner.query(`DELETE FROM role WHERE code = 'BUYER'`);
   }
 }

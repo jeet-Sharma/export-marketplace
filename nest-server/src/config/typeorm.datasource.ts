@@ -50,6 +50,14 @@ export default new DataSource({
   database: process.env.POSTGRES_DB ?? 'export_marketplace',
   ssl: isProd ? { rejectUnauthorized: false } : false,
   entities: ENTITIES, // single source of truth — see config/entities.ts
-  migrations: ['src/database/migrations/*.ts'],
+  // Migration source depends on how this DataSource is loaded:
+  //   - dev/CI:  via typeorm-ts-node-esm against the .ts sources
+  //   - prod:    via the plain `typeorm` CLI against compiled dist/*.js
+  //              (the production image has no ts-node — see Dockerfile).
+  // MIGRATIONS_COMPILED=true selects the compiled path.
+  migrations:
+    process.env.MIGRATIONS_COMPILED === 'true'
+      ? ['dist/database/migrations/*.js']
+      : ['src/database/migrations/*.ts'],
   logging: process.env.TYPEORM_LOGGING === 'true',
 });

@@ -44,10 +44,59 @@ services:
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-test}
       AWS_S3_BUCKET: ${AWS_S3_BUCKET:-export-marketplace-documents}
       AWS_SQS_QUEUE_NAME: ${AWS_SQS_QUEUE_NAME:-export-marketplace-events}
+      # Auth / JWT — secrets have NO default on purpose (never hardcode a
+      # secret). Supply them via the host .env; if unset, login returns a
+      # clean 503 by design (see auth.config.ts / AuthService).
+      AUTH_ACCESS_SECRET: ${AUTH_ACCESS_SECRET:-}
+      AUTH_REFRESH_SECRET: ${AUTH_REFRESH_SECRET:-}
+      AUTH_ACCESS_TTL_SECONDS: ${AUTH_ACCESS_TTL_SECONDS:-900}
+      AUTH_REFRESH_TTL_SECONDS: ${AUTH_REFRESH_TTL_SECONDS:-2592000}
+      AUTH_MAX_FAILED_LOGINS: ${AUTH_MAX_FAILED_LOGINS:-5}
+      AUTH_LOCKOUT_MINUTES: ${AUTH_LOCKOUT_MINUTES:-15}
+      # Mail (Gmail SMTP) — no defaults; if unset, email delivery is
+      # unconfigured and the app degrades gracefully (verification emails
+      # are logged/skipped rather than crashing). See mail.config.ts.
+      MAIL_HOST: ${MAIL_HOST:-smtp.gmail.com}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_USER: ${MAIL_USER:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+      # Used to build verification links in emails.
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      # Observe telemetry — off unless both are supplied (see app.module.ts).
+      OBSERVE_APP_KEY: ${OBSERVE_APP_KEY:-}
+      OBSERVE_APP_SECRET: ${OBSERVE_APP_SECRET:-}
     depends_on:
       postgres:
         condition: service_healthy
       localstack:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  # ---------------------------------------------------------------------------
+  # Migrations — one-shot job that brings a fresh database up to schema
+  # before the API starts. Runs the compiled migrations via the plain
+  # `typeorm` CLI (no ts-node in the production image). Without this, a fresh
+  # Compose database has no tables and every auth query fails.
+  # ---------------------------------------------------------------------------
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: export-marketplace-migrate
+    command: ['npm', 'run', 'migration:run:prod']
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      MIGRATIONS_COMPILED: 'true'
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-export_marketplace}
+      TYPEORM_LOGGING: ${TYPEORM_LOGGING:-false}
+    depends_on:
+      postgres:
         condition: service_healthy
 
   # ---------------------------------------------------------------------------

@@ -29,6 +29,13 @@ import type { RegisterBuyerResponseDto } from './dto/register-buyer-response.dto
 
 const EMAIL_VERIFY_TOKEN_BYTES = 32; // 256 bits, matches typical session-token entropy
 const EMAIL_VERIFY_EXPIRY_HOURS = 1; // Data_Modeling_Complete.md Part 2.7: "Reset: 1 hour"
+// Minimum gap between verification emails for one account. Since
+// /auth/resend-verification is unauthenticated (anyone who knows a pending
+// buyer's email can call it), this per-account cooldown is what stops an
+// attacker from spamming mail, invalidating the buyer's link repeatedly, and
+// piling up token rows. Measured against the most recent EMAIL_VERIFY
+// token's created_at.
+const RESEND_COOLDOWN_SECONDS = 60;
 
 /**
  * Buyer registration, email verification, resend verification, and login
@@ -40,6 +47,10 @@ export class AuthService {
   private readonly logger = new Logger(AuthService.name);
   private readonly isDev: boolean;
   private readonly authConfig: AuthConfig;
+  // Computed once, on first login, then cached. Used only to spend argon2
+  // time on rejected logins so response latency doesn't reveal whether an
+  // account exists — never a real credential, so it isn't a secret.
+  private dummyPasswordHash: Promise<string> | null = null;
 
   constructor(
     private readonly dataSource: DataSource,
@@ -72,20 +83,30 @@ export class AuthService {
         .where('lower(user.email) = :email', { email })
         .getOne();
 
-      if (!user || user.userType !== 'BUYER') {
-        return null;
-      }
-
       const now = new Date();
-      if (user.lockedUntil && user.lockedUntil > now) {
+      // A login is only eligible to proceed to password verification if the
+      // account is an active, verified buyer that isn't locked and has a
+      // password set. All other cases are rejected identically.
+      const eligible =
+        !!user &&
+        user.userType === 'BUYER' &&
+        user.status === 'ACTIVE' &&
+        user.emailVerified &&
+        !!user.passwordHash &&
+        !(user.lockedUntil && user.lockedUntil > now);
+
+      // Always run one argon2.verify, regardless of eligibility. For an
+      // ineligible/absent account we verify the submitted password against a
+      // fixed dummy hash so the response takes comparable time to a real
+      // check — otherwise the fast early-return on missing/inactive accounts
+      // would let an attacker distinguish active buyer accounts by latency.
+      const hashToCheck = eligible ? user!.passwordHash! : await this.getDummyPasswordHash();
+      const passwordValid = await argon2.verify(hashToCheck, dto.password);
+
+      if (!eligible || !user) {
         return null;
       }
 
-      if (user.status !== 'ACTIVE' || !user.emailVerified || !user.passwordHash) {
-        return null;
-      }
-
-      const passwordValid = await argon2.verify(user.passwordHash, dto.password);
       if (!passwordValid) {
         user.failedLoginCount += 1;
         if (user.failedLoginCount >= this.authConfig.maxFailedLogins) {
@@ -297,29 +318,77 @@ export class AuthService {
 
   async resendVerification(emailInput: string): Promise<{ message: string }> {
     const email = emailInput.toLowerCase();
+    const genericResponse = { message: 'If an eligible account exists, a verification email has been sent.' };
+
+    // Step 1: look up the account only (no writes yet). Unknown, verified,
+    // blocked, anonymised, and non-buyer accounts all return the same
+    // response to prevent email-account enumeration.
+    const user = await this.dataSource.getRepository(UserEntity).createQueryBuilder('user').where('lower(user.email) = :email', { email }).getOne();
+    if (!user || user.userType !== 'BUYER' || user.emailVerified || user.status !== 'PENDING') {
+      return genericResponse;
+    }
+
+    // Per-account cooldown. This endpoint is unauthenticated, so without a
+    // throttle anyone who knows the address could spam mail, repeatedly
+    // invalidate the buyer's link, and accumulate token rows. If a
+    // verification token was issued within the cooldown window, silently
+    // do nothing more and return the same generic response (so the throttle
+    // itself does not reveal whether the account exists). The still-valid
+    // recent link remains usable.
+    const mostRecentToken = await this.dataSource
+      .getRepository(UserTokenEntity)
+      .createQueryBuilder('token')
+      .where('token.userId = :userId', { userId: user.id })
+      .andWhere('token.tokenType = :tokenType', { tokenType: 'EMAIL_VERIFY' })
+      .orderBy('token.createdAt', 'DESC')
+      .getOne();
+    if (
+      mostRecentToken &&
+      Date.now() - mostRecentToken.createdAt.getTime() < RESEND_COOLDOWN_SECONDS * 1000
+    ) {
+      return genericResponse;
+    }
+
     const rawToken = randomBytes(EMAIL_VERIFY_TOKEN_BYTES).toString('hex');
     const tokenHash = createHash('sha256').update(rawToken).digest('hex');
 
-    const pendingBuyer = await this.dataSource.transaction(async (manager) => {
-      const user = await manager
+    // Step 2: send the new email BEFORE touching the database. If delivery
+    // fails, we must NOT have invalidated the buyer's existing (still valid)
+    // verification link — otherwise a mail outage would leave them with a
+    // dead old link and no new one. Only a successful send proceeds to
+    // step 3.
+    try {
+      await this.emailService.sendVerificationEmail({
+        email: user.email,
+        fullName: user.fullName,
+        token: rawToken,
+      });
+    } catch (error) {
+      this.logger.error(
+        `Resend verification email failed for ${user.email}; the existing token was left untouched.`,
+        error instanceof Error ? error.stack : undefined,
+      );
+      // Same generic response — don't reveal that the account exists, and
+      // the buyer's previous link (if any) is still usable.
+      return genericResponse;
+    }
+
+    // Step 3: the email is out. Now invalidate any prior unused tokens and
+    // persist the new one, atomically. A concurrent resend is serialised by
+    // the row lock on the user.
+    await this.dataSource.transaction(async (manager) => {
+      await manager
         .getRepository(UserEntity)
         .createQueryBuilder('user')
         .setLock('pessimistic_write')
-        .where('lower(user.email) = :email', { email })
+        .where('user.id = :userId', { userId: user.id })
         .getOne();
 
-      // Return the same response for unknown, active, blocked, anonymised,
-      // and non-buyer accounts. This prevents email-account enumeration.
-      if (!user || user.userType !== 'BUYER' || user.emailVerified || user.status !== 'PENDING') {
-        return null;
-      }
-
-      const now = new Date();
       await manager
         .getRepository(UserTokenEntity)
         .createQueryBuilder()
         .update(UserTokenEntity)
-        .set({ usedAt: now })
+        .set({ usedAt: new Date() })
         .where('user_id = :userId', { userId: user.id })
         .andWhere('token_type = :tokenType', { tokenType: 'EMAIL_VERIFY' })
         .andWhere('used_at IS NULL')
@@ -333,58 +402,68 @@ export class AuthService {
           expiresAt: new Date(Date.now() + EMAIL_VERIFY_EXPIRY_HOURS * 60 * 60 * 1000),
         }),
       );
-
-      return { email: user.email, fullName: user.fullName };
     });
 
-    if (pendingBuyer) {
-      // The replacement token is sent only after the transaction commits.
-      await this.emailService.sendVerificationEmail({
-        email: pendingBuyer.email,
-        fullName: pendingBuyer.fullName,
-        token: rawToken,
-      });
-
-      if (this.isDev) {
-        this.logger.log(`[dev only] Email verification token for ${pendingBuyer.email}: ${rawToken}`);
-      }
+    if (this.isDev) {
+      this.logger.log(`[dev only] Email verification token for ${user.email}: ${rawToken}`);
     }
 
-    return { message: 'If an eligible account exists, a verification email has been sent.' };
+    return genericResponse;
   }
 
   async verifyEmail(token: string): Promise<{ message: string }> {
     const tokenHash = createHash('sha256').update(token).digest('hex');
+    const invalidToken = new BadRequestException('The verification token is invalid or expired.');
 
     await this.dataSource.transaction(async (manager) => {
-      const tokenRow = await manager
+      // Consistent lock order across all auth flows: ALWAYS lock the user row
+      // before locking/mutating that user's token rows. resendVerification
+      // does the same (user first, then tokens). Locking token-then-user
+      // here would let two concurrent requests for the same buyer each hold
+      // the row the other needs, and PostgreSQL would abort one on deadlock.
+      //
+      // verifyEmail is entered with only a token, not a user id, so first
+      // read the token WITHOUT a lock just to discover its owner...
+      const tokenLookup = await manager
         .getRepository(UserTokenEntity)
         .createQueryBuilder('token')
-        .setLock('pessimistic_write')
         .where('token.tokenHash = :tokenHash', { tokenHash })
         .andWhere('token.tokenType = :tokenType', { tokenType: 'EMAIL_VERIFY' })
         .getOne();
 
-      // Keep invalid, expired, and already-used tokens indistinguishable.
-      // This prevents the endpoint from revealing whether a token ever
-      // existed or has already been consumed.
-      if (!tokenRow || tokenRow.usedAt || tokenRow.expiresAt.getTime() <= Date.now()) {
-        throw new BadRequestException('The verification token is invalid or expired.');
+      // Keep invalid/expired/already-used tokens indistinguishable so the
+      // endpoint never reveals whether a token existed or was consumed.
+      if (!tokenLookup) {
+        throw invalidToken;
       }
 
+      // ...then lock the user FIRST (the consistent ordering root)...
       const user = await manager
         .getRepository(UserEntity)
         .createQueryBuilder('user')
         .setLock('pessimistic_write')
-        .where('user.id = :userId', { userId: tokenRow.userId })
+        .where('user.id = :userId', { userId: tokenLookup.userId })
         .getOne();
 
+      // ...and only then lock the token row and re-read its live state, so
+      // every mutating decision below is made while BOTH locks are held.
+      const tokenRow = await manager
+        .getRepository(UserTokenEntity)
+        .createQueryBuilder('token')
+        .setLock('pessimistic_write')
+        .where('token.id = :id', { id: tokenLookup.id })
+        .getOne();
+
+      if (!tokenRow || tokenRow.usedAt || tokenRow.expiresAt.getTime() <= Date.now()) {
+        throw invalidToken;
+      }
+
       if (!user || user.userType !== 'BUYER' || user.status === 'ANONYMISED' || user.status === 'BLOCKED') {
-        throw new BadRequestException('The verification token is invalid or expired.');
+        throw invalidToken;
       }
 
       if (user.emailVerified && user.status === 'ACTIVE') {
-        throw new BadRequestException('The verification token is invalid or expired.');
+        throw invalidToken;
       }
 
       tokenRow.usedAt = new Date();
@@ -396,6 +475,19 @@ export class AuthService {
     });
 
     return { message: 'Email verified successfully.' };
+  }
+
+  /**
+   * A cached argon2 hash of a random throwaway value, used to spend
+   * comparable CPU time on logins for accounts that can't actually log in,
+   * so those requests don't return noticeably faster than a real password
+   * check (see loginBuyer). Computed once and reused.
+   */
+  private getDummyPasswordHash(): Promise<string> {
+    if (!this.dummyPasswordHash) {
+      this.dummyPasswordHash = argon2.hash(randomBytes(32).toString('hex'), { type: argon2.argon2id });
+    }
+    return this.dummyPasswordHash;
   }
 
   /** True if `error` is a Postgres unique-constraint violation (SQLSTATE 23505). */
