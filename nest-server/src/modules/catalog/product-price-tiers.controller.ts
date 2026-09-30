@@ -1,9 +1,11 @@
-import { Body, Controller, Delete, Get, Param, Post, Req, UsePipes, ValidationPipe } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Req, UseGuards, UsePipes, ValidationPipe } from '@nestjs/common';
 import { ProductPriceTiersService } from './product-price-tiers.service.js';
 import { CreatePriceTierDto } from './dto/create-price-tier.dto.js';
-import type { AuthenticatedRequest } from '../../common/types/request-context.type.js';
+import { requireOrganizationId, type AuthenticatedRequest } from '../../common/types/request-context.type.js';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard.js';
 
 /** REST surface for product_price_tier (Part 3.3), nested under its parent product. */
+@UseGuards(JwtAuthGuard)
 @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
 @Controller('catalog/products/:productId/price-tiers')
 export class ProductPriceTiersController {
@@ -11,7 +13,7 @@ export class ProductPriceTiersController {
 
   @Get()
   findAll(@Param('productId') productId: string, @Req() req: AuthenticatedRequest) {
-    return this.priceTiersService.findAllForProduct(productId, req.user.organizationId);
+    return this.priceTiersService.findAllForProduct(productId, requireOrganizationId(req.user));
   }
 
   @Post()
@@ -20,7 +22,7 @@ export class ProductPriceTiersController {
     @Body() dto: CreatePriceTierDto,
     @Req() req: AuthenticatedRequest,
   ) {
-    return this.priceTiersService.create(productId, dto, req.user.organizationId);
+    return this.priceTiersService.create(productId, dto, requireOrganizationId(req.user));
   }
 
   @Delete(':tierId')
@@ -29,6 +31,6 @@ export class ProductPriceTiersController {
     @Param('tierId') tierId: string,
     @Req() req: AuthenticatedRequest,
   ) {
-    return this.priceTiersService.remove(productId, tierId, req.user.organizationId);
+    return this.priceTiersService.remove(productId, tierId, requireOrganizationId(req.user));
   }
 }

@@ -1,15 +1,23 @@
 import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, type EntityManager, Repository } from 'typeorm';
 import { randomUUID } from 'node:crypto';
 import { ProductEntity } from './entities/product.entity.js';
+import { ProductPriceTierEntity } from './entities/product-price-tier.entity.js';
 import { OrganizationEntity } from '../identity/entities/organization.entity.js';
+import { RolePermissionEntity } from '../identity/entities/role-permission.entity.js';
 import { InventoryEntity } from '../inventory/entities/inventory.entity.js';
 import { ProductApprovalLogService } from './product-approval-log.service.js';
 import { CreateProductDto } from './dto/create-product.dto.js';
 import { UpdateProductDto } from './dto/update-product.dto.js';
 import { SubmitProductDto } from './dto/submit-product.dto.js';
 import { ReviewProductDto } from './dto/review-product.dto.js';
+
+/** Which permission a review stage requires, and which role scope must hold it (Part 2.11). */
+const STAGE_REQUIREMENT: Record<'CHECKER' | 'ADMIN', { permission: string; scopeType: 'VENDOR' | 'PLATFORM' }> = {
+  CHECKER: { permission: 'product.approve', scopeType: 'VENDOR' },
+  ADMIN: { permission: 'product.approve', scopeType: 'PLATFORM' },
+};
 
 /**
  * Business logic for `product` (Part 3.1) — the Maker -> Checker -> Admin
@@ -26,6 +34,8 @@ export class ProductsService {
   constructor(
     @InjectRepository(ProductEntity)
     private readonly productRepository: Repository<ProductEntity>,
+    @InjectRepository(ProductPriceTierEntity)
+    private readonly priceTierRepository: Repository<ProductPriceTierEntity>,
     private readonly approvalLogService: ProductApprovalLogService,
     private readonly dataSource: DataSource,
   ) {}
@@ -131,6 +141,7 @@ export class ProductsService {
     const product = await this.findOne(id, organizationId);
 
     if (product.status === 'DRAFT' || product.status === 'REJECTED') {
+      await this.assertPriceTiersAreGaplessAndMoqAligned(product);
       product.status = 'PENDING_CHECKER';
       return this.productRepository.save(product);
     }
@@ -166,16 +177,39 @@ export class ProductsService {
    * the actor cannot be the same person who created the product (new
    * product) or proposed the edit (pending edit), UNLESS the organization
    * has requires_second_approver = false.
+   *
+   * Role/permission check (Part 2.11/2.12): resolved BEFORE self-approval,
+   * since "is this person allowed to review at all" is a coarser gate than
+   * "did they submit this specific item". CHECKER stage requires the
+   * `product.approve` permission via a VENDOR-scope role (VENDOR_CHECKER
+   * or VENDOR_OWNER); ADMIN stage requires it via a PLATFORM-scope role
+   * (ADMIN). Checked against the caller's role codes (passed in from
+   * req.user.roles, resolved once by JwtAuthGuard) rather than the role
+   * NAME, per role.entity.ts's own rule: code checks permissions, never
+   * role names — this queries role_permission for the actual grant
+   * instead of hardcoding 'VENDOR_CHECKER'/'ADMIN' as a switch.
    */
   async review(
     id: string,
     dto: ReviewProductDto,
-    organizationId: string,
+    callerUserType: 'PLATFORM' | 'VENDOR' | 'BUYER',
+    callerOrganizationId: string,
     userId: string,
+    callerRoles: string[],
   ): Promise<ProductEntity> {
     return this.dataSource.transaction(async (manager) => {
       const productRepo = manager.getRepository(ProductEntity);
       const orgRepo = manager.getRepository(OrganizationEntity);
+
+      // A PLATFORM caller (the ADMIN stage) reviews vendor products across
+      // every organization — their own organizationId is the platform org,
+      // not the vendor's, so the lookup can't be scoped by it the way a
+      // VENDOR caller's (the CHECKER stage) is. The assertCanReviewStage()
+      // permission check below is what actually restricts who reaches
+      // ADMIN-stage products, not this WHERE clause. A VENDOR caller is
+      // still scoped by their own organizationId, exactly as before.
+      const productWhere =
+        callerUserType === 'PLATFORM' ? { id } : { id, organizationId: callerOrganizationId };
 
       // Pessimistic row lock: without it, two concurrent reviewers can both
       // read the same pending stage before either commits, both pass
@@ -186,18 +220,25 @@ export class ProductsService {
       // resolveReviewStage() correctly reports "nothing pending" instead
       // of resolving the same stage twice.
       const product = await productRepo.findOne({
-        where: { id, organizationId },
+        where: productWhere,
         lock: { mode: 'pessimistic_write' },
       });
       if (!product) {
         throw new NotFoundException(`Product ${id} not found`);
       }
 
+      // From here on, the PRODUCT's own organizationId is the source of
+      // truth for the vendor this review concerns — never the caller's,
+      // which for an ADMIN reviewer is the platform org, not the vendor's.
+      const productOrganizationId = product.organizationId;
+
       const { stage, isEdit } = this.resolveReviewStage(product);
+
+      await this.assertCanReviewStage(manager, stage, callerRoles);
 
       const submitter = isEdit ? product.pendingSubmittedBy : product.createdBy;
       if (submitter === userId) {
-        const org = await orgRepo.findOne({ where: { id: organizationId } });
+        const org = await orgRepo.findOne({ where: { id: productOrganizationId } });
         if (!org || org.requiresSecondApprover) {
           throw new ForbiddenException("You can't approve or reject content you submitted.");
         }
@@ -218,7 +259,7 @@ export class ProductsService {
       await this.approvalLogService.record(
         {
           productId: product.id,
-          organizationId,
+          organizationId: productOrganizationId,
           stage,
           action: dto.action,
           changeType: isEdit ? 'EDIT' : 'NEW_PRODUCT',
@@ -261,6 +302,95 @@ export class ProductsService {
     }
     product.status = 'DELISTED';
     return this.productRepository.save(product);
+  }
+
+  /**
+   * Confirms the caller holds `product.approve` via a role in the scope
+   * that stage requires (VENDOR for CHECKER, PLATFORM for ADMIN) — Part
+   * 2.11's role_permission table, not a hardcoded role-name check. An
+   * empty callerRoles array (no roles at all) is rejected the same way as
+   * having the wrong roles, since the query below simply matches nothing.
+   */
+  private async assertCanReviewStage(
+    manager: EntityManager,
+    stage: 'CHECKER' | 'ADMIN',
+    callerRoles: string[],
+  ): Promise<void> {
+    if (callerRoles.length === 0) {
+      throw new ForbiddenException(`You do not have permission to review at the ${stage} stage.`);
+    }
+
+    const requirement = STAGE_REQUIREMENT[stage];
+    const grant = await manager
+      .getRepository(RolePermissionEntity)
+      .createQueryBuilder('rolePermission')
+      .innerJoin('rolePermission.role', 'role')
+      .innerJoin('rolePermission.permission', 'permission')
+      .where('role.code IN (:...roles)', { roles: callerRoles })
+      .andWhere('role.scopeType = :scopeType', { scopeType: requirement.scopeType })
+      .andWhere('permission.code = :permissionCode', { permissionCode: requirement.permission })
+      .getCount();
+
+    if (grant === 0) {
+      throw new ForbiddenException(`You do not have permission to review at the ${stage} stage.`);
+    }
+  }
+
+  /**
+   * Part 3.3's "two rules [that] can't be written as a single-row
+   * constraint" — checked here at submit time, exactly where the schema
+   * doc says they must be ("DRAFT -> PENDING_CHECKER is refused
+   * otherwise"):
+   *   1. the first tier's min_qty must equal product.moq
+   *   2. there must be no gap between one tier's max_qty and the next
+   *      tier's min_qty (tiers are half-open [min, max), so "no gap"
+   *      means tier[i].maxQty === tier[i+1].minQty exactly)
+   *
+   * A product with zero tiers has nothing to validate here — Part 3.3
+   * doesn't require a product to have any tiers at all (base_price alone
+   * covers pricing when none exist), only that IF tiers exist, they start
+   * at moq and don't leave a gap. Overlap between tiers is refused by the
+   * DB's tier_no_overlap GiST exclusion constraint (CreateVendorCatalog
+   * migration) — deliberately not re-checked here, per this method's own
+   * scope: gap/MOQ alignment only, not overlap.
+   */
+  private async assertPriceTiersAreGaplessAndMoqAligned(product: ProductEntity): Promise<void> {
+    const tiers = await this.priceTierRepository.find({
+      where: { productId: product.id, organizationId: product.organizationId },
+      order: { minQty: 'ASC' },
+    });
+
+    if (tiers.length === 0) {
+      return;
+    }
+
+    const firstTier = tiers[0];
+    if (Number(firstTier.minQty) !== Number(product.moq)) {
+      throw new ConflictException(
+        `The first price tier must start at the product's MOQ (${product.moq}), but starts at ${firstTier.minQty}.`,
+      );
+    }
+
+    for (let i = 0; i < tiers.length - 1; i++) {
+      const current = tiers[i];
+      const next = tiers[i + 1];
+      if (current.maxQty === null) {
+        // An open-ended tier ([min, ∞)) can only be the last one — the DB's
+        // tier_no_overlap constraint would already refuse a tier after it
+        // covering any overlapping range, but a NON-overlapping tier
+        // starting above it would still leave this one's "upper" bound
+        // undefined, which is itself a gap/ordering problem worth
+        // rejecting explicitly rather than leaving ambiguous.
+        throw new ConflictException(
+          `Price tier starting at ${current.minQty} has no upper bound but is not the last tier.`,
+        );
+      }
+      if (Number(current.maxQty) !== Number(next.minQty)) {
+        throw new ConflictException(
+          `There is a gap between price tiers: one ends at ${current.maxQty}, the next starts at ${next.minQty}.`,
+        );
+      }
+    }
   }
 
   /** Determines whether this is a new-product review or a live-edit review, and which stage is being resolved. */

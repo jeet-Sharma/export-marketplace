@@ -31,6 +31,7 @@ describe('InventoryService', () => {
 
   let inventoryRepository: {
     findOne: ReturnType<typeof vi.fn>;
+    exists: ReturnType<typeof vi.fn>;
     createQueryBuilder: ReturnType<typeof vi.fn>;
   };
   let movementRepository: {
@@ -54,6 +55,7 @@ describe('InventoryService', () => {
 
     inventoryRepository = {
       findOne: vi.fn(),
+      exists: vi.fn().mockResolvedValue(true),
       createQueryBuilder: vi.fn(() => lastQueryBuilder),
     };
     movementRepository = {
@@ -137,7 +139,7 @@ describe('InventoryService', () => {
     it('throws NotFoundException when the reservation does not exist', async () => {
       reservationRepository.findOne.mockResolvedValue(null);
 
-      await expect(service.releaseReservation('res-404')).rejects.toThrow(NotFoundException);
+      await expect(service.releaseReservation('res-404', ORG_A)).rejects.toThrow(NotFoundException);
     });
 
     it('throws ConflictException when the reservation is already RELEASED/CONSUMED/EXPIRED', async () => {
@@ -149,7 +151,7 @@ describe('InventoryService', () => {
         quantity: '200',
       });
 
-      await expect(service.releaseReservation('res-1')).rejects.toThrow(ConflictException);
+      await expect(service.releaseReservation('res-1', ORG_A)).rejects.toThrow(ConflictException);
     });
 
     it('releases a HELD reservation with the RELEASED sign mapping (+available, -reserved)', async () => {
@@ -161,12 +163,25 @@ describe('InventoryService', () => {
         quantity: '200',
       });
 
-      const result = await service.releaseReservation('res-1');
+      const result = await service.releaseReservation('res-1', ORG_A);
 
       expect(result.status).toBe('RELEASED');
       expect(result.resolvedAt).toBeInstanceOf(Date);
       expect(movementRepository.create).toHaveBeenCalledWith(
         expect.objectContaining({ movementType: 'RELEASED', availableChange: '200', reservedChange: '-200' }),
+      );
+    });
+
+    it('scopes the reservation lookup by organizationId so a mismatched org sees "not found"', async () => {
+      // The mock repository doesn't itself enforce filtering, but this
+      // asserts the service actually PASSES organizationId into the query
+      // rather than silently ignoring it — a regression here would mean
+      // any org could release any other org's reservation by id alone.
+      reservationRepository.findOne.mockResolvedValue(null);
+
+      await expect(service.releaseReservation('res-1', 'org-b')).rejects.toThrow(NotFoundException);
+      expect(reservationRepository.findOne).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'res-1', organizationId: 'org-b' } }),
       );
     });
   });
@@ -175,23 +190,32 @@ describe('InventoryService', () => {
     it('throws NotFoundException when the reservation does not exist', async () => {
       reservationRepository.findOne.mockResolvedValue(null);
 
-      await expect(service.convertReservation('res-404', 'order-1')).rejects.toThrow(NotFoundException);
+      await expect(service.convertReservation('res-404', ORG_A, 'order-1')).rejects.toThrow(NotFoundException);
     });
 
     it('throws ConflictException when the reservation is not HELD', async () => {
       reservationRepository.findOne.mockResolvedValue({ id: 'res-1', status: 'CONVERTED' });
 
-      await expect(service.convertReservation('res-1', 'order-1')).rejects.toThrow(ConflictException);
+      await expect(service.convertReservation('res-1', ORG_A, 'order-1')).rejects.toThrow(ConflictException);
     });
 
     it('converts a HELD reservation and links the order id, without touching inventory balances', async () => {
       reservationRepository.findOne.mockResolvedValue({ id: 'res-1', status: 'HELD', orderId: null });
 
-      const result = await service.convertReservation('res-1', 'order-1');
+      const result = await service.convertReservation('res-1', ORG_A, 'order-1');
 
       expect(result.status).toBe('CONVERTED');
       expect(result.orderId).toBe('order-1');
       expect(inventoryRepository.createQueryBuilder).not.toHaveBeenCalled();
+    });
+
+    it('scopes the reservation lookup by organizationId', async () => {
+      reservationRepository.findOne.mockResolvedValue(null);
+
+      await expect(service.convertReservation('res-1', 'org-b', 'order-1')).rejects.toThrow(NotFoundException);
+      expect(reservationRepository.findOne).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'res-1', organizationId: 'org-b' } }),
+      );
     });
   });
 
@@ -199,7 +223,7 @@ describe('InventoryService', () => {
     it('throws ConflictException when the reservation is not CONVERTED', async () => {
       reservationRepository.findOne.mockResolvedValue({ id: 'res-1', status: 'HELD' });
 
-      await expect(service.consumeReservation('res-1')).rejects.toThrow(ConflictException);
+      await expect(service.consumeReservation('res-1', ORG_A)).rejects.toThrow(ConflictException);
     });
 
     it('consumes a CONVERTED reservation with the SALE_OUT mapping (0 available, -reserved)', async () => {
@@ -211,11 +235,20 @@ describe('InventoryService', () => {
         quantity: '200',
       });
 
-      const result = await service.consumeReservation('res-1');
+      const result = await service.consumeReservation('res-1', ORG_A);
 
       expect(result.status).toBe('CONSUMED');
       expect(movementRepository.create).toHaveBeenCalledWith(
         expect.objectContaining({ movementType: 'SALE_OUT', availableChange: '0', reservedChange: '-200' }),
+      );
+    });
+
+    it('scopes the reservation lookup by organizationId', async () => {
+      reservationRepository.findOne.mockResolvedValue(null);
+
+      await expect(service.consumeReservation('res-1', 'org-b')).rejects.toThrow(NotFoundException);
+      expect(reservationRepository.findOne).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'res-1', organizationId: 'org-b' } }),
       );
     });
   });
@@ -228,7 +261,7 @@ describe('InventoryService', () => {
     });
 
     it('throws NotFoundException when no inventory row exists for the product', async () => {
-      lastQueryBuilder.execute.mockResolvedValue({ affected: 0, raw: [] });
+      inventoryRepository.exists.mockResolvedValue(false);
 
       await expect(
         service.recordManualAdjustment(
@@ -238,6 +271,29 @@ describe('InventoryService', () => {
           'ADJUSTMENT',
         ),
       ).rejects.toThrow(NotFoundException);
+      // The existence check must run BEFORE the UPDATE — a negative
+      // adjustment against a real row and a missing row are otherwise
+      // indistinguishable from the UPDATE's affected count alone.
+      expect(inventoryRepository.createQueryBuilder).not.toHaveBeenCalled();
+    });
+
+    it('throws ConflictException (not a raw DB error) when the adjustment would drive quantity_available negative', async () => {
+      // Existence is confirmed, but the UPDATE's WHERE floor guard
+      // (quantity_available + :qty >= 0) matches no row — the ONLY way
+      // that happens once existence is known is that this adjustment
+      // would go negative. Previously this fell through to the database's
+      // own CHECK constraint and surfaced as an unhandled 500.
+      inventoryRepository.exists.mockResolvedValue(true);
+      lastQueryBuilder.execute.mockResolvedValue({ affected: 0, raw: [] });
+
+      await expect(
+        service.recordManualAdjustment(
+          PRODUCT_ID,
+          ORG_A,
+          { quantityChange: '-500', notes: 'damage exceeds recorded stock' },
+          'DAMAGE',
+        ),
+      ).rejects.toThrow(ConflictException);
     });
 
     it('records an ADJUSTMENT movement referencing the inventory row id (no reservation/order to point at)', async () => {

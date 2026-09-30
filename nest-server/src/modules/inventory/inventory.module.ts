@@ -8,6 +8,7 @@ import { InventoryService } from './inventory.service.js';
 import { InventoryController } from './inventory.controller.js';
 import { StockMovementsService } from './stock-movements.service.js';
 import { StockAlertsService } from './stock-alerts.service.js';
+import { AuthGuardModule } from '../../common/guards/auth-guard.module.js';
 
 /**
  * PART 4 — Inventory (Data_Modeling_Complete.md, Document 6 v3).
@@ -28,6 +29,7 @@ import { StockAlertsService } from './stock-alerts.service.js';
 @Module({
   imports: [
     TypeOrmModule.forFeature([InventoryEntity, StockReservationEntity, StockMovementEntity, StockAlertEntity]),
+    AuthGuardModule,
   ],
   controllers: [InventoryController],
   providers: [InventoryService, StockMovementsService, StockAlertsService],

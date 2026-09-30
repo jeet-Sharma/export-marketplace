@@ -1,9 +1,11 @@
-import { Body, Controller, Delete, Get, Param, Put, Req, UsePipes, ValidationPipe } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Put, Req, UseGuards, UsePipes, ValidationPipe } from '@nestjs/common';
 import { ProductTargetCountriesService } from './product-target-countries.service.js';
 import { UpsertTargetCountryDto } from './dto/upsert-target-country.dto.js';
-import type { AuthenticatedRequest } from '../../common/types/request-context.type.js';
+import { requireOrganizationId, type AuthenticatedRequest } from '../../common/types/request-context.type.js';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard.js';
 
 /** REST surface for product_target_country (Part 3.2), nested under its parent product. */
+@UseGuards(JwtAuthGuard)
 @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
 @Controller('catalog/products/:productId/target-countries')
 export class ProductTargetCountriesController {
@@ -11,7 +13,7 @@ export class ProductTargetCountriesController {
 
   @Get()
   findAll(@Param('productId') productId: string, @Req() req: AuthenticatedRequest) {
-    return this.targetCountriesService.findAllForProduct(productId, req.user.organizationId);
+    return this.targetCountriesService.findAllForProduct(productId, requireOrganizationId(req.user));
   }
 
   @Put(':countryCode')
@@ -21,7 +23,7 @@ export class ProductTargetCountriesController {
     @Body() dto: UpsertTargetCountryDto,
     @Req() req: AuthenticatedRequest,
   ) {
-    return this.targetCountriesService.upsert(productId, countryCode, dto, req.user.organizationId);
+    return this.targetCountriesService.upsert(productId, countryCode, dto, requireOrganizationId(req.user));
   }
 
   @Delete(':countryCode')
@@ -30,6 +32,6 @@ export class ProductTargetCountriesController {
     @Param('countryCode') countryCode: string,
     @Req() req: AuthenticatedRequest,
   ) {
-    return this.targetCountriesService.remove(productId, countryCode, req.user.organizationId);
+    return this.targetCountriesService.remove(productId, countryCode, requireOrganizationId(req.user));
   }
 }

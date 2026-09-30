@@ -18,8 +18,16 @@ describe('ProductsService', () => {
     create: ReturnType<typeof vi.fn>;
     save: ReturnType<typeof vi.fn>;
   };
+  let priceTierRepository: { find: ReturnType<typeof vi.fn> };
   let orgRepository: { findOne: ReturnType<typeof vi.fn> };
   let inventoryRepository: { create: ReturnType<typeof vi.fn>; save: ReturnType<typeof vi.fn> };
+  let rolePermissionQueryBuilder: {
+    innerJoin: ReturnType<typeof vi.fn>;
+    where: ReturnType<typeof vi.fn>;
+    andWhere: ReturnType<typeof vi.fn>;
+    getCount: ReturnType<typeof vi.fn>;
+  };
+  let rolePermissionRepository: { createQueryBuilder: ReturnType<typeof vi.fn> };
   let approvalLogService: { record: ReturnType<typeof vi.fn> };
   let dataSource: { transaction: ReturnType<typeof vi.fn> };
   let service: ProductsService;
@@ -28,6 +36,7 @@ describe('ProductsService', () => {
   const ORG_B = 'org-b';
   const MAKER = 'user-maker';
   const CHECKER = 'user-checker';
+  const ADMIN = 'user-admin';
 
   function makeProduct(overrides: Record<string, unknown> = {}) {
     return {
@@ -56,9 +65,22 @@ describe('ProductsService', () => {
     // second approver" unless a test overrides this — matching the
     // migration's own column default (requires_second_approver = true).
     orgRepository = { findOne: vi.fn().mockResolvedValue({ requiresSecondApprover: true }) };
+    priceTierRepository = { find: vi.fn().mockResolvedValue([]) };
     inventoryRepository = {
       create: vi.fn((input) => input),
       save: vi.fn((entity) => Promise.resolve(entity)),
+    };
+    // Defaults to "caller holds the permission" so existing status-
+    // transition tests (which don't care about role enforcement) keep
+    // passing; role-enforcement tests below override this per-case.
+    rolePermissionQueryBuilder = {
+      innerJoin: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      andWhere: vi.fn().mockReturnThis(),
+      getCount: vi.fn().mockResolvedValue(1),
+    };
+    rolePermissionRepository = {
+      createQueryBuilder: vi.fn(() => rolePermissionQueryBuilder),
     };
     approvalLogService = { record: vi.fn() };
     dataSource = {
@@ -71,6 +93,7 @@ describe('ProductsService', () => {
           getRepository: (entity: { name?: string }) => {
             if (entity?.name === 'OrganizationEntity') return orgRepository;
             if (entity?.name === 'InventoryEntity') return inventoryRepository;
+            if (entity?.name === 'RolePermissionEntity') return rolePermissionRepository;
             return productRepository;
           },
         };
@@ -80,10 +103,14 @@ describe('ProductsService', () => {
 
     service = new ProductsService(
       productRepository as never,
+      priceTierRepository as never,
       approvalLogService as unknown as ProductApprovalLogService,
       dataSource as never,
     );
   });
+
+  /** Every review() call in tests that don't care about roles uses this — matches a VENDOR_CHECKER/ADMIN caller. */
+  const ANY_REVIEWER_ROLES = ['VENDOR_CHECKER', 'ADMIN'];
 
   describe('org scoping', () => {
     it('findOne throws NotFoundException when the product belongs to a different organization', async () => {
@@ -208,7 +235,7 @@ describe('ProductsService', () => {
       );
 
       await expect(
-        service.review('product-1', { action: 'APPROVED' }, ORG_A, MAKER),
+        service.review('product-1', { action: 'APPROVED' }, 'VENDOR', ORG_A, MAKER, ANY_REVIEWER_ROLES),
       ).rejects.toThrow(ForbiddenException);
     });
 
@@ -217,7 +244,14 @@ describe('ProductsService', () => {
         makeProduct({ status: 'PENDING_CHECKER', createdBy: MAKER }),
       );
 
-      const result = await service.review('product-1', { action: 'APPROVED' }, ORG_A, CHECKER);
+      const result = await service.review(
+        'product-1',
+        { action: 'APPROVED' },
+        'VENDOR',
+        ORG_A,
+        CHECKER,
+        ANY_REVIEWER_ROLES,
+      );
 
       expect(result.status).toBe('PENDING_ADMIN');
       expect(approvalLogService.record).toHaveBeenCalledWith(
@@ -230,7 +264,7 @@ describe('ProductsService', () => {
       productRepository.findOne.mockResolvedValue(makeProduct({ status: 'DRAFT' }));
 
       await expect(
-        service.review('product-1', { action: 'APPROVED' }, ORG_A, CHECKER),
+        service.review('product-1', { action: 'APPROVED' }, 'VENDOR', ORG_A, CHECKER, ANY_REVIEWER_ROLES),
       ).rejects.toThrow(ConflictException);
     });
 
@@ -247,8 +281,10 @@ describe('ProductsService', () => {
       const result = await service.review(
         'product-1',
         { action: 'REJECTED', comments: 'Price too low' },
+        'PLATFORM',
         ORG_A,
         CHECKER,
+        ANY_REVIEWER_ROLES,
       );
 
       expect(result.status).toBe('PUBLISHED');
@@ -266,12 +302,197 @@ describe('ProductsService', () => {
         }),
       );
 
-      const result = await service.review('product-1', { action: 'APPROVED' }, ORG_A, CHECKER);
+      const result = await service.review(
+        'product-1',
+        { action: 'APPROVED' },
+        'PLATFORM',
+        ORG_A,
+        CHECKER,
+        ANY_REVIEWER_ROLES,
+      );
 
       expect(result.basePrice).toBe(5.5);
       expect(result.pendingChanges).toBeNull();
       expect(result.pendingStatus).toBeNull();
       expect(result.status).toBe('PUBLISHED');
+    });
+  });
+
+  describe('review() — role/permission enforcement (Part 2.11/2.12)', () => {
+    it('rejects a caller with no roles at all', async () => {
+      productRepository.findOne.mockResolvedValue(
+        makeProduct({ status: 'PENDING_CHECKER', createdBy: MAKER }),
+      );
+
+      await expect(
+        service.review('product-1', { action: 'APPROVED' }, 'VENDOR', ORG_A, CHECKER, []),
+      ).rejects.toThrow(ForbiddenException);
+      // Rejected before ever querying role_permission — an empty role list
+      // can never match anything, so there's no reason to hit the DB.
+      expect(rolePermissionRepository.createQueryBuilder).not.toHaveBeenCalled();
+    });
+
+    it('rejects a CHECKER-stage review when the caller does not hold product.approve for any role', async () => {
+      productRepository.findOne.mockResolvedValue(
+        makeProduct({ status: 'PENDING_CHECKER', createdBy: MAKER }),
+      );
+      rolePermissionQueryBuilder.getCount.mockResolvedValue(0);
+
+      await expect(
+        service.review('product-1', { action: 'APPROVED' }, 'VENDOR', ORG_A, CHECKER, ['VENDOR_MAKER']),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('allows a CHECKER-stage review when the caller holds VENDOR_CHECKER', async () => {
+      productRepository.findOne.mockResolvedValue(
+        makeProduct({ status: 'PENDING_CHECKER', createdBy: MAKER }),
+      );
+
+      const result = await service.review(
+        'product-1',
+        { action: 'APPROVED' },
+        'VENDOR',
+        ORG_A,
+        CHECKER,
+        ['VENDOR_CHECKER'],
+      );
+
+      expect(result.status).toBe('PENDING_ADMIN');
+      expect(rolePermissionQueryBuilder.andWhere).toHaveBeenCalledWith('role.scopeType = :scopeType', {
+        scopeType: 'VENDOR',
+      });
+    });
+
+    it('rejects an ADMIN-stage review from a VENDOR_CHECKER — a vendor role cannot self-serve the platform stage', async () => {
+      productRepository.findOne.mockResolvedValue(makeProduct({ status: 'PENDING_ADMIN', createdBy: MAKER }));
+      // Simulates the real query: a VENDOR_CHECKER role does not satisfy
+      // the ADMIN stage's PLATFORM scopeType requirement, so the (mocked)
+      // count is 0 for this specific role/stage pairing.
+      rolePermissionQueryBuilder.getCount.mockResolvedValue(0);
+
+      await expect(
+        service.review('product-1', { action: 'APPROVED' }, 'VENDOR', ORG_A, ADMIN, ['VENDOR_CHECKER']),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('allows an ADMIN-stage review when the caller holds the platform ADMIN role', async () => {
+      productRepository.findOne.mockResolvedValue(makeProduct({ status: 'PENDING_ADMIN', createdBy: MAKER }));
+
+      // A real ADMIN reviewer is a PLATFORM-type caller — their own
+      // organizationId (passed here as ORG_B, a stand-in for "the
+      // platform org") is deliberately NOT the product's ORG_A, matching
+      // how review() looks the product up by id alone for PLATFORM
+      // callers rather than scoping by the caller's own org.
+      const result = await service.review(
+        'product-1',
+        { action: 'APPROVED' },
+        'PLATFORM',
+        ORG_B,
+        ADMIN,
+        ['ADMIN'],
+      );
+
+      expect(result.status).toBe('APPROVED');
+      expect(productRepository.findOne).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'product-1' } }),
+      );
+      expect(rolePermissionQueryBuilder.andWhere).toHaveBeenCalledWith('role.scopeType = :scopeType', {
+        scopeType: 'PLATFORM',
+      });
+    });
+
+    it('checks role/permission before the self-approval check', async () => {
+      // A VENDOR_MAKER without product.approve at all should be rejected
+      // for lack of permission, not for self-approval — even though this
+      // actor also happens to be the product's creator.
+      productRepository.findOne.mockResolvedValue(
+        makeProduct({ status: 'PENDING_CHECKER', createdBy: MAKER }),
+      );
+      rolePermissionQueryBuilder.getCount.mockResolvedValue(0);
+
+      await expect(
+        service.review('product-1', { action: 'APPROVED' }, 'VENDOR', ORG_A, MAKER, ['VENDOR_MAKER']),
+      ).rejects.toThrow(ForbiddenException);
+      // orgRepository.findOne is only reached by the self-approval check —
+      // if permission is checked first, it's never called for this case.
+      expect(orgRepository.findOne).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('submit() — price tier MOQ and gap validation (Part 3.3)', () => {
+    it('allows submission when the product has no price tiers at all', async () => {
+      productRepository.findOne.mockResolvedValue(makeProduct({ status: 'DRAFT', moq: '100' }));
+      priceTierRepository.find.mockResolvedValue([]);
+
+      const result = await service.submit('product-1', {}, ORG_A, MAKER);
+
+      expect(result.status).toBe('PENDING_CHECKER');
+    });
+
+    it('allows submission when tiers start at moq and have no gaps', async () => {
+      productRepository.findOne.mockResolvedValue(makeProduct({ status: 'DRAFT', moq: '100' }));
+      priceTierRepository.find.mockResolvedValue([
+        { minQty: '100', maxQty: '500', unitPrice: '415.00' },
+        { minQty: '500', maxQty: '1000', unitPrice: '373.50' },
+        { minQty: '1000', maxQty: null, unitPrice: '332.00' },
+      ]);
+
+      const result = await service.submit('product-1', {}, ORG_A, MAKER);
+
+      expect(result.status).toBe('PENDING_CHECKER');
+    });
+
+    it('rejects submission when the first tier does not start at product.moq', async () => {
+      productRepository.findOne.mockResolvedValue(makeProduct({ status: 'DRAFT', moq: '100' }));
+      priceTierRepository.find.mockResolvedValue([{ minQty: '150', maxQty: null, unitPrice: '10.00' }]);
+
+      await expect(service.submit('product-1', {}, ORG_A, MAKER)).rejects.toThrow(ConflictException);
+    });
+
+    it('rejects submission when there is a gap between two tiers', async () => {
+      productRepository.findOne.mockResolvedValue(makeProduct({ status: 'DRAFT', moq: '100' }));
+      priceTierRepository.find.mockResolvedValue([
+        { minQty: '100', maxQty: '500', unitPrice: '415.00' },
+        // Gap: this tier starts at 600, not 500 — 500-600 is priced by nothing.
+        { minQty: '600', maxQty: null, unitPrice: '373.50' },
+      ]);
+
+      await expect(service.submit('product-1', {}, ORG_A, MAKER)).rejects.toThrow(ConflictException);
+    });
+
+    it('rejects submission when a non-last tier is open-ended', async () => {
+      productRepository.findOne.mockResolvedValue(makeProduct({ status: 'DRAFT', moq: '100' }));
+      priceTierRepository.find.mockResolvedValue([
+        { minQty: '100', maxQty: null, unitPrice: '415.00' },
+        { minQty: '500', maxQty: null, unitPrice: '373.50' },
+      ]);
+
+      await expect(service.submit('product-1', {}, ORG_A, MAKER)).rejects.toThrow(ConflictException);
+    });
+
+    it('validates tiers again on re-submission of a REJECTED product', async () => {
+      productRepository.findOne.mockResolvedValue(makeProduct({ status: 'REJECTED', moq: '50' }));
+      priceTierRepository.find.mockResolvedValue([{ minQty: '999', maxQty: null, unitPrice: '1.00' }]);
+
+      await expect(service.submit('product-1', {}, ORG_A, MAKER)).rejects.toThrow(ConflictException);
+    });
+
+    it('does NOT re-validate tiers on a live-edit submission (PUBLISHED product)', async () => {
+      // Live-edit submissions stage pending_changes on product columns,
+      // not on price tiers — tiers are a separate child resource with
+      // their own endpoints, so the moq/gap check only runs on the
+      // DRAFT/REJECTED -> PENDING_CHECKER path.
+      productRepository.findOne.mockResolvedValue(makeProduct({ status: 'PUBLISHED', moq: '100' }));
+
+      const result = await service.submit(
+        'product-1',
+        { changes: { basePrice: 4.2 } },
+        ORG_A,
+        MAKER,
+      );
+
+      expect(result.pendingStatus).toBe('PENDING_CHECKER');
+      expect(priceTierRepository.find).not.toHaveBeenCalled();
     });
   });
 });

@@ -118,7 +118,7 @@ export class InventoryService {
    * cancelled, or order rejected. quantity_reserved decreases and
    * quantity_available is restored.
    */
-  async releaseReservation(reservationId: string): Promise<StockReservationEntity> {
+  async releaseReservation(reservationId: string, organizationId: string): Promise<StockReservationEntity> {
     return this.dataSource.transaction(async (manager) => {
       const reservationRepo = manager.getRepository(StockReservationEntity);
       const inventoryRepo = manager.getRepository(InventoryEntity);
@@ -132,8 +132,14 @@ export class InventoryService {
       // second call wait for the first to commit, so it re-reads the
       // now-RELEASED status and correctly hits the ConflictException below
       // instead of releasing the same stock twice.
+      //
+      // organizationId is part of the WHERE, not just read off the row
+      // afterward — a caller (the future Checkout/Order module) passes the
+      // org it expects this reservation to belong to, and a mismatch is
+      // indistinguishable from "not found" rather than silently operating
+      // on another organization's stock.
       const reservation = await reservationRepo.findOne({
-        where: { id: reservationId },
+        where: { id: reservationId, organizationId },
         lock: { mode: 'pessimistic_write' },
       });
       if (!reservation) {
@@ -188,7 +194,11 @@ export class InventoryService {
    * hold already moved the stock out of available); only the reservation
    * row's status/order_id change.
    */
-  async convertReservation(reservationId: string, orderId: string): Promise<StockReservationEntity> {
+  async convertReservation(
+    reservationId: string,
+    organizationId: string,
+    orderId: string,
+  ): Promise<StockReservationEntity> {
     return this.dataSource.transaction(async (manager) => {
       const reservationRepo = manager.getRepository(StockReservationEntity);
 
@@ -197,9 +207,10 @@ export class InventoryService {
       // convert (payment captured) racing on the same HELD reservation
       // could both pass their status check before either commits — one
       // reservation would end up saved as CONVERTED after its stock was
-      // already given back by the other's release.
+      // already given back by the other's release. organizationId is
+      // scoped in the WHERE for the same reason as releaseReservation().
       const reservation = await reservationRepo.findOne({
-        where: { id: reservationId },
+        where: { id: reservationId, organizationId },
         lock: { mode: 'pessimistic_write' },
       });
       if (!reservation) {
@@ -220,7 +231,7 @@ export class InventoryService {
    * quantity_reserved permanently (quantity_available already dropped
    * when the stock was first reserved, per Part 4.3's "Why").
    */
-  async consumeReservation(reservationId: string): Promise<StockReservationEntity> {
+  async consumeReservation(reservationId: string, organizationId: string): Promise<StockReservationEntity> {
     return this.dataSource.transaction(async (manager) => {
       const reservationRepo = manager.getRepository(StockReservationEntity);
       const inventoryRepo = manager.getRepository(InventoryEntity);
@@ -229,9 +240,10 @@ export class InventoryService {
       // Pessimistic row lock — same reasoning as releaseReservation()/
       // convertReservation(): prevents a concurrent release/consume race
       // on the same reservation from both passing the status check and
-      // both decrementing quantity_reserved.
+      // both decrementing quantity_reserved. organizationId is scoped in
+      // the WHERE for the same reason as releaseReservation().
       const reservation = await reservationRepo.findOne({
-        where: { id: reservationId },
+        where: { id: reservationId, organizationId },
         lock: { mode: 'pessimistic_write' },
       });
       if (!reservation) {
@@ -309,17 +321,38 @@ export class InventoryService {
       const inventoryRepo = manager.getRepository(InventoryEntity);
       const movementRepo = manager.getRepository(StockMovementEntity);
 
+      // The WHERE guards BOTH cases that make this UPDATE affect 0 rows:
+      // "no such inventory row for this product/org" and "this change
+      // would drive quantity_available negative". Distinguishing them
+      // requires knowing which one actually happened, so existence is
+      // checked first (see below) — without that split, a negative
+      // adjustment against real inventory would previously fall through
+      // to the DB's own CHECK(quantity_available >= 0) and surface as an
+      // unhandled 500 from the driver instead of a clean 409.
+      const inventoryExists = await inventoryRepo.exists({ where: { productId, organizationId } });
+      if (!inventoryExists) {
+        throw new NotFoundException(`Inventory for product ${productId} not found`);
+      }
+
       const updateResult = await inventoryRepo
         .createQueryBuilder()
         .update(InventoryEntity)
         .set({ quantityAvailable: () => `quantity_available + :qty` })
-        .where('product_id = :productId AND organization_id = :organizationId', { productId, organizationId })
+        .where(
+          'product_id = :productId AND organization_id = :organizationId AND quantity_available + :qty >= 0',
+          { productId, organizationId },
+        )
         .setParameters({ qty: input.quantityChange })
         .returning('*')
         .execute();
 
       if (updateResult.affected === 0) {
-        throw new NotFoundException(`Inventory for product ${productId} not found`);
+        // Existence was already confirmed above, so reaching here means
+        // the ONLY reason this UPDATE matched no row is the quantity
+        // floor — this adjustment would make quantity_available negative.
+        throw new ConflictException(
+          `This adjustment would leave quantity_available negative for product ${productId}.`,
+        );
       }
 
       const updatedInventory = updateResult.raw[0] as {

@@ -1,13 +1,15 @@
-import { Body, Controller, Delete, Get, Param, Post, Req, UsePipes, ValidationPipe } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Req, UseGuards, UsePipes, ValidationPipe } from '@nestjs/common';
 import { ProductMediaService } from './product-media.service.js';
 import { CreateProductMediaDto } from './dto/create-product-media.dto.js';
-import type { AuthenticatedRequest } from '../../common/types/request-context.type.js';
+import { requireOrganizationId, type AuthenticatedRequest } from '../../common/types/request-context.type.js';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard.js';
 
 /**
  * REST surface for product_media (Part 3.4), nested under its parent
  * product. Only records metadata for a file already uploaded through the
  * existing StorageModule — this controller does not accept file bytes.
  */
+@UseGuards(JwtAuthGuard)
 @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
 @Controller('catalog/products/:productId/media')
 export class ProductMediaController {
@@ -15,7 +17,7 @@ export class ProductMediaController {
 
   @Get()
   findAll(@Param('productId') productId: string, @Req() req: AuthenticatedRequest) {
-    return this.mediaService.findAllForProduct(productId, req.user.organizationId);
+    return this.mediaService.findAllForProduct(productId, requireOrganizationId(req.user));
   }
 
   @Post()
@@ -24,7 +26,7 @@ export class ProductMediaController {
     @Body() dto: CreateProductMediaDto,
     @Req() req: AuthenticatedRequest,
   ) {
-    return this.mediaService.create(productId, dto, req.user.organizationId);
+    return this.mediaService.create(productId, dto, requireOrganizationId(req.user));
   }
 
   @Delete(':mediaId')
@@ -33,6 +35,6 @@ export class ProductMediaController {
     @Param('mediaId') mediaId: string,
     @Req() req: AuthenticatedRequest,
   ) {
-    return this.mediaService.remove(productId, mediaId, req.user.organizationId);
+    return this.mediaService.remove(productId, mediaId, requireOrganizationId(req.user));
   }
 }

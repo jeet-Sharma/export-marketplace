@@ -1,9 +1,10 @@
-import { Body, Controller, Get, Param, Post, Req, UsePipes, ValidationPipe } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Req, UseGuards, UsePipes, ValidationPipe } from '@nestjs/common';
 import { InventoryService } from './inventory.service.js';
 import { StockMovementsService } from './stock-movements.service.js';
 import { StockAlertsService } from './stock-alerts.service.js';
 import { AdjustInventoryDto } from './dto/adjust-inventory.dto.js';
-import type { AuthenticatedRequest } from '../../common/types/request-context.type.js';
+import { requireOrganizationId, type AuthenticatedRequest } from '../../common/types/request-context.type.js';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard.js';
 
 /**
  * REST surface for `inventory` (Part 4.1) and its two read-only companion
@@ -15,6 +16,7 @@ import type { AuthenticatedRequest } from '../../common/types/request-context.ty
  * routed here — see inventory.service.ts's class comment. Only a future
  * Checkout/Order module calls those directly.
  */
+@UseGuards(JwtAuthGuard)
 @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
 @Controller('inventory')
 export class InventoryController {
@@ -26,22 +28,22 @@ export class InventoryController {
 
   @Get('alerts')
   findOpenAlerts(@Req() req: AuthenticatedRequest) {
-    return this.stockAlertsService.findAllOpen(req.user.organizationId);
+    return this.stockAlertsService.findAllOpen(requireOrganizationId(req.user));
   }
 
   @Post('alerts/:alertId/resolve')
   resolveAlert(@Param('alertId') alertId: string, @Req() req: AuthenticatedRequest) {
-    return this.stockAlertsService.resolve(alertId, req.user.organizationId);
+    return this.stockAlertsService.resolve(alertId, requireOrganizationId(req.user));
   }
 
   @Get(':productId')
   findByProduct(@Param('productId') productId: string, @Req() req: AuthenticatedRequest) {
-    return this.inventoryService.findByProduct(productId, req.user.organizationId);
+    return this.inventoryService.findByProduct(productId, requireOrganizationId(req.user));
   }
 
   @Get(':productId/movements')
   findMovements(@Param('productId') productId: string, @Req() req: AuthenticatedRequest) {
-    return this.stockMovementsService.findAllForProduct(productId, req.user.organizationId);
+    return this.stockMovementsService.findAllForProduct(productId, requireOrganizationId(req.user));
   }
 
   @Post(':productId/adjust')
@@ -52,7 +54,7 @@ export class InventoryController {
   ) {
     return this.inventoryService.recordManualAdjustment(
       productId,
-      req.user.organizationId,
+      requireOrganizationId(req.user),
       { quantityChange: dto.quantityChange.toString(), notes: dto.notes, userId: req.user.userId },
       dto.movementType,
     );

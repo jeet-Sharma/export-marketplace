@@ -1,5 +1,4 @@
 import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn, type Relation, UpdateDateColumn } from 'typeorm';
-import { CountryEntity } from '../../reference-data/entities/country.entity.js';
 import { ProductEntity } from './product.entity.js';
 
 /**
@@ -11,6 +10,18 @@ import { ProductEntity } from './product.entity.js';
  *   FK (organization_id, target_country) -> vendor_target_country (organization_id, target_country)
  * Neither FK can be expressed by a single @ManyToOne here since both are
  * composite; they are migration-only (see CreateVendorCatalog).
+ *
+ * IMPORTANT: target_country's real FK target (combined with
+ * organization_id) is vendor_target_country, NOT the plain country
+ * reference table — there is no direct FK from this column to `country`
+ * at all. An earlier version of this entity declared
+ * @ManyToOne(() => CountryEntity) here, which pointed the relation at the
+ * wrong table; ProductTargetCountriesService.upsert() already does the
+ * real check this relation should reflect (looking up
+ * VendorTargetCountryEntity by organizationId + targetCountry before
+ * allowing the row — H-16's vendor-country pre-check), so no relation is
+ * declared on this column at all rather than one that misrepresents the
+ * schema.
  *
  * Schema is owned by the CreateVendorCatalog migration.
  */
@@ -30,12 +41,13 @@ export class ProductTargetCountryEntity {
   @Column({ name: 'organization_id', type: 'bigint', comment: 'Copy of the owner, for the composite FKs and RLS' })
   organizationId!: string;
 
+  // target_country: no @ManyToOne/@JoinColumn on this column — see class
+  // doc comment. Its real FK (combined with organization_id) targets
+  // VendorTargetCountryEntity, a composite relation TypeORM decorators
+  // can't express on a single column, so none is declared here rather
+  // than one pointing at the wrong table.
   @Column({ name: 'target_country', type: 'char', length: 2 })
   targetCountry!: string;
-
-  @ManyToOne(() => CountryEntity)
-  @JoinColumn({ name: 'target_country' })
-  targetCountryRef?: Relation<CountryEntity>;
 
   @Column({
     name: 'national_tariff_code',

@@ -7,6 +7,7 @@ import { ProductMediaEntity } from './entities/product-media.entity.js';
 import { ProductApprovalLogEntity } from './entities/product-approval-log.entity.js';
 import { IdentityModule } from '../identity/identity.module.js';
 import { InventoryModule } from '../inventory/inventory.module.js';
+import { AuthGuardModule } from '../../common/guards/auth-guard.module.js';
 import { ProductsService } from './products.service.js';
 import { ProductsController } from './products.controller.js';
 import { ProductPriceTiersService } from './product-price-tiers.service.js';
@@ -49,6 +50,7 @@ import { ProductApprovalLogService } from './product-approval-log.service.js';
     ]),
     IdentityModule,
     InventoryModule,
+    AuthGuardModule,
   ],
   controllers: [
     ProductsController,
