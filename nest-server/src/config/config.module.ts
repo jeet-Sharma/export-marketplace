@@ -1,7 +1,10 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import appConfig from './app.config.js';
+import authConfig from './auth.config.js';
 import awsConfig from './aws.config.js';
 import dbConfig from './db.config.js';
+import mailConfig from './mail.config.js';
 
 /**
  * Global, application-wide environment configuration. Imported once from
@@ -21,8 +24,8 @@ import dbConfig from './db.config.js';
       isGlobal: true,
       envFilePath: '.env',
       ignoreEnvFile: process.env.NODE_ENV === 'test',
-      load: [awsConfig, dbConfig],
+      load: [appConfig, authConfig, awsConfig, dbConfig, mailConfig],
     }),
   ],
 })
-export class AppConfigModule {}
+export class AppConfigModule { }
