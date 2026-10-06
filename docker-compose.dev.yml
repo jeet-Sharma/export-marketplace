@@ -1,0 +1,103 @@
+# Development stack with hot reload.
+#
+#   docker compose -f docker-compose.dev.yml up --build
+#
+# Source directories are bind-mounted so changes on the host trigger reloads
+# inside the containers. node_modules are kept in anonymous volumes so the
+# container's installed deps are not clobbered by the host mount.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-export_marketplace}
+    ports:
+      - "${POSTGRES_HOST_PORT:-55432}:5432"
+    volumes:
+      - postgres_data_dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-export_marketplace}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-net
+
+  localstack:
+    # Pinned to a community (free) image; "latest" is the paid Pro edition.
+    image: localstack/localstack:4.4.0
+    restart: unless-stopped
+    environment:
+      SERVICES: s3,sqs
+      DEFAULT_REGION: ${AWS_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-test}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-test}
+    ports:
+      - "${LOCALSTACK_HOST_PORT:-4566}:4566"
+    volumes:
+      - localstack_data_dev:/var/lib/localstack
+    networks:
+      - app-net
+
+  api:
+    build:
+      context: ./nest-server
+      dockerfile: Dockerfile.dev
+    environment:
+      NODE_ENV: development
+      PORT: 3005
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-export_marketplace}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_ENDPOINT: http://localstack:4566
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-test}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-test}
+      AWS_S3_BUCKET: ${AWS_S3_BUCKET:-export-marketplace-documents}
+      AWS_SQS_QUEUE_NAME: ${AWS_SQS_QUEUE_NAME:-export-marketplace-events}
+    ports:
+      - "${API_HOST_PORT:-3005}:3005"
+    volumes:
+      - ./nest-server:/app
+      - /app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      localstack:
+        condition: service_started
+    networks:
+      - app-net
+
+  web:
+    build:
+      context: ./react-client
+      dockerfile: Dockerfile.dev
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3005}
+      # Helps file-watching reliability for bind mounts (esp. on Windows/WSL).
+      WATCHPACK_POLLING: "true"
+    ports:
+      - "${WEB_HOST_PORT:-3000}:3000"
+    volumes:
+      - ./react-client:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      - api
+    networks:
+      - app-net
+
+volumes:
+  postgres_data_dev:
+  localstack_data_dev:
+
+networks:
+  app-net:
+    driver: bridge
