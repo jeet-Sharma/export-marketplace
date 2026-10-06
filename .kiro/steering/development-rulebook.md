@@ -24,10 +24,14 @@ export-marketplace/
 
 Both apps are early-stage. Confirmed absent as of this writing — do not
 assume any of the following exist unless you've just added them yourself:
-**no database/ORM, no authentication/authorization, no state management
-library, no form/validation library, no class-validator, no frontend
-tests.** Rules below are written for what's actually here, not for a
-hypothetical mature version of this stack.
+**no authentication/authorization, no state management library, no
+form/validation library, no class-validator, no frontend tests.**
+`nest-server` has `typeorm`/`pg`/`@nestjs/typeorm` installed and a
+migrations folder (`src/database/migrations/`), but no entities, no
+`TypeOrmModule` wiring in `AppModule`, and no live app code touching
+Postgres yet — see `backend-rules.md`'s "Database migrations" section
+before assuming more than that exists. Rules below are written for what's
+actually here, not for a hypothetical mature version of this stack.
 
 ## General engineering rules (both apps)
 
@@ -60,10 +64,11 @@ hypothetical mature version of this stack.
    `^12.0.1`). Flag unusual/unfamiliar package names before installing.
 7. **Don't add a dependency for something already solved.** Both apps are
    dependency-light by evidence (5 UI primitives cover the whole design
-   system in react-client; nest-server has no ORM, no validation library,
-   no auth library yet) — check what's installed first, and check
-   `marketplace-domain.md` / task context for whether a "missing" library
-   is actually planned-but-not-yet-added versus genuinely needed now.
+   system in react-client; nest-server has `typeorm`/`pg` for migrations
+   but no validation library, no auth library yet) — check what's
+   installed first, and check `marketplace-domain.md` / task context for
+   whether a "missing" library is actually planned-but-not-yet-added
+   versus genuinely needed now.
 8. **Environment variables**: read via each app's established mechanism
    (see `backend-rules.md` for nest-server's `ConfigService` convention).
    Never commit `.env` — both apps gitignore it and ship `.env.example`
