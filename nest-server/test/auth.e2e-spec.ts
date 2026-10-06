@@ -431,6 +431,45 @@ describe('AuthController (e2e)', () => {
     await cleanupUser(dataSource, email);
   });
 
+  it('POST /auth/logout-all revokes a rotated session too, leaving nothing live', async () => {
+    // Guards the invariant that logout-all and refresh rotation serialize on
+    // the user row: after rotating a token, logout-all must kill the freshly
+    // minted session as well, not just the original.
+    const email = `logoutall-rotate-${randomUUID()}@example.com`;
+    await request(app.getHttpServer()).post('/auth/register').send({
+      fullName: 'Logout All Rotate Buyer',
+      email,
+      password: 'correct-horse-battery',
+    });
+    await dataSource.query(`UPDATE users SET status = 'ACTIVE', email_verified = true WHERE email = $1`, [email]);
+
+    const login = await request(app.getHttpServer()).post('/auth/login').send({ email, password: 'correct-horse-battery' });
+
+    // Rotate: the original session is revoked, a new one is minted.
+    const refreshed = await request(app.getHttpServer()).post('/auth/refresh').send({ refreshToken: login.body.refreshToken });
+    expect(refreshed.status).toBe(201);
+
+    // Log out everywhere using the rotated access token.
+    const logoutAll = await request(app.getHttpServer())
+      .post('/auth/logout-all')
+      .set('Authorization', `Bearer ${refreshed.body.accessToken}`);
+    expect(logoutAll.status).toBe(201);
+
+    // The rotated (newest) refresh token is now dead too.
+    const afterLogoutAll = await request(app.getHttpServer())
+      .post('/auth/refresh')
+      .send({ refreshToken: refreshed.body.refreshToken });
+    expect(afterLogoutAll.status).toBe(401);
+
+    const [live] = (await dataSource.query(
+      `SELECT count(*)::int AS n FROM auth_session WHERE user_id = (SELECT id FROM users WHERE email = $1) AND revoked_at IS NULL`,
+      [email],
+    )) as Array<{ n: number }>;
+    expect(live.n).toBe(0);
+
+    await cleanupUser(dataSource, email);
+  });
+
   it('POST /auth/logout-all requires authentication', async () => {
     const response = await request(app.getHttpServer()).post('/auth/logout-all');
     expect(response.status).toBe(401);
@@ -474,6 +513,27 @@ describe('AuthController (e2e)', () => {
     expect(me.body.organizationId).toBeNull();
     expect(me.body.roles).toEqual(['BUYER']);
     expect(me.body.permissions).toEqual([]);
+
+    await cleanupUser(dataSource, email);
+  });
+
+  it('GET /auth/me rejects a refresh token presented as a bearer access token', async () => {
+    // A refresh token carries `sub` too; without the access-token `type`
+    // check it could pass the guard (especially if both secrets matched) and
+    // reach guarded routes for its much longer lifetime.
+    const email = `refresh-as-access-${randomUUID()}@example.com`;
+    await request(app.getHttpServer()).post('/auth/register').send({
+      fullName: 'Refresh As Access Buyer',
+      email,
+      password: 'correct-horse-battery',
+    });
+    await dataSource.query(`UPDATE users SET status = 'ACTIVE', email_verified = true WHERE email = $1`, [email]);
+    const login = await request(app.getHttpServer()).post('/auth/login').send({ email, password: 'correct-horse-battery' });
+
+    const me = await request(app.getHttpServer())
+      .get('/auth/me')
+      .set('Authorization', `Bearer ${login.body.refreshToken}`);
+    expect(me.status).toBe(401);
 
     await cleanupUser(dataSource, email);
   });

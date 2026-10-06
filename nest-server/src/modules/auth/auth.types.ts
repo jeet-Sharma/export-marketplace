@@ -1,11 +1,15 @@
 /**
- * Claims carried by the access token (signed in AuthService.loginBuyer).
+ * Claims carried by the access token (signed in AuthService.signTokenPair).
  * `sub` is the internal users.id; publicId/userType are convenience copies.
+ * `type: 'access'` makes an access token structurally distinct from a
+ * refresh token (which carries `type: 'refresh'`), so JwtAuthGuard can
+ * reject a refresh token even if both are signed with the same secret.
  */
 export interface AccessTokenPayload {
   sub: string;
   publicId: string;
   userType: 'PLATFORM' | 'VENDOR' | 'BUYER';
+  type: 'access';
   iat?: number;
   exp?: number;
 }

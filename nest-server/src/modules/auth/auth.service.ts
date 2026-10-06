@@ -186,6 +186,23 @@ export class AuthService {
     const presentedHash = createHash('sha256').update(payload.jti).digest('hex');
 
     const rotated = await this.dataSource.transaction(async (manager) => {
+      // Lock the owning user row FIRST. This is the shared anchor that
+      // serializes rotation against logoutAll: rotation inserts a brand-new
+      // session row that a concurrent bulk "revoke all live sessions" UPDATE
+      // can't see until this transaction commits, so without a common lock
+      // logoutAll could complete between our insert and commit and leave the
+      // freshly-minted session alive. Both paths take this same user lock
+      // before touching auth_session, so they can never interleave.
+      const lockUser = await manager
+        .getRepository(UserEntity)
+        .createQueryBuilder('user')
+        .setLock('pessimistic_write')
+        .where('user.id = :id', { id: payload.sub })
+        .getOne();
+      if (!lockUser) {
+        return null;
+      }
+
       // Lock the session row so a concurrent replay of the same refresh
       // token can't both pass validation before either revokes it.
       const session = await manager
@@ -208,12 +225,10 @@ export class AuthService {
         return null;
       }
 
-      const user = await manager
-        .getRepository(UserEntity)
-        .createQueryBuilder('user')
-        .where('user.id = :id', { id: session.userId })
-        .getOne();
-      if (!user || user.status !== 'ACTIVE') {
+      // Reuse the already-locked user row (session.userId === payload.sub,
+      // verified just above). No second read needed.
+      const user = lockUser;
+      if (user.status !== 'ACTIVE') {
         return null;
       }
 
@@ -265,7 +280,7 @@ export class AuthService {
     refreshTokenId: string;
   }): Promise<LoginResponseDto> {
     const accessToken = await this.jwtService.signAsync(
-      { sub: input.userId, publicId: input.publicId, userType: input.userType },
+      { sub: input.userId, publicId: input.publicId, userType: input.userType, type: 'access' },
       { secret: this.authConfig.accessSecret, expiresIn: this.authConfig.accessTokenTtlSeconds },
     );
     const refreshToken = await this.jwtService.signAsync(
@@ -325,14 +340,30 @@ export class AuthService {
    * from the verified access token, never from the request body.
    */
   async logoutAll(userId: string): Promise<{ message: string }> {
-    await this.dataSource
-      .getRepository(AuthSessionEntity)
-      .createQueryBuilder()
-      .update(AuthSessionEntity)
-      .set({ revokedAt: new Date(), revokedReason: 'LOGOUT' })
-      .where('user_id = :userId', { userId })
-      .andWhere('revoked_at IS NULL')
-      .execute();
+    await this.dataSource.transaction(async (manager) => {
+      // Lock the user row before revoking, using the SAME anchor
+      // refreshTokens locks first. If a rotation is mid-flight, this blocks
+      // until it commits (so its newly-inserted session is now visible and
+      // gets revoked below); if this wins the lock, rotation blocks until we
+      // commit, then sees the old session already revoked and mints nothing.
+      // Either ordering leaves zero live sessions — no refreshed session can
+      // slip past logout-all.
+      await manager
+        .getRepository(UserEntity)
+        .createQueryBuilder('user')
+        .setLock('pessimistic_write')
+        .where('user.id = :id', { id: userId })
+        .getOne();
+
+      await manager
+        .getRepository(AuthSessionEntity)
+        .createQueryBuilder()
+        .update(AuthSessionEntity)
+        .set({ revokedAt: new Date(), revokedReason: 'LOGOUT' })
+        .where('user_id = :userId', { userId })
+        .andWhere('revoked_at IS NULL')
+        .execute();
+    });
 
     return { message: 'Logged out of all devices.' };
   }

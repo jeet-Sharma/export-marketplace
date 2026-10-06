@@ -52,6 +52,15 @@ export class JwtAuthGuard implements CanActivate {
       throw new UnauthorizedException('Invalid or expired token.');
     }
 
+    // Reject anything that isn't an access token. A refresh token also
+    // carries `sub` and, if both secrets were ever set to the same value,
+    // would otherwise pass signature verification and let a long-lived
+    // refresh token reach guarded routes. The `type` claim keeps the two
+    // kinds structurally distinct regardless of secret configuration.
+    if (payload.type !== 'access') {
+      throw new UnauthorizedException('Invalid or expired token.');
+    }
+
     const user = await this.dataSource
       .getRepository(UserEntity)
       .createQueryBuilder('user')
