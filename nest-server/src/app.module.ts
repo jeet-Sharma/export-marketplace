@@ -7,6 +7,7 @@ import { DatabaseModule } from './modules/database/database.module.js';
 import { StorageModule } from './modules/storage/storage.module.js';
 import { MessagingModule } from './modules/messaging/messaging.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
+import { BuyersModule } from './modules/buyers/buyers.module.js';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
@@ -47,6 +48,9 @@ const observeImports =
     // .github/workflows/ci.yml's "API" job provisions a Postgres service
     // container + runs migrations before the e2e step.
     AuthModule,
+    // Buyer self-service profile (GET/PATCH /buyers/me). Depends on
+    // AuthModule for JwtAuthGuard, so it comes after it.
+    BuyersModule,
     // Note: ReferenceDataModule/IdentityModule (Data_Modeling_Complete.md
     // Parts 1-2 entities) are intentionally NOT imported here yet — nothing
     // has a controller/service that reads or writes them through Nest DI

@@ -331,6 +331,246 @@ describe('AuthController (e2e)', () => {
     await cleanupUser(dataSource, email);
   });
 
+  it('POST /auth/refresh rotates tokens and rejects reuse of the old refresh token', async () => {
+    const email = `refresh-${randomUUID()}@example.com`;
+    await request(app.getHttpServer()).post('/auth/register').send({
+      fullName: 'Refresh Buyer',
+      email,
+      password: 'correct-horse-battery',
+    });
+    await dataSource.query(`UPDATE users SET status = 'ACTIVE', email_verified = true WHERE email = $1`, [email]);
+    const login = await request(app.getHttpServer()).post('/auth/login').send({ email, password: 'correct-horse-battery' });
+    const firstRefresh: string = login.body.refreshToken;
+
+    // Exchange the refresh token for a new pair.
+    const refreshed = await request(app.getHttpServer()).post('/auth/refresh').send({ refreshToken: firstRefresh });
+    expect(refreshed.status).toBe(201);
+    expect(refreshed.body.accessToken).toEqual(expect.any(String));
+    expect(refreshed.body.refreshToken).toEqual(expect.any(String));
+    expect(refreshed.body.refreshToken).not.toBe(firstRefresh);
+
+    // The new access token works against a guarded route.
+    const me = await request(app.getHttpServer()).get('/auth/me').set('Authorization', `Bearer ${refreshed.body.accessToken}`);
+    expect(me.status).toBe(200);
+    expect(me.body).toMatchObject({ email, userType: 'BUYER' });
+
+    // Rotation: replaying the FIRST refresh token is now rejected (its
+    // session was revoked when it was rotated).
+    const replay = await request(app.getHttpServer()).post('/auth/refresh').send({ refreshToken: firstRefresh });
+    expect(replay.status).toBe(401);
+
+    // The newly issued refresh token still works.
+    const secondRefresh = await request(app.getHttpServer()).post('/auth/refresh').send({ refreshToken: refreshed.body.refreshToken });
+    expect(secondRefresh.status).toBe(201);
+
+    await cleanupUser(dataSource, email);
+  });
+
+  it('POST /auth/logout revokes the session so its refresh token can no longer be used', async () => {
+    const email = `logout-${randomUUID()}@example.com`;
+    await request(app.getHttpServer()).post('/auth/register').send({
+      fullName: 'Logout Buyer',
+      email,
+      password: 'correct-horse-battery',
+    });
+    await dataSource.query(`UPDATE users SET status = 'ACTIVE', email_verified = true WHERE email = $1`, [email]);
+    const login = await request(app.getHttpServer()).post('/auth/login').send({ email, password: 'correct-horse-battery' });
+    const refreshToken: string = login.body.refreshToken;
+
+    const logout = await request(app.getHttpServer()).post('/auth/logout').send({ refreshToken });
+    expect(logout.status).toBe(201);
+    expect(logout.body).toEqual({ message: 'Logged out.' });
+
+    // The session is revoked; refreshing with that token now fails.
+    const afterLogout = await request(app.getHttpServer()).post('/auth/refresh').send({ refreshToken });
+    expect(afterLogout.status).toBe(401);
+
+    await cleanupUser(dataSource, email);
+  });
+
+  it('POST /auth/logout is idempotent and succeeds even for an invalid token', async () => {
+    const fakeJwt =
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwic2Vzc2lvbklkIjoiMSIsImp0aSI6IngiLCJ0eXBlIjoicmVmcmVzaCJ9.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    const response = await request(app.getHttpServer()).post('/auth/logout').send({ refreshToken: fakeJwt });
+    expect(response.status).toBe(201);
+    expect(response.body).toEqual({ message: 'Logged out.' });
+  });
+
+  it('POST /auth/logout-all revokes every session for the buyer', async () => {
+    const email = `logoutall-${randomUUID()}@example.com`;
+    await request(app.getHttpServer()).post('/auth/register').send({
+      fullName: 'Logout All Buyer',
+      email,
+      password: 'correct-horse-battery',
+    });
+    await dataSource.query(`UPDATE users SET status = 'ACTIVE', email_verified = true WHERE email = $1`, [email]);
+
+    // Two separate logins → two live sessions.
+    const login1 = await request(app.getHttpServer()).post('/auth/login').send({ email, password: 'correct-horse-battery' });
+    const login2 = await request(app.getHttpServer()).post('/auth/login').send({ email, password: 'correct-horse-battery' });
+
+    const logoutAll = await request(app.getHttpServer())
+      .post('/auth/logout-all')
+      .set('Authorization', `Bearer ${login1.body.accessToken}`);
+    expect(logoutAll.status).toBe(201);
+    expect(logoutAll.body).toEqual({ message: 'Logged out of all devices.' });
+
+    // Both sessions' refresh tokens are now dead.
+    const refresh1 = await request(app.getHttpServer()).post('/auth/refresh').send({ refreshToken: login1.body.refreshToken });
+    const refresh2 = await request(app.getHttpServer()).post('/auth/refresh').send({ refreshToken: login2.body.refreshToken });
+    expect(refresh1.status).toBe(401);
+    expect(refresh2.status).toBe(401);
+
+    // No live sessions remain.
+    const [live] = (await dataSource.query(
+      `SELECT count(*)::int AS n FROM auth_session WHERE user_id = (SELECT id FROM users WHERE email = $1) AND revoked_at IS NULL`,
+      [email],
+    )) as Array<{ n: number }>;
+    expect(live.n).toBe(0);
+
+    await cleanupUser(dataSource, email);
+  });
+
+  it('POST /auth/logout-all revokes a rotated session too, leaving nothing live', async () => {
+    // Guards the invariant that logout-all and refresh rotation serialize on
+    // the user row: after rotating a token, logout-all must kill the freshly
+    // minted session as well, not just the original.
+    const email = `logoutall-rotate-${randomUUID()}@example.com`;
+    await request(app.getHttpServer()).post('/auth/register').send({
+      fullName: 'Logout All Rotate Buyer',
+      email,
+      password: 'correct-horse-battery',
+    });
+    await dataSource.query(`UPDATE users SET status = 'ACTIVE', email_verified = true WHERE email = $1`, [email]);
+
+    const login = await request(app.getHttpServer()).post('/auth/login').send({ email, password: 'correct-horse-battery' });
+
+    // Rotate: the original session is revoked, a new one is minted.
+    const refreshed = await request(app.getHttpServer()).post('/auth/refresh').send({ refreshToken: login.body.refreshToken });
+    expect(refreshed.status).toBe(201);
+
+    // Log out everywhere using the rotated access token.
+    const logoutAll = await request(app.getHttpServer())
+      .post('/auth/logout-all')
+      .set('Authorization', `Bearer ${refreshed.body.accessToken}`);
+    expect(logoutAll.status).toBe(201);
+
+    // The rotated (newest) refresh token is now dead too.
+    const afterLogoutAll = await request(app.getHttpServer())
+      .post('/auth/refresh')
+      .send({ refreshToken: refreshed.body.refreshToken });
+    expect(afterLogoutAll.status).toBe(401);
+
+    const [live] = (await dataSource.query(
+      `SELECT count(*)::int AS n FROM auth_session WHERE user_id = (SELECT id FROM users WHERE email = $1) AND revoked_at IS NULL`,
+      [email],
+    )) as Array<{ n: number }>;
+    expect(live.n).toBe(0);
+
+    await cleanupUser(dataSource, email);
+  });
+
+  it('POST /auth/logout-all requires authentication', async () => {
+    const response = await request(app.getHttpServer()).post('/auth/logout-all');
+    expect(response.status).toBe(401);
+  });
+
+  it('POST /auth/refresh rejects a malformed refresh token', async () => {
+    // A non-JWT string fails DTO validation (@IsJWT) → 400.
+    const garbage = await request(app.getHttpServer()).post('/auth/refresh').send({ refreshToken: 'not-a-jwt' });
+    expect(garbage.status).toBe(400);
+
+    // A syntactically valid but unrecognised JWT is rejected by the service
+    // (wrong signature) → 401.
+    const fakeJwt =
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwic2Vzc2lvbklkIjoiMSIsImp0aSI6IngiLCJ0eXBlIjoicmVmcmVzaCJ9.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    const forged = await request(app.getHttpServer()).post('/auth/refresh').send({ refreshToken: fakeJwt });
+    expect(forged.status).toBe(401);
+  });
+
+  it('GET /auth/me returns the authenticated buyer for a valid access token', async () => {
+    const email = `me-${randomUUID()}@example.com`;
+    const registration = await request(app.getHttpServer()).post('/auth/register').send({
+      fullName: 'Me Buyer',
+      email,
+      password: 'correct-horse-battery',
+    });
+    expect(registration.status).toBe(201);
+    await dataSource.query(`UPDATE users SET status = 'ACTIVE', email_verified = true WHERE email = $1`, [email]);
+
+    const login = await request(app.getHttpServer()).post('/auth/login').send({ email, password: 'correct-horse-battery' });
+    expect(login.status).toBe(201);
+    const accessToken: string = login.body.accessToken;
+
+    const me = await request(app.getHttpServer()).get('/auth/me').set('Authorization', `Bearer ${accessToken}`);
+
+    expect(me.status).toBe(200);
+    expect(me.body).toMatchObject({ email, userType: 'BUYER' });
+    expect(me.body.id).toBeDefined();
+    expect(me.body.publicId).toBeDefined();
+    // Buyers have no organization, hold the BUYER role, and (until the BUYER
+    // role's permissions are seeded) no resolved permissions.
+    expect(me.body.organizationId).toBeNull();
+    expect(me.body.roles).toEqual(['BUYER']);
+    expect(me.body.permissions).toEqual([]);
+
+    await cleanupUser(dataSource, email);
+  });
+
+  it('GET /auth/me rejects a refresh token presented as a bearer access token', async () => {
+    // A refresh token carries `sub` too; without the access-token `type`
+    // check it could pass the guard (especially if both secrets matched) and
+    // reach guarded routes for its much longer lifetime.
+    const email = `refresh-as-access-${randomUUID()}@example.com`;
+    await request(app.getHttpServer()).post('/auth/register').send({
+      fullName: 'Refresh As Access Buyer',
+      email,
+      password: 'correct-horse-battery',
+    });
+    await dataSource.query(`UPDATE users SET status = 'ACTIVE', email_verified = true WHERE email = $1`, [email]);
+    const login = await request(app.getHttpServer()).post('/auth/login').send({ email, password: 'correct-horse-battery' });
+
+    const me = await request(app.getHttpServer())
+      .get('/auth/me')
+      .set('Authorization', `Bearer ${login.body.refreshToken}`);
+    expect(me.status).toBe(401);
+
+    await cleanupUser(dataSource, email);
+  });
+
+  it('GET /auth/me rejects a missing or malformed token', async () => {
+    const noToken = await request(app.getHttpServer()).get('/auth/me');
+    expect(noToken.status).toBe(401);
+
+    const garbage = await request(app.getHttpServer()).get('/auth/me').set('Authorization', 'Bearer not-a-real-jwt');
+    expect(garbage.status).toBe(401);
+
+    const wrongScheme = await request(app.getHttpServer()).get('/auth/me').set('Authorization', 'Basic abc123');
+    expect(wrongScheme.status).toBe(401);
+  });
+
+  it('GET /auth/me rejects a valid token whose account is no longer ACTIVE', async () => {
+    // A cryptographically valid token must stop working the moment the
+    // account is blocked — the guard re-checks status against the DB.
+    const email = `blocked-${randomUUID()}@example.com`;
+    await request(app.getHttpServer()).post('/auth/register').send({
+      fullName: 'Blocked Buyer',
+      email,
+      password: 'correct-horse-battery',
+    });
+    await dataSource.query(`UPDATE users SET status = 'ACTIVE', email_verified = true WHERE email = $1`, [email]);
+    const login = await request(app.getHttpServer()).post('/auth/login').send({ email, password: 'correct-horse-battery' });
+    const accessToken: string = login.body.accessToken;
+
+    // Block the account after the token was issued.
+    await dataSource.query(`UPDATE users SET status = 'BLOCKED' WHERE email = $1`, [email]);
+
+    const me = await request(app.getHttpServer()).get('/auth/me').set('Authorization', `Bearer ${accessToken}`);
+    expect(me.status).toBe(401);
+
+    await cleanupUser(dataSource, email);
+  });
+
   it('POST /auth/login rejects invalid credentials and records a failed attempt', async () => {
     const email = `failed-login-${randomUUID()}@example.com`;
     const registration = await request(app.getHttpServer()).post('/auth/register').send({
@@ -393,6 +633,7 @@ describe('AuthController (e2e)', () => {
 });
 
 async function cleanupUser(dataSource: DataSource, email: string): Promise<void> {
+  await dataSource.query(`DELETE FROM auth_session WHERE user_id = (SELECT id FROM users WHERE email = $1)`, [email]);
   await dataSource.query(`DELETE FROM user_token WHERE user_id = (SELECT id FROM users WHERE email = $1)`, [email]);
   await dataSource.query(`DELETE FROM user_role WHERE user_id = (SELECT id FROM users WHERE email = $1)`, [email]);
   await dataSource.query(`DELETE FROM buyer_profile WHERE user_id = (SELECT id FROM users WHERE email = $1)`, [email]);

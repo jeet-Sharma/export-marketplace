@@ -26,6 +26,7 @@ import type { LoginDto } from './dto/login.dto.js';
 import type { LoginResponseDto } from './dto/login-response.dto.js';
 import type { RegisterBuyerDto } from './dto/register-buyer.dto.js';
 import type { RegisterBuyerResponseDto } from './dto/register-buyer-response.dto.js';
+import type { RefreshTokenPayload } from './auth.types.js';
 
 const EMAIL_VERIFY_TOKEN_BYTES = 32; // 256 bits, matches typical session-token entropy
 const EMAIL_VERIFY_EXPIRY_HOURS = 1; // Data_Modeling_Complete.md Part 2.7: "Reset: 1 hour"
@@ -147,21 +148,144 @@ export class AuthService {
       throw new UnauthorizedException('Invalid email or password.');
     }
 
-    const payload = {
-      sub: session.user.id,
+    return this.signTokenPair({
+      userId: session.user.id,
       publicId: session.user.publicId,
       userType: session.user.userType,
-    };
-    const accessToken = await this.jwtService.signAsync(payload, {
-      secret: this.authConfig.accessSecret,
-      expiresIn: this.authConfig.accessTokenTtlSeconds,
+      sessionId: session.sessionId,
+      refreshTokenId: session.refreshTokenId,
     });
-    const refreshToken = await this.jwtService.signAsync(
-      { sub: session.user.id, sessionId: session.sessionId, jti: session.refreshTokenId, type: 'refresh' },
-      {
+  }
+
+  /**
+   * Exchange a valid refresh token for a fresh access + refresh token pair.
+   *
+   * Refresh tokens are ROTATED: each successful refresh revokes the session
+   * row the presented token belonged to and issues a brand-new session +
+   * token pair. So a refresh token is single-use — if a stolen one is
+   * replayed after the legitimate client already refreshed, its session is
+   * already revoked and the replay is rejected.
+   */
+  async refreshTokens(refreshToken: string): Promise<LoginResponseDto> {
+    if (!this.authConfig.accessSecret || !this.authConfig.refreshSecret) {
+      throw new ServiceUnavailableException('Authentication is not configured.');
+    }
+
+    let payload: RefreshTokenPayload;
+    try {
+      payload = await this.jwtService.verifyAsync<RefreshTokenPayload>(refreshToken, {
         secret: this.authConfig.refreshSecret,
-        expiresIn: this.authConfig.refreshTokenTtlSeconds,
-      },
+      });
+    } catch {
+      throw new UnauthorizedException('Invalid or expired refresh token.');
+    }
+    if (payload.type !== 'refresh' || !payload.sessionId || !payload.jti) {
+      throw new UnauthorizedException('Invalid or expired refresh token.');
+    }
+
+    const presentedHash = createHash('sha256').update(payload.jti).digest('hex');
+
+    const rotated = await this.dataSource.transaction(async (manager) => {
+      // Lock the owning user row FIRST. This is the shared anchor that
+      // serializes rotation against logoutAll: rotation inserts a brand-new
+      // session row that a concurrent bulk "revoke all live sessions" UPDATE
+      // can't see until this transaction commits, so without a common lock
+      // logoutAll could complete between our insert and commit and leave the
+      // freshly-minted session alive. Both paths take this same user lock
+      // before touching auth_session, so they can never interleave.
+      const lockUser = await manager
+        .getRepository(UserEntity)
+        .createQueryBuilder('user')
+        .setLock('pessimistic_write')
+        .where('user.id = :id', { id: payload.sub })
+        .getOne();
+      if (!lockUser) {
+        return null;
+      }
+
+      // Lock the session row so a concurrent replay of the same refresh
+      // token can't both pass validation before either revokes it.
+      const session = await manager
+        .getRepository(AuthSessionEntity)
+        .createQueryBuilder('session')
+        .setLock('pessimistic_write')
+        .where('session.id = :id', { id: payload.sessionId })
+        .getOne();
+
+      const now = new Date();
+      // Reject if the session is missing, already revoked, expired, or its
+      // stored hash doesn't match the presented token. Constant response.
+      if (
+        !session ||
+        session.revokedAt ||
+        session.expiresAt.getTime() <= now.getTime() ||
+        session.refreshTokenHash !== presentedHash ||
+        session.userId !== payload.sub
+      ) {
+        return null;
+      }
+
+      // Reuse the already-locked user row (session.userId === payload.sub,
+      // verified just above). No second read needed.
+      const user = lockUser;
+      if (user.status !== 'ACTIVE') {
+        return null;
+      }
+
+      // Rotate: revoke the presented session (superseded, not a logout)...
+      session.revokedAt = now;
+      session.revokedReason = 'ROTATED';
+      session.lastUsedAt = now;
+      await manager.getRepository(AuthSessionEntity).save(session);
+
+      // ...and mint a fresh one.
+      const refreshTokenId = randomUUID();
+      const newSession = await manager.getRepository(AuthSessionEntity).save(
+        manager.getRepository(AuthSessionEntity).create({
+          userId: user.id,
+          refreshTokenHash: createHash('sha256').update(refreshTokenId).digest('hex'),
+          userAgent: session.userAgent,
+          ip: session.ip,
+          expiresAt: new Date(Date.now() + this.authConfig.refreshTokenTtlSeconds * 1000),
+          revokedAt: null,
+          revokedReason: null,
+        }),
+      );
+
+      return { user, sessionId: newSession.id, refreshTokenId };
+    });
+
+    if (!rotated) {
+      throw new UnauthorizedException('Invalid or expired refresh token.');
+    }
+
+    return this.signTokenPair({
+      userId: rotated.user.id,
+      publicId: rotated.user.publicId,
+      userType: rotated.user.userType,
+      sessionId: rotated.sessionId,
+      refreshTokenId: rotated.refreshTokenId,
+    });
+  }
+
+  /**
+   * Signs an access token + refresh token for an already-persisted session.
+   * Shared by login and refresh so the token shape stays identical in both.
+   */
+  private async signTokenPair(input: {
+    userId: string;
+    publicId: string;
+    userType: 'PLATFORM' | 'VENDOR' | 'BUYER';
+    sessionId: string;
+    refreshTokenId: string;
+  }): Promise<LoginResponseDto> {
+    const accessToken = await this.jwtService.signAsync(
+      { sub: input.userId, publicId: input.publicId, userType: input.userType, type: 'access' },
+      { secret: this.authConfig.accessSecret, expiresIn: this.authConfig.accessTokenTtlSeconds },
+    );
+    const refreshToken = await this.jwtService.signAsync(
+      { sub: input.userId, sessionId: input.sessionId, jti: input.refreshTokenId, type: 'refresh' },
+      { secret: this.authConfig.refreshSecret, expiresIn: this.authConfig.refreshTokenTtlSeconds },
     );
 
     return {
@@ -170,6 +294,78 @@ export class AuthService {
       tokenType: 'Bearer',
       expiresIn: this.authConfig.accessTokenTtlSeconds,
     };
+  }
+
+  /**
+   * Log out one device: revoke the session the presented refresh token
+   * belongs to. Deliberately idempotent — an invalid, expired, forged, or
+   * already-revoked token yields the same success response, so logout never
+   * errors and never reveals whether the token was valid. After this, that
+   * refresh token can't be rotated (its session is revoked); the matching
+   * access token still works until it expires (short-lived by design).
+   */
+  async logout(refreshToken: string): Promise<{ message: string }> {
+    const success = { message: 'Logged out.' };
+
+    let payload: RefreshTokenPayload;
+    try {
+      payload = await this.jwtService.verifyAsync<RefreshTokenPayload>(refreshToken, {
+        secret: this.authConfig.refreshSecret,
+      });
+    } catch {
+      return success;
+    }
+    if (payload.type !== 'refresh' || !payload.sessionId || !payload.jti) {
+      return success;
+    }
+
+    const presentedHash = createHash('sha256').update(payload.jti).digest('hex');
+    await this.dataSource
+      .getRepository(AuthSessionEntity)
+      .createQueryBuilder()
+      .update(AuthSessionEntity)
+      .set({ revokedAt: new Date(), revokedReason: 'LOGOUT' })
+      .where('id = :id', { id: payload.sessionId })
+      .andWhere('user_id = :userId', { userId: payload.sub })
+      .andWhere('refresh_token_hash = :hash', { hash: presentedHash })
+      .andWhere('revoked_at IS NULL')
+      .execute();
+
+    return success;
+  }
+
+  /**
+   * Log out of all devices: revoke every currently-live session for the
+   * user. Called from a JwtAuthGuard-protected route, so the user id comes
+   * from the verified access token, never from the request body.
+   */
+  async logoutAll(userId: string): Promise<{ message: string }> {
+    await this.dataSource.transaction(async (manager) => {
+      // Lock the user row before revoking, using the SAME anchor
+      // refreshTokens locks first. If a rotation is mid-flight, this blocks
+      // until it commits (so its newly-inserted session is now visible and
+      // gets revoked below); if this wins the lock, rotation blocks until we
+      // commit, then sees the old session already revoked and mints nothing.
+      // Either ordering leaves zero live sessions — no refreshed session can
+      // slip past logout-all.
+      await manager
+        .getRepository(UserEntity)
+        .createQueryBuilder('user')
+        .setLock('pessimistic_write')
+        .where('user.id = :id', { id: userId })
+        .getOne();
+
+      await manager
+        .getRepository(AuthSessionEntity)
+        .createQueryBuilder()
+        .update(AuthSessionEntity)
+        .set({ revokedAt: new Date(), revokedReason: 'LOGOUT' })
+        .where('user_id = :userId', { userId })
+        .andWhere('revoked_at IS NULL')
+        .execute();
+    });
+
+    return { message: 'Logged out of all devices.' };
   }
 
   async registerBuyer(dto: RegisterBuyerDto): Promise<RegisterBuyerResponseDto> {
