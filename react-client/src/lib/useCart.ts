@@ -29,13 +29,33 @@ const STORAGE_KEY = "exporthub.buyerCart";
 // cart must stay empty; there is nothing to seed it with.
 const EMPTY_CART: CartItem[] = [];
 
+// useSyncExternalStore compares snapshots by reference — if getSnapshot
+// returns a brand-new array every call (which JSON.parse always does,
+// even when the underlying stored string is unchanged), React sees a
+// "different" snapshot on every render and either warns about an
+// unstable getSnapshot or loops re-rendering forever. This cache makes
+// readCart() return the exact same array reference for the same raw
+// stored string, only parsing again when the string actually changes.
+let cachedRaw: string | null = null;
+let cachedItems: CartItem[] = EMPTY_CART;
+
 function readCart(): CartItem[] {
+  let raw: string | null;
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as CartItem[]) : EMPTY_CART;
+    raw = window.localStorage.getItem(STORAGE_KEY);
   } catch {
     return EMPTY_CART;
   }
+
+  if (raw === cachedRaw) return cachedItems;
+
+  cachedRaw = raw;
+  try {
+    cachedItems = raw ? (JSON.parse(raw) as CartItem[]) : EMPTY_CART;
+  } catch {
+    cachedItems = EMPTY_CART;
+  }
+  return cachedItems;
 }
 
 // getServerSnapshot — used for the server render and the client's very

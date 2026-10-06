@@ -21,13 +21,32 @@ import type { WishlistItem } from "@/types/wishlist";
 // a chosen purchase the moment they interact with the page.
 const STORAGE_KEY = "exporthub.buyerWishlist";
 
+// useSyncExternalStore compares snapshots by reference — JSON.parse
+// always returns a new array, so without caching, getSnapshot would
+// look "different" on every render and either warn about an unstable
+// snapshot or loop forever. This cache returns the same array reference
+// for the same raw stored string, re-parsing only when it actually
+// changes — see useCart.ts's readCart for the same pattern.
+let cachedRaw: string | null = null;
+let cachedItems: WishlistItem[] = seedWishlistItems;
+
 function readWishlist(): WishlistItem[] {
+  let raw: string | null;
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as WishlistItem[]) : seedWishlistItems;
+    raw = window.localStorage.getItem(STORAGE_KEY);
   } catch {
     return seedWishlistItems;
   }
+
+  if (raw === cachedRaw) return cachedItems;
+
+  cachedRaw = raw;
+  try {
+    cachedItems = raw ? (JSON.parse(raw) as WishlistItem[]) : seedWishlistItems;
+  } catch {
+    cachedItems = seedWishlistItems;
+  }
+  return cachedItems;
 }
 
 // getServerSnapshot must return the same value the server rendered (no

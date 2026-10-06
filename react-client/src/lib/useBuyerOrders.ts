@@ -21,13 +21,32 @@ import type { BuyerOrder } from "@/types/order";
 // words in the buyer's mouth the way seeding their active cart did.
 const STORAGE_KEY = "exporthub.buyerOrders";
 
+// useSyncExternalStore compares snapshots by reference — JSON.parse
+// always returns a new array, so without caching, getSnapshot would
+// look "different" on every render and either warn about an unstable
+// snapshot or loop forever. This cache returns the same array reference
+// for the same raw stored string, re-parsing only when it actually
+// changes — see useCart.ts's readCart for the same pattern.
+let cachedRaw: string | null = null;
+let cachedOrders: BuyerOrder[] = seedOrderBook;
+
 function readOrders(): BuyerOrder[] {
+  let raw: string | null;
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as BuyerOrder[]) : seedOrderBook;
+    raw = window.localStorage.getItem(STORAGE_KEY);
   } catch {
     return seedOrderBook;
   }
+
+  if (raw === cachedRaw) return cachedOrders;
+
+  cachedRaw = raw;
+  try {
+    cachedOrders = raw ? (JSON.parse(raw) as BuyerOrder[]) : seedOrderBook;
+  } catch {
+    cachedOrders = seedOrderBook;
+  }
+  return cachedOrders;
 }
 
 // getServerSnapshot must return the same value the server rendered (no
