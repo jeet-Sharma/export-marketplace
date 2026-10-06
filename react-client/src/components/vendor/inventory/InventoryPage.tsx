@@ -7,7 +7,7 @@ import StatRow from "@/components/vendor/dashboard/StatRow";
 import LowStockAlert from "@/components/vendor/dashboard/LowStockAlert";
 import InventoryTable from "@/components/vendor/inventory/InventoryTable";
 import { inventoryItems, inventoryStats, inventoryMeta } from "@/data/inventory";
-import { lowStockAlerts } from "@/data/seedData";
+import { lowStockAlerts, vendorProfile } from "@/data/seedData";
 
 export default function InventoryPage() {
   const [query, setQuery] = useState("");
@@ -28,6 +28,8 @@ export default function InventoryPage() {
         title="Inventory"
         breadcrumb="Vendor Panel / Inventory"
         actionLabel="+ Stock Entry"
+        verified={vendorProfile.verified}
+        verifiedLabel="Verified Supplier"
       />
 
       <main className="w-full px-4 py-6 sm:px-6">

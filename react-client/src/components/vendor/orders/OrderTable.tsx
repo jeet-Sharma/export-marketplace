@@ -1,9 +1,8 @@
 import Panel from "@/components/ui/Panel";
-import Table, { cellClassName } from "@/components/ui/Table";
+import Table from "@/components/ui/Table";
 import Button from "@/components/ui/Button";
-import StatusPill from "@/components/vendor/StatusPill";
+import OrderTableRowShell from "@/components/shared/OrderTableRowShell";
 import { ordersMeta } from "@/data/orders";
-import { formatStatValue } from "@/lib/formatters";
 import type { Order } from "@/types/order";
 
 const COLUMNS = [
@@ -41,31 +40,18 @@ export default function OrderTable({ orders = [], onRowAction }: OrderTableProps
         emptyMessage="No orders match your search."
       >
         {orders.map((order) => (
-          <tr key={order.id}>
-            <td
-              className={`px-4 py-3 font-heading font-semibold ${cellClassName({ emphasis: true })}`}
-            >
-              {order.id}
-            </td>
-            <td className={`px-4 py-3 ${cellClassName()}`}>{order.product}</td>
-            <td className={`px-4 py-3 ${cellClassName()}`}>
-              <span>{order.buyer}</span>
-              <span className="text-text-dim"> ({order.country})</span>
-            </td>
-            <td className={`px-4 py-3 ${cellClassName()}`}>{order.quantity}</td>
-            <td
-              className={`px-4 py-3 font-heading font-medium ${cellClassName()}`}
-            >
-              {formatStatValue(order.value, "currency")}
-            </td>
-            <td className={`px-4 py-3 ${cellClassName()}`}>{order.incoterm}</td>
-            <td className={`px-4 py-3 font-body ${cellClassName({ dim: true })}`}>
-              {order.placed}
-            </td>
-            <td className={`px-4 py-3 ${cellClassName()}`}>
-              <StatusPill status={order.status} />
-            </td>
-            <td className={`px-4 py-3 ${cellClassName()}`}>
+          <OrderTableRowShell
+            key={order.id}
+            id={order.id}
+            product={order.product}
+            counterpartyName={order.buyer}
+            country={order.country}
+            quantity={order.quantity}
+            value={order.value}
+            incoterm={order.incoterm}
+            placed={order.placed}
+            status={order.status}
+            action={
               <Button
                 variant="ghost"
                 size="sm"
@@ -74,8 +60,8 @@ export default function OrderTable({ orders = [], onRowAction }: OrderTableProps
               >
                 {actionFor(order.status)}
               </Button>
-            </td>
-          </tr>
+            }
+          />
         ))}
       </Table>
     </Panel>

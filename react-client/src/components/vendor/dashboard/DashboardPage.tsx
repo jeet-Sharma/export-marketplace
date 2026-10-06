@@ -10,6 +10,7 @@ import {
   recentOrders,
   pendingRfqs,
   lowStockAlerts,
+  vendorProfile,
 } from "@/data/seedData";
 
 export default function DashboardPage() {
@@ -20,6 +21,8 @@ export default function DashboardPage() {
         title="Dashboard"
         breadcrumb="Vendor Panel / Dashboard"
         actionLabel="+ New Product"
+        verified={vendorProfile.verified}
+        verifiedLabel="Verified Supplier"
       />
 
       <main className="w-full px-4 py-6 sm:px-6">

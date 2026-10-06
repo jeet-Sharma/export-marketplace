@@ -8,4 +8,8 @@ export const routes = {
   signup: "/signup",
   sellWithUs: "/sell-with-us",
   vendorDashboard: "/vendor/dashboard",
+  buyerDashboard: "/buyer/dashboard",
+  buyerOrders: "/buyer/orders",
+  buyerRfqs: "/buyer/rfqs",
+  buyerCart: "/buyer/cart",
 } as const;

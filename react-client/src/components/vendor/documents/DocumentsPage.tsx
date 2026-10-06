@@ -7,6 +7,7 @@ import StatRow from "@/components/vendor/dashboard/StatRow";
 import DocumentTable from "@/components/vendor/documents/DocumentTable";
 import UploadSlot from "@/components/vendor/documents/UploadSlot";
 import { documents, documentStats, documentsMeta } from "@/data/documents";
+import { vendorProfile } from "@/data/seedData";
 
 export default function DocumentsPage() {
   const [query, setQuery] = useState("");
@@ -30,6 +31,8 @@ export default function DocumentsPage() {
         title="Documents"
         breadcrumb="Vendor Panel / Documents & Compliance"
         actionLabel="+ Upload"
+        verified={vendorProfile.verified}
+        verifiedLabel="Verified Supplier"
       />
 
       <main className="w-full px-4 py-6 sm:px-6">

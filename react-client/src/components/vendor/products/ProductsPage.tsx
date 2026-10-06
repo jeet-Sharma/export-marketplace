@@ -5,6 +5,7 @@ import PageHeader from "@/components/vendor/PageHeader";
 import TableToolbar from "@/components/vendor/TableToolbar";
 import ProductTable from "@/components/vendor/products/ProductTable";
 import { productCatalog, productsMeta } from "@/data/products";
+import { vendorProfile } from "@/data/seedData";
 
 export default function ProductsPage() {
   const [query, setQuery] = useState("");
@@ -25,6 +26,8 @@ export default function ProductsPage() {
         title="Products"
         breadcrumb="Vendor Panel / Product Management"
         actionLabel="+ New Product"
+        verified={vendorProfile.verified}
+        verifiedLabel="Verified Supplier"
       />
 
       <main className="w-full px-4 py-6 sm:px-6">
