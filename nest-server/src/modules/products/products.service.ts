@@ -1,0 +1,504 @@
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { DataSource, type EntityManager, QueryFailedError, Repository } from 'typeorm';
+import { Product } from '../../database/entities/product.entity.js';
+import { ProductCountry } from '../../database/entities/product-country.entity.js';
+import { ProductImage } from '../../database/entities/product-image.entity.js';
+import { ProductPriceTier } from '../../database/entities/product-price-tier.entity.js';
+import { PaginatedResponseDto } from '../../common/dto/paginated-response.dto.js';
+import { ProductDetailDto, toProductDetailDto } from '../../common/dto/product-detail.dto.js';
+import { StorageService } from '../storage/storage.service.js';
+import type { CreateProductImageDto } from './dto/create-product-image.dto.js';
+import type { CreateProductDto } from './dto/create-product.dto.js';
+import type { PriceTierDto } from './dto/price-tier.dto.js';
+import type { QueryAdminProductsDto } from './dto/query-admin-products.dto.js';
+import type { UpdateProductDto } from './dto/update-product.dto.js';
+
+// Collapses an optional DTO field into the `T | null` shape every
+// nullable Product column expects — `undefined` (field absent from the
+// request) and explicit `null` both become `null`. Used to cut the
+// repeated `dto.x ?? null` / `dto.x !== undefined ? dto.x.toString() : null`
+// boilerplate across create()/update() below.
+function toNullable<T>(value: T | null | undefined): T | null {
+  return value ?? null;
+}
+
+// Same as toNullable, but for numeric DTO fields that must be persisted
+// as `numeric`-column strings (see marketplace-domain.md's money-handling
+// rule) rather than JS numbers.
+function toNullableNumericString(value: number | null | undefined): string | null {
+  return value !== undefined && value !== null ? value.toString() : null;
+}
+
+// Fields a product must have before it may become/remain PUBLISHED. Per
+// Phase-1-API-Specification-v0.1 section 18, the exact mandatory set is
+// still an open BRD/PRD decision — this list is the minimal, defensible
+// subset (name + vendor are already DB NOT NULL; this adds the fields a
+// public listing/detail page cannot reasonably render without). Revisit
+// once Product Management finalizes section 18's open decisions.
+const PUBLISH_REQUIRED_FIELDS: Array<keyof Product> = ['name', 'vendorId'];
+
+@Injectable()
+export class ProductsService {
+  constructor(
+    @InjectRepository(Product)
+    private readonly productRepository: Repository<Product>,
+    @InjectRepository(ProductPriceTier)
+    private readonly priceTierRepository: Repository<ProductPriceTier>,
+    @InjectRepository(ProductCountry)
+    private readonly productCountryRepository: Repository<ProductCountry>,
+    @InjectRepository(ProductImage)
+    private readonly productImageRepository: Repository<ProductImage>,
+    private readonly dataSource: DataSource,
+    private readonly storageService: StorageService,
+  ) {}
+
+  async findAll(query: QueryAdminProductsDto): Promise<PaginatedResponseDto<Product>> {
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 20;
+
+    const qb = this.productRepository
+      .createQueryBuilder('product')
+      .leftJoinAndSelect('product.category', 'category')
+      .leftJoinAndSelect('product.vendor', 'vendor');
+
+    if (query.status) {
+      qb.andWhere('product.status = :status', { status: query.status });
+    }
+    if (query.categoryId) {
+      qb.andWhere('product.categoryId = :categoryId', { categoryId: query.categoryId });
+    }
+    if (query.vendorId) {
+      qb.andWhere('product.vendorId = :vendorId', { vendorId: query.vendorId });
+    }
+    if (query.search) {
+      qb.andWhere('product.name ILIKE :search', { search: `%${query.search}%` });
+    }
+
+    switch (query.sort) {
+      case 'price_asc':
+        qb.orderBy('product.price', 'ASC', 'NULLS LAST');
+        break;
+      case 'price_desc':
+        qb.orderBy('product.price', 'DESC', 'NULLS LAST');
+        break;
+      case 'newest':
+      default:
+        qb.orderBy('product.createdAt', 'DESC');
+        break;
+    }
+
+    qb.skip((page - 1) * pageSize).take(pageSize);
+
+    const [items, totalItems] = await qb.getManyAndCount();
+
+    return {
+      items,
+      pagination: {
+        page,
+        pageSize,
+        totalItems,
+        totalPages: Math.ceil(totalItems / pageSize),
+      },
+    };
+  }
+
+  // Full management view, including images/price tiers/country mappings
+  // (section 6.2). Draft or published — authorization (product.view) is
+  // enforced at the controller/guard level, not here.
+  async findOneForAdmin(id: string): Promise<ProductDetailDto> {
+    const product = await this.productRepository.findOne({
+      where: { id },
+      relations: ['category', 'vendor', 'sourceCountry', 'createdByUser', 'updatedByUser'],
+    });
+    if (!product) {
+      throw new NotFoundException('Product not found');
+    }
+
+    const [priceTiers, productCountries] = await Promise.all([
+      this.priceTierRepository.find({ where: { productId: id }, order: { minQuantity: 'ASC' } }),
+      this.productCountryRepository.find({ where: { productId: id }, relations: ['country'] }),
+    ]);
+
+    return toProductDetailDto(
+      product,
+      priceTiers,
+      productCountries.map((pc) => pc.country),
+    );
+  }
+
+  // Slug allocation (and the race it's exposed to): generateUniqueSlug's
+  // existence check is only a best-effort first pass, since it runs
+  // before the transaction opens — two concurrent creates for the same
+  // product name can both pass it before either commits. The actual
+  // guarantee is the DB's UQ_products_slug constraint; MAX_SLUG_RETRIES
+  // below catches that constraint violation and retries with a freshly
+  // generated candidate rather than letting a raw QueryFailedError
+  // surface as a confusing 500 (see createWithUniqueSlug).
+  private static readonly MAX_SLUG_RETRIES = 5;
+
+  async create(dto: CreateProductDto, createdByUserId: string): Promise<Product> {
+    this.assertPriceTiersDoNotOverlap(dto.priceTiers);
+
+    for (let attempt = 1; attempt <= ProductsService.MAX_SLUG_RETRIES; attempt++) {
+      const slug = await this.generateUniqueSlug(dto.name, attempt > 1 ? attempt : undefined);
+
+      try {
+        return await this.dataSource.transaction((manager) =>
+          this.createWithSlug(manager, dto, slug, createdByUserId),
+        );
+      } catch (error) {
+        if (this.isUniqueViolation(error) && attempt < ProductsService.MAX_SLUG_RETRIES) {
+          continue;
+        }
+        if (this.isUniqueViolation(error)) {
+          throw new ConflictException({
+            code: 'CONFLICT',
+            message: 'Could not allocate a unique product slug, please try again',
+            errors: [{ field: 'name', message: 'A product with a conflicting slug already exists' }],
+          });
+        }
+        throw error;
+      }
+    }
+
+    // Unreachable — the loop above always returns or throws — but
+    // satisfies the compiler's control-flow analysis.
+    throw new ConflictException('Could not allocate a unique product slug');
+  }
+
+  private async createWithSlug(
+    manager: EntityManager,
+    dto: CreateProductDto,
+    slug: string,
+    createdByUserId: string,
+  ): Promise<Product> {
+    const product = manager.create(Product, {
+      slug,
+      name: dto.name,
+      description: toNullable(dto.description),
+      categoryId: toNullable(dto.categoryId),
+      vendorId: dto.vendorId,
+      status: dto.status,
+      price: toNullableNumericString(dto.price),
+      currencyCode: toNullable(dto.currencyCode),
+      unit: toNullable(dto.unit),
+      moq: toNullableNumericString(dto.moq),
+      hsCode: toNullable(dto.hsCode),
+      sourceCountryId: toNullable(dto.sourceCountryId),
+      exportEligibility: toNullable(dto.exportEligibility),
+      countryRestrictions: toNullable(dto.countryRestrictions),
+      estimatedDeliveryText: toNullable(dto.estimatedDeliveryText),
+      dutiesTaxesNote: toNullable(dto.dutiesTaxesNote),
+      createdBy: createdByUserId,
+      updatedBy: createdByUserId,
+      publishedAt: dto.status === 'PUBLISHED' ? new Date() : null,
+    });
+
+    if (dto.status === 'PUBLISHED') {
+      this.assertPublishable(product);
+    }
+
+    const saved = await manager.save(Product, product);
+
+    if (dto.priceTiers?.length) {
+      await manager.save(
+        ProductPriceTier,
+        dto.priceTiers.map((tier) => this.toPriceTierEntity(saved.id, tier)),
+      );
+    }
+
+    if (dto.targetCountryIds?.length) {
+      await manager.save(
+        ProductCountry,
+        dto.targetCountryIds.map((countryId) => ({ productId: saved.id, countryId })),
+      );
+    }
+
+    return saved;
+  }
+
+  // TypeORM wraps the underlying pg driver error in QueryFailedError;
+  // Postgres unique-violation is SQLSTATE 23505. Checked defensively
+  // against both `driverError.code` (current typeorm/pg) and a top-level
+  // `.code` fallback in case that shape changes across versions. Shared
+  // by create()'s slug-retry logic and addImage()'s primary-image race
+  // handling — both are "two concurrent writers hit the same unique
+  // constraint" cases, just on different constraints.
+  private isUniqueViolation(error: unknown): boolean {
+    if (!(error instanceof QueryFailedError)) {
+      return false;
+    }
+    const driverError = (error as QueryFailedError & { driverError?: { code?: string; constraint?: string } })
+      .driverError;
+    const code = driverError?.code ?? (error as { code?: string }).code;
+    return code === '23505';
+  }
+
+  async update(id: string, dto: UpdateProductDto, updatedByUserId: string): Promise<Product> {
+    const product = await this.productRepository.findOne({ where: { id } });
+    if (!product) {
+      throw new NotFoundException('Product not found');
+    }
+
+    this.assertPriceTiersDoNotOverlap(dto.priceTiers);
+
+    return this.dataSource.transaction(async (manager) => {
+      // Only fields actually present in the PATCH body are touched —
+      // `undefined` means "leave as-is", `null`/a real value both mean
+      // "set it" (via toNullable/toNullableNumericString). This is why
+      // each assignment is still its own `if (dto.x !== undefined)`
+      // guard rather than one generic loop: a loop would need the same
+      // per-field undefined check anyway, and this form stays directly
+      // traceable against the API spec's section 7 field table.
+      if (dto.name !== undefined) product.name = dto.name;
+      if (dto.description !== undefined) product.description = toNullable(dto.description);
+      if (dto.categoryId !== undefined) product.categoryId = toNullable(dto.categoryId);
+      if (dto.vendorId !== undefined) product.vendorId = dto.vendorId;
+      if (dto.price !== undefined) product.price = toNullableNumericString(dto.price);
+      if (dto.currencyCode !== undefined) product.currencyCode = toNullable(dto.currencyCode);
+      if (dto.unit !== undefined) product.unit = toNullable(dto.unit);
+      if (dto.moq !== undefined) product.moq = toNullableNumericString(dto.moq);
+      if (dto.hsCode !== undefined) product.hsCode = toNullable(dto.hsCode);
+      if (dto.sourceCountryId !== undefined) product.sourceCountryId = toNullable(dto.sourceCountryId);
+      if (dto.exportEligibility !== undefined) product.exportEligibility = toNullable(dto.exportEligibility);
+      if (dto.countryRestrictions !== undefined) {
+        product.countryRestrictions = toNullable(dto.countryRestrictions);
+      }
+      if (dto.estimatedDeliveryText !== undefined) {
+        product.estimatedDeliveryText = toNullable(dto.estimatedDeliveryText);
+      }
+      if (dto.dutiesTaxesNote !== undefined) product.dutiesTaxesNote = toNullable(dto.dutiesTaxesNote);
+      product.updatedBy = updatedByUserId;
+
+      // Published product edits remain published only if the resulting
+      // record still passes publish validation (API spec section 6.4/14).
+      if (product.status === 'PUBLISHED') {
+        this.assertPublishable(product);
+      }
+
+      const saved = await manager.save(Product, product);
+
+      if (dto.priceTiers !== undefined) {
+        await manager.delete(ProductPriceTier, { productId: id });
+        if (dto.priceTiers.length) {
+          await manager.save(
+            ProductPriceTier,
+            dto.priceTiers.map((tier) => this.toPriceTierEntity(id, tier)),
+          );
+        }
+      }
+
+      if (dto.targetCountryIds !== undefined) {
+        await manager.delete(ProductCountry, { productId: id });
+        if (dto.targetCountryIds.length) {
+          await manager.save(
+            ProductCountry,
+            dto.targetCountryIds.map((countryId) => ({ productId: id, countryId })),
+          );
+        }
+      }
+
+      return saved;
+    });
+  }
+
+  async publish(id: string): Promise<Product> {
+    const product = await this.productRepository.findOne({ where: { id } });
+    if (!product) {
+      throw new NotFoundException('Product not found');
+    }
+    if (product.status === 'PUBLISHED') {
+      return product;
+    }
+
+    this.assertPublishable(product);
+
+    product.status = 'PUBLISHED';
+    product.publishedAt = new Date();
+    return this.productRepository.save(product);
+  }
+
+  async unpublish(id: string): Promise<Product> {
+    const product = await this.productRepository.findOne({ where: { id } });
+    if (!product) {
+      throw new NotFoundException('Product not found');
+    }
+
+    product.status = 'DRAFT';
+    return this.productRepository.save(product);
+  }
+
+  // Requests a presigned S3 upload URL for a new product image. The
+  // object key is generated server-side (never client-supplied) via
+  // StorageService.buildKey, which sanitizes the filename and prefixes a
+  // randomUUID() to prevent path traversal/collisions — see security-rules.md.
+  async requestImageUploadUrl(productId: string, filename: string, contentType: string) {
+    await this.assertProductExists(productId);
+    const key = this.storageService.buildKey(productId, filename);
+    return this.storageService.getSignedUploadUrl(key, contentType);
+  }
+
+  // Persists image metadata after the client has already uploaded the
+  // bytes to S3 via the presigned URL above. Section 9.1.
+  //
+  // Security: objectKey is client-supplied, so it's verified two ways
+  // before being trusted: (1) it must fall under this product's own key
+  // prefix (see StorageService.keyBelongsToProduct), which prevents an
+  // admin with product.edit on one product from attaching another
+  // product's — or an arbitrary — bucket key to this product's metadata;
+  // (2) the object must actually exist in the bucket, which prevents
+  // recording metadata for an upload that never happened.
+  async addImage(productId: string, dto: CreateProductImageDto): Promise<ProductImage> {
+    await this.assertProductExists(productId);
+
+    if (!this.storageService.keyBelongsToProduct(dto.objectKey, productId)) {
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: 'Image object key does not belong to this product',
+        errors: [{ field: 'objectKey', message: 'objectKey must be a key issued for this product' }],
+      });
+    }
+
+    if (!(await this.storageService.objectExists(dto.objectKey))) {
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: 'Image object was not found in storage',
+        errors: [{ field: 'objectKey', message: 'Upload the file before persisting its metadata' }],
+      });
+    }
+
+    try {
+      return await this.dataSource.transaction(async (manager) => {
+        // Only one primary image per product (API spec section 14). This
+        // demote-then-insert is the application-level enforcement; the
+        // UQ_product_images_product_id_primary partial unique index
+        // (see the migration) is the actual guarantee against two
+        // concurrent isPrimary:true requests both demoting before either
+        // inserts — if that race is lost, the insert below throws and is
+        // converted to a 409 below rather than a raw 500.
+        if (dto.isPrimary) {
+          await manager.update(ProductImage, { productId, isPrimary: true }, { isPrimary: false });
+        }
+
+        const image = manager.create(ProductImage, {
+          productId,
+          s3ObjectKey: dto.objectKey,
+          altText: dto.altText ?? null,
+          isPrimary: dto.isPrimary ?? false,
+          sortOrder: dto.sortOrder ?? 0,
+        });
+        return await manager.save(ProductImage, image);
+      });
+    } catch (error) {
+      if (this.isUniqueViolation(error)) {
+        throw new ConflictException({
+          code: 'CONFLICT',
+          message: 'Another image was concurrently set as primary for this product',
+          errors: [{ field: 'isPrimary', message: 'Retry the request' }],
+        });
+      }
+      throw error;
+    }
+  }
+
+  // Removes image metadata and the underlying S3 object (section 9.2).
+  // The DB row is removed first, inside a transaction; the S3 delete is
+  // best-effort after commit — an orphaned S3 object is a cheaper failure
+  // mode than a DB row pointing at nothing.
+  async removeImage(productId: string, imageId: string): Promise<void> {
+    const image = await this.productImageRepository.findOne({ where: { id: imageId, productId } });
+    if (!image) {
+      throw new NotFoundException('Product image not found');
+    }
+
+    await this.productImageRepository.delete({ id: imageId });
+    await this.storageService.deleteObject(image.s3ObjectKey);
+  }
+
+  private async assertProductExists(productId: string): Promise<void> {
+    const exists = await this.productRepository.exists({ where: { id: productId } });
+    if (!exists) {
+      throw new NotFoundException('Product not found');
+    }
+  }
+
+  // Publish requires all PUBLISH_REQUIRED_FIELDS to be present. See the
+  // constant's comment — the exact mandatory set remains partly open per
+  // the API spec's section 18 and should be revisited with Product
+  // Management rather than silently expanded/narrowed here.
+  private assertPublishable(product: Product): void {
+    const missing = PUBLISH_REQUIRED_FIELDS.filter((field) => {
+      const value = product[field];
+      return value === null || value === undefined || value === '';
+    });
+    if (missing.length > 0) {
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: 'Product is missing required fields for publishing',
+        errors: missing.map((field) => ({ field, message: `${field} is required to publish` })),
+      });
+    }
+  }
+
+  private assertPriceTiersDoNotOverlap(tiers: PriceTierDto[] | undefined): void {
+    if (!tiers || tiers.length < 2) {
+      return;
+    }
+
+    const sorted = [...tiers].sort((a, b) => a.minQuantity - b.minQuantity);
+    for (let i = 0; i < sorted.length - 1; i++) {
+      const current = sorted[i];
+      const next = sorted[i + 1];
+      const currentMax = current.maxQuantity ?? Infinity;
+      if (currentMax >= next.minQuantity) {
+        throw new ConflictException({
+          code: 'VALIDATION_ERROR',
+          message: 'Price tier ranges must not overlap',
+          errors: [{ field: 'priceTiers', message: 'Overlapping quantity ranges detected' }],
+        });
+      }
+    }
+  }
+
+  private toPriceTierEntity(productId: string, tier: PriceTierDto): Partial<ProductPriceTier> {
+    return {
+      productId,
+      minQuantity: tier.minQuantity.toString(),
+      maxQuantity: tier.maxQuantity != null ? tier.maxQuantity.toString() : null,
+      price: tier.price.toString(),
+      shippingEstimate: tier.shippingEstimate != null ? tier.shippingEstimate.toString() : null,
+      dutiesEstimate: tier.dutiesEstimate != null ? tier.dutiesEstimate.toString() : null,
+      taxesEstimate: tier.taxesEstimate != null ? tier.taxesEstimate.toString() : null,
+      currencyCode: tier.currencyCode,
+    };
+  }
+
+  // Best-effort uniqueness check — see the MAX_SLUG_RETRIES comment on
+  // create(). `retryAttempt`, when provided, salts the starting suffix so
+  // a retry after a lost race doesn't recompute the exact same candidate
+  // that just lost.
+  private async generateUniqueSlug(name: string, retryAttempt?: number): Promise<string> {
+    const base = name
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 200);
+
+    const baseOrFallback = base || 'product';
+    let suffix = retryAttempt ? retryAttempt * 1000 + Math.floor(Math.random() * 1000) : 1;
+    let candidate = suffix === 1 ? baseOrFallback : `${baseOrFallback}-${suffix}`;
+
+    while (await this.productRepository.exists({ where: { slug: candidate } })) {
+      suffix += 1;
+      candidate = `${baseOrFallback}-${suffix}`;
+    }
+    return candidate;
+  }
+}

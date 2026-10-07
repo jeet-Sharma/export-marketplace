@@ -14,6 +14,11 @@ import { Product } from './product.entity.js';
 // marketplace-domain.md's AWS S3 Image Storage section.
 @Entity('product_images')
 @Index(['productId', 'sortOrder'])
+// Enforces "at most one primary image per product" at the DB level — see
+// migration 1759751600000-AddProductImagePrimaryUniqueIndex. A plain
+// UNIQUE(productId, isPrimary) would be wrong here since it would also
+// forbid multiple non-primary images per product.
+@Index('UQ_product_images_product_id_primary', ['productId'], { unique: true, where: '"is_primary" = true' })
 export class ProductImage {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
