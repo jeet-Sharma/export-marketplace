@@ -72,6 +72,12 @@ services:
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-test}
       AWS_S3_BUCKET: ${AWS_S3_BUCKET:-export-marketplace-documents}
       AWS_SQS_QUEUE_NAME: ${AWS_SQS_QUEUE_NAME:-export-marketplace-events}
+      # AWS_S3_PUBLIC_ENDPOINT is intentionally NOT set here: this stack uses
+      # LocalStack as a loopback-only internal service and does not serve
+      # presigned links to external clients. With it unset, presigned URLs are
+      # returned unmodified. When you move to real AWS, leave AWS_ENDPOINT empty
+      # and the SDK's native (already host-reachable) URLs are used.
+      # Demo routes stay OFF in production — never set ENABLE_AWS_DEMO_ROUTES here.
       AUTH_ACCESS_SECRET: ${AUTH_ACCESS_SECRET:?set a strong random AUTH_ACCESS_SECRET in .env}
       AUTH_REFRESH_SECRET: ${AUTH_REFRESH_SECRET:?set a strong random AUTH_REFRESH_SECRET in .env}
       AUTH_ACCESS_TTL_SECONDS: ${AUTH_ACCESS_TTL_SECONDS:-900}

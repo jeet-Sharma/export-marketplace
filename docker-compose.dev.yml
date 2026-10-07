@@ -70,7 +70,7 @@ services:
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-test}
       AWS_S3_BUCKET: ${AWS_S3_BUCKET:-export-marketplace-documents}
       AWS_SQS_QUEUE_NAME: ${AWS_SQS_QUEUE_NAME:-export-marketplace-events}
-      # Host-reachable endpoint so presigned S3 URLs work in a host browser.
+      # Host-reachable endpoint so presigned S3 URLs open in a host browser.
       AWS_S3_PUBLIC_ENDPOINT: ${AWS_S3_PUBLIC_ENDPOINT:-http://localhost:${LOCALSTACK_HOST_PORT:-4566}}
       # Enables the unauthenticated /aws-demo helper routes. Dev stack only —
       # intentionally absent from docker-compose.yml so they never deploy.

@@ -39,5 +39,5 @@ USER node
 EXPOSE 3005
 
 # The project is ESM ("type": "module"), so Node requires the explicit .js
-# extension — "node dist/main" would fail with ERR_MODULE_NOT_FOUND.
+# extension — "node dist/main" fails with ERR_MODULE_NOT_FOUND.
 CMD ["node", "dist/main.js"]

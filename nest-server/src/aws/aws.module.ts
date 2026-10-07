@@ -43,13 +43,13 @@ const sqsClientProvider: Provider = {
 /**
  * The demo controller exposes UNAUTHENTICATED S3/SQS routes (read, upload,
  * delete). It is a local verification helper and must never be mounted in a
- * deployed environment, where those routes would be reachable by anyone who
- * can hit the published API port and could operate on real AWS.
+ * deployed environment, where those routes would be reachable by anyone able
+ * to hit the published API port.
  *
- * It is therefore OFF by default and only registered when the demo routes are
- * explicitly enabled (ENABLE_AWS_DEMO_ROUTES=true) AND the app is pointed at a
- * local endpoint (AWS_ENDPOINT set, i.e. LocalStack). Both conditions must
- * hold, so a stray env var alone cannot expose the routes in production.
+ * It is OFF by default and only registered when the demo routes are explicitly
+ * enabled (ENABLE_AWS_DEMO_ROUTES=true) AND the app is pointed at a local
+ * endpoint (AWS_ENDPOINT set, i.e. LocalStack). Both conditions must hold, so a
+ * stray env var alone cannot expose the routes in production.
  */
 const demoRoutesEnabled =
   process.env.ENABLE_AWS_DEMO_ROUTES === 'true' &&

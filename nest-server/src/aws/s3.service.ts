@@ -107,11 +107,10 @@ export class S3Service {
 
   /**
    * Rewrites the host of a presigned URL to the configured public endpoint so
-   * clients outside the Docker network can reach it. The AWS SigV4 signature
-   * does not cover the host for path-style URLs, so swapping only the
-   * authority (scheme + host + port) leaves the signature valid. When no
-   * public endpoint is configured (production/real AWS), the URL is returned
-   * unchanged.
+   * clients outside the Docker network can reach it. For path-style URLs the
+   * SigV4 signature does not cover the host, so swapping only the authority
+   * (scheme + host + port) leaves the signature valid. When no public endpoint
+   * is configured (production/real AWS), the URL is returned unchanged.
    */
   private toPublicUrl(signedUrl: string): string {
     const publicEndpoint = this.config.s3.publicEndpoint;

@@ -26,8 +26,11 @@ export interface AwsConfig {
      * Host-reachable base URL used to rewrite presigned URLs for clients
      * outside the Compose network. The SDK signs URLs against `endpoint`
      * (e.g. http://localstack:4566), which only resolves inside Docker; this
-     * value (e.g. http://localhost:4566) replaces that host so a user's
-     * browser can actually open the link. Only used when set (local dev).
+     * value replaces that host so a user's browser can open the link.
+     *
+     * Sourced ONLY from AWS_S3_PUBLIC_ENDPOINT — there is no implicit default,
+     * so URLs are left untouched unless an operator explicitly opts in with a
+     * known host-reachable address.
      */
     publicEndpoint?: string;
   };
@@ -55,13 +58,13 @@ export const awsConfig = registerAs('aws', (): AwsConfig => {
     s3: {
       bucket: process.env.AWS_S3_BUCKET ?? 'export-marketplace-documents',
       forcePathStyle: isLocal,
-      // When running locally, default the public endpoint to the same host the
-      // browser uses to reach LocalStack. Override with AWS_S3_PUBLIC_ENDPOINT
-      // if the published port differs. Unset in production (real AWS URLs are
-      // already host-reachable).
-      publicEndpoint: isLocal
-        ? process.env.AWS_S3_PUBLIC_ENDPOINT?.trim() || 'http://localhost:4566'
-        : undefined,
+      // Only rewrite presigned URL hosts when AWS_S3_PUBLIC_ENDPOINT is set
+      // EXPLICITLY. There is deliberately no hardcoded fallback: guessing
+      // "http://localhost:4566" would produce links that are wrong whenever the
+      // published port differs or the stack runs on a remote host. When unset
+      // (production/real AWS, or a stack that doesn't expose LocalStack to the
+      // host), the SDK's signed URL is returned unchanged.
+      publicEndpoint: process.env.AWS_S3_PUBLIC_ENDPOINT?.trim() || undefined,
     },
     sqs: {
       queueName: process.env.AWS_SQS_QUEUE_NAME ?? 'export-marketplace-events',
