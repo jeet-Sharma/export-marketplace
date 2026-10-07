@@ -44,29 +44,45 @@ export class AwsBootstrapService implements OnApplicationBootstrap {
       return;
     }
 
-    await this.ensureBucket();
-    await this.ensureQueue();
+    try {
+      await this.ensureBucket();
+      await this.ensureQueue();
+    } catch (error) {
+      // Fail the bootstrap: the app must not report a successful startup when
+      // its required S3 bucket or SQS queue could not be provisioned.
+      this.logger.error(
+        `AWS resource bootstrap failed; aborting startup: ${(error as Error).message}`,
+      );
+      throw error;
+    }
   }
 
   /**
    * Retries an idempotent operation until it succeeds or attempts are
    * exhausted. Protects startup against LocalStack not being fully ready yet,
    * so the bucket/queue are reliably created instead of silently skipped.
+   *
+   * If every attempt fails the final error is rethrown. Callers run inside the
+   * onApplicationBootstrap hook, so propagating the error aborts startup rather
+   * than letting the API come up without its bucket/queue — which would only
+   * surface later as NoSuchBucket / QueueDoesNotExist on real requests.
    */
   private async withRetries<T>(
     label: string,
     operation: () => Promise<T>,
-  ): Promise<T | undefined> {
+  ): Promise<T> {
+    let lastError: unknown;
     for (let attempt = 1; attempt <= AwsBootstrapService.MAX_ATTEMPTS; attempt++) {
       try {
         return await operation();
       } catch (error) {
+        lastError = error;
         const message = (error as Error).message;
         if (attempt === AwsBootstrapService.MAX_ATTEMPTS) {
           this.logger.error(
             `${label} failed after ${attempt} attempts: ${message}`,
           );
-          return undefined;
+          break;
         }
         const delayMs = AwsBootstrapService.RETRY_BASE_MS * attempt;
         this.logger.warn(
@@ -75,7 +91,9 @@ export class AwsBootstrapService implements OnApplicationBootstrap {
         await this.sleep(delayMs);
       }
     }
-    return undefined;
+    throw new Error(
+      `${label} failed after ${AwsBootstrapService.MAX_ATTEMPTS} attempts: ${(lastError as Error)?.message ?? 'unknown error'}`,
+    );
   }
 
   private sleep(ms: number): Promise<void> {
