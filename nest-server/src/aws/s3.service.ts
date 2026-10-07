@@ -1,8 +1,10 @@
+import { randomUUID } from 'node:crypto';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { ConfigType } from '@nestjs/config';
 import {
   DeleteObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
   ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
@@ -39,6 +41,50 @@ export class S3Service {
     @Inject(awsConfig.KEY) private readonly config: ConfigType<typeof awsConfig>,
   ) {
     this.bucket = this.config.s3.bucket;
+  }
+
+  // ─── Product image helpers ──────────────────────────────────────────────
+  // These exist specifically for the admin product-image upload flow (see
+  // ProductsService.requestImageUploadUrl/addImage) and enforce the
+  // security/validation requirements from Phase-1-API-Specification-v0.1
+  // section 15 ("Restrict product image type, size and upload behavior";
+  // never trust a client-supplied storage key without verifying it).
+
+  // Builds a stable, collision-resistant object key scoped to a product.
+  // Prefixes with a randomUUID() and sanitizes the filename to prevent
+  // path traversal and filename collisions — see security-rules.md.
+  buildProductImageKey(productId: string, originalFilename: string): string {
+    const sanitized = originalFilename.replace(/[^a-zA-Z0-9._-]/g, '_');
+    return `products/${productId}/${randomUUID()}-${sanitized}`;
+  }
+
+  // Returns true if `key` falls under the prefix buildProductImageKey()
+  // generates for `productId`. Callers must check this before persisting
+  // a client-supplied object key as that product's image metadata —
+  // without it, an admin with product.edit on any product could attach
+  // another product's (or an arbitrary) bucket key to a different
+  // product's metadata. See ProductsService.addImage.
+  keyBelongsToProduct(key: string, productId: string): boolean {
+    return key.startsWith(`products/${productId}/`);
+  }
+
+  // Confirms the object actually exists in the bucket and returns its
+  // real size. Used two ways in ProductsService.addImage: (1) a bogus or
+  // not-yet-uploaded key can't be recorded as if the upload had
+  // succeeded, and (2) the object's actual size — not merely a
+  // client-declared one — is checked against MAX_IMAGE_UPLOAD_BYTES, the
+  // authoritative size enforcement (see getPresignedUploadUrl's comment
+  // for why a presigned PUT can't enforce a hard ceiling by itself).
+  async getObjectMetadata(key: string): Promise<{ exists: true; sizeBytes: number } | { exists: false }> {
+    try {
+      const result = await this.client.send(new HeadObjectCommand({ Bucket: this.bucket, Key: key }));
+      return { exists: true, sizeBytes: result.ContentLength ?? 0 };
+    } catch (error) {
+      if (this.isNotFound(error)) {
+        return { exists: false };
+      }
+      throw error;
+    }
   }
 
   /** Uploads an object and returns its key. */
@@ -88,7 +134,21 @@ export class S3Service {
     return this.toPublicUrl(url);
   }
 
-  /** Generates a time-limited presigned URL for uploading an object directly. */
+  /**
+   * Generates a time-limited presigned URL for uploading an object directly.
+   *
+   * Size limit note: this deliberately does NOT set ContentLength on the
+   * PutObjectCommand to cap upload size. A presigned PUT's ContentLength,
+   * if set, must match the uploaded body EXACTLY — it's not a ceiling, so
+   * setting it to a max byte count would reject every upload that isn't
+   * precisely that size, which is wrong. The real max-size enforcement
+   * happens after upload via getObjectMetadata()'s HeadObjectCommand
+   * check against the object as actually stored (see
+   * ProductsService.addImage). A true pre-upload hard ceiling would
+   * require createPresignedPost's content-length-range condition instead
+   * of a plain presigned PUT — not needed for Phase 1's two-step
+   * (declared size in the DTO + post-upload actual-size) check.
+   */
   async getPresignedUploadUrl(
     key: string,
     expiresInSeconds = 900,

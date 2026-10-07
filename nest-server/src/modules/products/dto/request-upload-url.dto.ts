@@ -1,5 +1,5 @@
 import { IsIn, IsInt, IsString, Max, Min, MinLength } from 'class-validator';
-import { MAX_IMAGE_UPLOAD_BYTES } from '../../storage/storage.constants.js';
+import { MAX_IMAGE_UPLOAD_BYTES } from '../../../aws/aws.constants.js';
 
 // Not explicitly itemized as its own row in API spec section 4/9 — the
 // spec's section 9 intro says "the exact upload implementation may use
@@ -11,11 +11,12 @@ import { MAX_IMAGE_UPLOAD_BYTES } from '../../storage/storage.constants.js';
 // resulting object key as metadata.
 //
 // contentLengthBytes: the client declares the file size upfront. This is
-// the first of two size checks — see StorageService.getSignedUploadUrl's
+// the first of two size checks — see S3Service.getPresignedUploadUrl's
 // comment for why a presigned PUT URL can't enforce a hard max by itself
 // (ContentLength on a presigned PUT must match exactly, not just stay
 // under a ceiling), and ProductsService.addImage's post-upload
-// HeadObjectCommand check for the second, authoritative one.
+// HeadObjectCommand check (via S3Service.getObjectMetadata) for the
+// second, authoritative one.
 export class RequestUploadUrlDto {
   @IsString()
   @MinLength(1)

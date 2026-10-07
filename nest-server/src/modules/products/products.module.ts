@@ -4,7 +4,6 @@ import { Product } from '../../database/entities/product.entity.js';
 import { ProductCountry } from '../../database/entities/product-country.entity.js';
 import { ProductImage } from '../../database/entities/product-image.entity.js';
 import { ProductPriceTier } from '../../database/entities/product-price-tier.entity.js';
-import { StorageModule } from '../storage/storage.module.js';
 import { ProductsController } from './products.controller.js';
 import { ProductsService } from './products.service.js';
 
@@ -13,11 +12,12 @@ import { ProductsService } from './products.service.js';
 // and PermissionsGuard only depends on Reflector (globally available).
 // Neither guard needs AuthModule's provider graph to work via
 // @UseGuards(...) — importing it here would be dead wiring.
+//
+// Does NOT import AwsModule either: it's @Global() (see
+// src/aws/aws.module.ts), registered once in AppModule, so S3Service is
+// already injectable here without a module-level import.
 @Module({
-  imports: [
-    TypeOrmModule.forFeature([Product, ProductPriceTier, ProductCountry, ProductImage]),
-    StorageModule,
-  ],
+  imports: [TypeOrmModule.forFeature([Product, ProductPriceTier, ProductCountry, ProductImage])],
   controllers: [ProductsController],
   providers: [ProductsService],
   exports: [ProductsService],

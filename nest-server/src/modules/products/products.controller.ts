@@ -20,13 +20,13 @@ import { RequirePermissions } from '../auth/decorators/require-permissions.decor
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { PermissionsGuard } from '../auth/guards/permissions.guard.js';
 import type { AccessTokenPayload } from '../auth/jwt-payload.interface.js';
-import { UploadUrlResponseDto } from '../storage/dto/upload-url-response.dto.js';
 import { CreateProductImageDto } from './dto/create-product-image.dto.js';
 import { CreateProductDto } from './dto/create-product.dto.js';
 import { ProductImageResponseDto } from './dto/product-image-response.dto.js';
 import { QueryAdminProductsDto } from './dto/query-admin-products.dto.js';
 import { RequestUploadUrlDto } from './dto/request-upload-url.dto.js';
 import { UpdateProductDto } from './dto/update-product.dto.js';
+import { UploadUrlResponseDto } from './dto/upload-url-response.dto.js';
 import { ProductsService } from './products.service.js';
 
 // Admin Product Management APIs — Phase-1-API-Specification-v0.1 section 6.

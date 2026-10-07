@@ -12,14 +12,17 @@ import { ProductImage } from '../../database/entities/product-image.entity.js';
 import { ProductPriceTier } from '../../database/entities/product-price-tier.entity.js';
 import { PaginatedResponseDto } from '../../common/dto/paginated-response.dto.js';
 import { ProductDetailDto, toProductDetailDto } from '../../common/dto/product-detail.dto.js';
-import { StorageService } from '../storage/storage.service.js';
-import { MAX_IMAGE_UPLOAD_BYTES } from '../storage/storage.constants.js';
+import { MAX_IMAGE_UPLOAD_BYTES } from '../../aws/aws.constants.js';
+import { S3Service } from '../../aws/s3.service.js';
 import type { CreateProductImageDto } from './dto/create-product-image.dto.js';
 import type { CreateProductDto } from './dto/create-product.dto.js';
 import { ProductImageResponseDto, toProductImageResponseDto } from './dto/product-image-response.dto.js';
 import type { PriceTierDto } from './dto/price-tier.dto.js';
 import type { QueryAdminProductsDto } from './dto/query-admin-products.dto.js';
+import { UploadUrlResponseDto } from './dto/upload-url-response.dto.js';
 import type { UpdateProductDto } from './dto/update-product.dto.js';
+
+const PRESIGNED_UPLOAD_URL_TTL_SECONDS = 900;
 
 // Collapses an optional DTO field into the `T | null` shape every
 // nullable Product column expects — `undefined` (field absent from the
@@ -57,7 +60,7 @@ export class ProductsService {
     @InjectRepository(ProductImage)
     private readonly productImageRepository: Repository<ProductImage>,
     private readonly dataSource: DataSource,
-    private readonly storageService: StorageService,
+    private readonly s3Service: S3Service,
   ) {}
 
   async findAll(query: QueryAdminProductsDto): Promise<PaginatedResponseDto<Product>> {
@@ -340,12 +343,18 @@ export class ProductsService {
 
   // Requests a presigned S3 upload URL for a new product image. The
   // object key is generated server-side (never client-supplied) via
-  // StorageService.buildKey, which sanitizes the filename and prefixes a
-  // randomUUID() to prevent path traversal/collisions — see security-rules.md.
-  async requestImageUploadUrl(productId: string, filename: string, contentType: string) {
+  // S3Service.buildProductImageKey, which sanitizes the filename and
+  // prefixes a randomUUID() to prevent path traversal/collisions — see
+  // security-rules.md.
+  async requestImageUploadUrl(
+    productId: string,
+    filename: string,
+    contentType: string,
+  ): Promise<UploadUrlResponseDto> {
     await this.assertProductExists(productId);
-    const key = this.storageService.buildKey(productId, filename);
-    return this.storageService.getSignedUploadUrl(key, contentType);
+    const key = this.s3Service.buildProductImageKey(productId, filename);
+    const uploadUrl = await this.s3Service.getPresignedUploadUrl(key, PRESIGNED_UPLOAD_URL_TTL_SECONDS, contentType);
+    return { uploadUrl, key, expiresInSeconds: PRESIGNED_UPLOAD_URL_TTL_SECONDS };
   }
 
   // Persists image metadata after the client has already uploaded the
@@ -353,15 +362,15 @@ export class ProductsService {
   //
   // Security: objectKey is client-supplied, so it's verified two ways
   // before being trusted: (1) it must fall under this product's own key
-  // prefix (see StorageService.keyBelongsToProduct), which prevents an
-  // admin with product.edit on one product from attaching another
-  // product's — or an arbitrary — bucket key to this product's metadata;
-  // (2) the object must actually exist in the bucket, which prevents
-  // recording metadata for an upload that never happened.
+  // prefix (see S3Service.keyBelongsToProduct), which prevents an admin
+  // with product.edit on one product from attaching another product's
+  // — or an arbitrary — bucket key to this product's metadata; (2) the
+  // object must actually exist in the bucket, which prevents recording
+  // metadata for an upload that never happened.
   async addImage(productId: string, dto: CreateProductImageDto): Promise<ProductImageResponseDto> {
     await this.assertProductExists(productId);
 
-    if (!this.storageService.keyBelongsToProduct(dto.objectKey, productId)) {
+    if (!this.s3Service.keyBelongsToProduct(dto.objectKey, productId)) {
       throw new BadRequestException({
         code: 'VALIDATION_ERROR',
         message: 'Image object key does not belong to this product',
@@ -369,7 +378,7 @@ export class ProductsService {
       });
     }
 
-    const metadata = await this.storageService.getObjectMetadata(dto.objectKey);
+    const metadata = await this.s3Service.getObjectMetadata(dto.objectKey);
     if (!metadata.exists) {
       throw new BadRequestException({
         code: 'VALIDATION_ERROR',
@@ -380,14 +389,14 @@ export class ProductsService {
 
     // Authoritative size check (API spec section 15: "Restrict product
     // image type, size and upload behavior") — a presigned PUT URL alone
-    // can't enforce a hard max (see StorageService.getSignedUploadUrl's
+    // can't enforce a hard max (see S3Service.getPresignedUploadUrl's
     // comment), so this is the real enforcement point, checked against
     // what was actually uploaded rather than trusting the client's
     // declared contentLengthBytes from the upload-url request. An
     // oversized object is deleted immediately rather than left orphaned
     // in the bucket.
     if (metadata.sizeBytes > MAX_IMAGE_UPLOAD_BYTES) {
-      await this.storageService.deleteObject(dto.objectKey);
+      await this.s3Service.delete(dto.objectKey);
       throw new BadRequestException({
         code: 'VALIDATION_ERROR',
         message: 'Image exceeds the maximum allowed size',
@@ -446,7 +455,7 @@ export class ProductsService {
     }
 
     await this.productImageRepository.delete({ id: imageId });
-    await this.storageService.deleteObject(image.s3ObjectKey);
+    await this.s3Service.delete(image.s3ObjectKey);
   }
 
   private async assertProductExists(productId: string): Promise<void> {
