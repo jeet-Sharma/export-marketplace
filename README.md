@@ -212,12 +212,21 @@ PostgreSQL and LocalStack (S3 + SQS) for local AWS emulation.
 
 ### Configure environment
 
+The repository tracks `.env.docker.example` listing every variable you can
+override. Copy it to `.env` in the repository root (Compose loads `.env`
+automatically):
+
 ```bash
-cp .env.docker.example .env
+cp .env.docker.example .env        # macOS/Linux
+# Windows PowerShell:
+# Copy-Item .env.docker.example .env
 ```
 
-Edit `.env` to change ports or secrets. Every value has a safe default, so the
-file is optional for a first run.
+Edit `.env` to change ports or secrets. For the development stack
+(`docker-compose.dev.yml`) every value has a safe default, so the file is
+optional for a first run. The production-style stack (`docker-compose.yml`)
+**requires** `POSTGRES_USER`, `POSTGRES_PASSWORD`, `AUTH_ACCESS_SECRET`, and
+`AUTH_REFRESH_SECRET` to be set and will refuse to start otherwise.
 
 ### Development (hot reload)
 
