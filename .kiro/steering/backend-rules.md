@@ -8,12 +8,19 @@ fileMatchPattern: 'nest-server/**'
 Confirmed stack (from `package.json`): NestJS ^12.0.1, TypeScript ^6.0.2,
 `"type": "module"` (ESM), Vitest for tests, Oxlint for linting, Prettier
 (`singleQuote: true, trailingComma: "all"`). AWS SDK v3 for S3/SQS.
-**Confirmed absent: no database/ORM (no TypeORM/Prisma/Mongoose/pg), no
-authentication/authorization (no guards/passport/JWT/bcrypt), no
-class-validator/class-transformer, no custom exception filters.** Don't
-assume any of these exist — check `marketplace-domain.md` before adding
-them, since the domain model and auth model are architecturally
-significant decisions, not incidental ones.
+**Confirmed absent: no authentication/authorization (no
+guards/passport/JWT/bcrypt), no class-validator/class-transformer, no
+custom exception filters.** Don't assume these exist — check
+`marketplace-domain.md` before adding them, since the auth model is an
+architecturally significant decision, not an incidental one.
+
+**Database/ORM**: `typeorm` (^0.3.x) + `pg` + `@nestjs/typeorm` are
+installed, but *only* for CLI-driven migrations so far — see "Database
+migrations" below. There are still no entities, no repositories, and
+`AppModule` does not import `TypeOrmModule`; nothing in the running app
+talks to Postgres yet. Don't assume a live DB connection, entity, or
+repository exists in application code just because the ORM package and
+migration tooling are present.
 
 ## ESM — non-negotiable, already enforced
 
@@ -82,6 +89,31 @@ established example: LocalStack for S3/SQS), follow the pattern in
   dependency never came up. This means unrelated routes keep working even
   when this one dependency is down, and callers of *this* service get a
   clean, informative 503 instead of a raw SDK error or app crash.
+
+## Database migrations
+
+Phase 1 schema migrations live in `src/database/migrations/*.ts`, run via
+a standalone `src/database/data-source.ts` (plain `new DataSource({...})`,
+default export only — the TypeORM CLI rejects a file with more than one
+`DataSource` export). This file is deliberately not part of `AppModule`;
+it exists solely so the TypeORM CLI has something to point at.
+
+- Run via `npm run migration:run` / `migration:revert` / `migration:generate`,
+  which invoke `tsx node_modules/typeorm/cli.js ... -d src/database/data-source.ts`.
+  `tsx` (not `ts-node`) runs the CLI against this ESM + `nodenext` TS
+  config — `ts-node` was not already installed and has more friction with
+  this module setup.
+- Connection settings come from `DB_HOST`/`DB_PORT`/`DB_USERNAME`/
+  `DB_PASSWORD`/`DB_NAME` env vars (dummy local defaults in `.env`), read
+  directly via `process.env` in `data-source.ts` — not through
+  `ConfigService`, since this file runs standalone via the CLI, outside
+  Nest's DI container.
+- `synchronize: false` always. Every schema change is a new migration
+  file, never auto-sync.
+- No `ON DELETE CASCADE` on any foreign key in the Phase 1 migration —
+  permanent deletion is an open business decision (see
+  `marketplace-domain.md` / the Phase 1 Data Model doc section 8), so FKs
+  default to `RESTRICT` until that's confirmed.
 
 ## LocalStack
 

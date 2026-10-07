@@ -5,9 +5,14 @@ inclusion: always
 # Marketplace Domain Rules
 
 This is an Export Marketplace connecting international buyers with
-exporters/vendors. **No database exists yet in `nest-server`** — everything
-below describes the *planned* domain model and how to reason about it, not
-implemented tables/entities. Do not create all of this speculatively; use
+exporters/vendors. **No live database connection or entities exist yet in
+`nest-server`** — `typeorm`/`pg`/`@nestjs/typeorm` are installed and a
+Phase 1 migration (`src/database/migrations/`) creates the 12 tables
+below via raw SQL, but there are no TypeORM entity classes, no
+repositories, and `AppModule` does not wire up `TypeOrmModule` — nothing
+in application code queries Postgres yet. Everything below describes the
+*planned* domain model and how to reason about it, not implemented
+entities/services. Do not create all of this speculatively; use
 it as the domain boundary reference when a task requires touching one of
 these concepts, and implement only what that task needs.
 
@@ -164,12 +169,16 @@ price/order/payment/earning field is implemented, in any layer (DTO,
 future database schema, or even a hardcoded seed value used for UI
 display).
 
-## Database conventions (apply once a database is actually chosen — none exists yet)
+## Database conventions (PostgreSQL + TypeORM chosen; migrations exist, entities don't yet)
 
-No ORM or database library is installed in `nest-server` today — don't
-assume TypeORM, Prisma, Mongoose, or raw `pg` unless a task is explicitly
-introducing one; that's an architectural decision to confirm, not infer.
-The root README documents an intent to use PostgreSQL for transactional
+`typeorm` + `pg` + `@nestjs/typeorm` are installed in `nest-server`, and
+the Phase 1 schema (the 12 tables documented above) exists as a raw-SQL
+migration in `src/database/migrations/`, run via `npm run migration:run`
+against `src/database/data-source.ts`. This is schema-only: no entity
+classes, no repositories, and no `TypeOrmModule` import in `AppModule`
+exist yet — don't assume application code can query these tables until an
+entity layer is deliberately added for a specific feature. The root
+README documents an intent to use PostgreSQL for transactional
 data and MongoDB for flexible/high-volume data (messages, notifications,
 activity logs) — MongoDB is not intended to replace PostgreSQL for
 transactional/business-critical records. Once a database is added, these
