@@ -3,139 +3,981 @@ inclusion: fileMatch
 fileMatchPattern: 'react-client/**'
 ---
 
-# Frontend Rules — react-client (Next.js)
+# FRONTEND STATE MANAGEMENT & REDUX RULES
 
-Confirmed stack (from `package.json`): Next.js 16.3.5, React 19.2.8,
-TypeScript ^5, Tailwind CSS v4, ESLint 9 + `eslint-config-next`.
-**Confirmed absent: no state management library, no form/validation
-library (no react-hook-form/zod/yup), no test runner/test files.** Don't
-introduce any of these to solve a small problem — plain `useState`/props
-and the existing wizard pattern (see below) have covered every form built
-so far.
+## 1. STATE MANAGEMENT STANDARD
 
-## Design system — must match on every screen
+Use:
 
-- Color tokens (`react-client/src/app/globals.css`, mirrored as plain JS in
-  `src/theme/colors.ts`): `ink`, `paper`, `panel`, `line`,
-  `saffron`/`saffron-soft`, `teal`/`teal-soft`, `coral`/`coral-soft`,
-  `blue-grey`/`blue-grey-soft`, `text`/`text-dim`. Never hardcode a hex
-  color in a component — use these Tailwind utility classes
-  (`bg-saffron`, `text-text-dim`, etc.).
-- `theme/colors.ts` also exports `statusTokens`, which maps status keys
-  (order/product/inventory/RFQ/document statuses) to a `Badge` tone +
-  label. Reuse `statusTokens` for any new status display — don't invent a
-  new ad-hoc tone mapping.
-- Sharp corners: `--radius: 3px`, used via `rounded`. Don't introduce
-  larger/pill radii except where `Badge` intentionally uses them.
-- Fonts: `font-heading` (Space Grotesk, headings only) and `font-body` (IBM
-  Plex Sans, everything else). Don't add another font.
-- **Reuse the 5 existing primitives in `src/components/ui/`
-  (`Button`, `Badge`, `Input`, `Panel`, `Table`) instead of writing new
-  styled elements.** `Button` variants: `primary | accent | ghost | danger`
-  (typed via `ButtonVariant` in `src/types/ui.ts`); sizes `sm | md`.
-  `Badge` tones: `neutral | saffron | teal | blueGrey | coral`. If a screen
-  needs a visual pattern none of these five cover, extend the primitive
-  (add a variant/prop) rather than building a parallel one-off component.
+- Redux Toolkit
+- React Redux
+- RTK Query for API/server state
+- React Hook Form for form state
+- Next.js searchParams for URL/filter state
+- useState for small local UI state
 
-## Three distinct areas — keep them separate
+Do NOT use legacy Redux patterns.
 
-- **Public site**: `src/app/page.tsx`, `src/app/products/[productId]/`,
-  `src/app/sell-with-us/`, and their components under
-  `src/components/public/` (shares `PublicHeader`/`PublicFooter`).
-- **Vendor portal**: `src/app/vendor/**` and `src/components/vendor/**`.
-  Has its own shell (`VendorLayout`/`Sidebar`/`PageHeader`) and its own nav
-  config (`src/config/navigation.ts`).
-- **Sell-with-us wizard**: `src/components/sellWithUs/**`, a public
-  multi-step vendor-signup form. It is public-facing (reachable without
-  login) but produces vendor onboarding data — don't merge its state/types
-  into either the public marketplace data or the vendor portal's internal
-  seed data; it has its own `src/types/sell-with-us.ts` and
-  `src/data/sellWithUs.ts` for a reason. **It currently has no backend
-  wired up** (`SellWithUsWizard.tsx` says so explicitly) — submitting just
-  shows a thank-you screen. Don't assume it persists anywhere until that's
-  actually built.
-- A future buyer portal, if/when it exists, should follow this same
-  pattern: its own route segment, its own `components/<area>/` folder, its
-  own data/type files. Don't retrofit buyer concerns into `vendor/` or
-  `public/`.
-- **Never mix seed data across areas.** Public-facing seed data lives in
-  `src/data/public.ts`. Vendor-internal seed data (maker-checker workflow
-  state, earnings, inventory, etc.) lives in `src/data/products.ts`,
-  `profile.ts`, `orders.ts`, `inventory.ts`, `rfq.ts`, `analytics.ts`,
-  `documents.ts`. These model different things (public catalog display vs.
-  internal workflow state) — don't reuse one for the other.
+Do NOT use:
 
-## Data-access layer pattern
+- createStore
+- handwritten Redux reducers
+- handwritten action constants
+- handwritten action creators where createSlice is sufficient
+- Redux Saga
+- Redux Thunk directly unless there is a specific requirement
+- MobX
+- Zustand
 
-Don't index a hardcoded seed object directly from a page/route component.
-Go through a small function in `src/lib/` that returns `T | undefined` —
-see `src/lib/products.ts` (`getProductById`, `getAllProductIds`) as the
-canonical example, including its type (`Product` and friends, defined
-explicitly rather than inferred from the seed literal). This keeps the
-page component agnostic to whether the data is a hardcoded object today or
-a real API/database call later — swapping the implementation inside the
-`lib/` function shouldn't require touching any caller.
+Do not introduce another global state library without approval.
 
-Follow the same pattern for route path constants: central route strings
-live in `src/config/routes.ts` (mirroring `src/config/navigation.ts`'s
-vendor sidebar hrefs) rather than being repeated as literals across
-components.
+## 2. DECIDE WHERE STATE BELONGS
 
-## JSX / unicode escapes — a real bug that's happened here, avoid repeating it
+Before creating Redux state, classify the state.
 
-`\uXXXX` and `\u{XXXXX}` escape sequences are only interpreted inside a
-real JS string — i.e. inside `{...}` or a template literal. They are
-**not** interpreted as bare JSX text or as a plain (non-expression) JSX
-attribute value; React renders the literal backslash-u text instead.
+### Server State
 
-```tsx
-// WRONG — renders the literal text "\u00B7", not a middle dot
-<p>{supplier.country} \u00B7 {supplier.categories}</p>
-<Input adornment="\u{1F50D}" />
+Examples:
 
-// RIGHT — wrapped in a JS expression so the escape is actually interpreted
-<p>{supplier.country} {"\u00B7"} {supplier.categories}</p>
-<Input adornment={"\u{1F50D}"} />
+- Products
+- Product details
+- Vendors
+- Categories
+- Countries
+
+Use:
+
+RTK Query
+
+Do NOT copy RTK Query response data into Redux slices.
+
+### Global Client State
+
+Examples:
+
+- authenticated user when required globally
+- permissions
+- globally shared UI state
+
+Use:
+
+Redux Toolkit slice
+
+### Local Component State
+
+Examples:
+
+- modal open/closed
+- selected tab
+- dropdown open
+- temporary toggle
+
+Use:
+
+useState
+
+Do NOT create Redux state for simple local UI behavior.
+
+### Form State
+
+Examples:
+
+- product name
+- price
+- MOQ
+- HS code
+- description
+- selected vendor
+
+Use:
+
+React Hook Form
+
+Do NOT dispatch Redux actions on every form keystroke.
+
+### URL State
+
+Examples:
+
+- search
+- category
+- country
+- price filter
+- MOQ
+- sort
+- page
+
+Use:
+
+Next.js URL/searchParams.
+
+Example:
+
+/products?category=spices&country=IN&page=2&sort=price_asc
+
+Do NOT duplicate URL filter state into Redux unless there is a
+demonstrated requirement.
+
+## 3. REDUX STORE STRUCTURE
+
+Keep Redux configuration centralized.
+
+Recommended structure:
+
+```
+src/
+  store/
+    store.ts
+    hooks.ts
+  features/
+    auth/
+      authSlice.ts
+      authTypes.ts
+      authSelectors.ts
+    products/
+      productsApi.ts
+      productTypes.ts
+    vendors/
+      vendorsApi.ts
+    categories/
+      categoriesApi.ts
+    countries/
+      countriesApi.ts
 ```
 
-When in doubt, paste the actual unicode character into the source instead
-of an escape sequence — unambiguous either way.
+## 4. STORE CONFIGURATION
 
-## Next.js specifics
+Use configureStore from Redux Toolkit.
 
-- App Router only (`src/app/`). Server Components by default; add
-  `"use client"` only where interactivity requires it (the codebase's
-  actual usage: forms with `useState`, event handlers — see
-  `SellWithUsWizard.tsx`, `CountryLogistics.tsx`, `RfqForm.tsx`, `Sidebar.tsx`).
-- Pages/route files are `.tsx`; shared data/config/type files are `.ts`.
-  Domain types live under `src/types/` as one file per domain concept,
-  re-exported through the barrel `src/types/index.ts` — add new domain
-  types there rather than defining ad-hoc inline types in a component file
-  when the type will be reused.
-- Path alias `@/*` maps to `./src/*` (from `tsconfig.json`) — use it for
-  all cross-folder imports rather than relative `../../..` paths.
-- Ignore the auto-generated `AGENTS.md`/`CLAUDE.md` "breaking changes"
-  banner in this app — it's regenerated by `next dev` itself
-  (`node_modules/next/dist/server/lib/generate-agent-files.js`), not a real
-  project rule.
+Example:
 
-## Forms, loading/error/empty states
+```ts
+export const store = configureStore({
+  reducer: {
+    auth: authReducer,
+    [productsApi.reducerPath]: productsApi.reducer,
+  },
+  middleware: (getDefaultMiddleware) =>
+    getDefaultMiddleware().concat(productsApi.middleware),
+});
+```
 
-No form library is installed — forms are built with plain `useState` and
-per-step validator functions returning an error map (see
-`SellWithUsWizard.tsx`'s `STEP_VALIDATORS` + `Step*.tsx` files' exported
-`validate*` functions). Follow this pattern for new forms rather than
-introducing a new validation approach or library.
+Export:
 
-There is no established loading/error/empty-state pattern yet because
-there is no live data fetching in the app (all current data is
-hardcoded/seeded). When wiring up real data fetching for the first time,
-propose a pattern and confirm it before applying it broadly — don't invent
-one silently and spread it across multiple components in the same change.
+RootState
+AppDispatch
 
-## Accessibility and images
+Example:
 
-Existing components use semantic elements and `aria-label`/`aria-hidden`
-where appropriate (e.g. `PublicHeader`'s `aria-label="Primary"` nav,
-decorative emoji spans marked `aria-hidden`) — keep doing this for new
-interactive elements and icon-only buttons.
+```ts
+export type RootState = ReturnType<typeof store.getState>;
+export type AppDispatch = typeof store.dispatch;
+```
+
+## 5. TYPED REDUX HOOKS
+
+Never repeatedly use raw:
+
+useDispatch()
+useSelector()
+
+Create typed hooks.
+
+Example:
+
+```ts
+export const useAppDispatch = useDispatch.withTypes<AppDispatch>();
+export const useAppSelector = useSelector.withTypes<RootState>();
+```
+
+Components must use:
+
+useAppDispatch()
+useAppSelector()
+
+instead of untyped Redux hooks.
+
+## 6. REDUX SLICE RULE
+
+Use createSlice.
+
+Example:
+
+```ts
+const authSlice = createSlice({
+  name: "auth",
+  initialState,
+  reducers: {
+    setUser(state, action) {
+      state.user = action.payload;
+    },
+    clearUser(state) {
+      state.user = null;
+    },
+  },
+});
+```
+
+Do NOT manually mutate Redux state outside reducers.
+Do NOT create unnecessary actions.
+Keep slices focused on one domain.
+
+## 7. DISPATCH RULES
+
+Dispatch actions only when global client state actually changes.
+
+GOOD:
+
+```ts
+dispatch(setUser(user));
+dispatch(clearUser());
+```
+
+BAD:
+
+```ts
+dispatch(setProductName(value)); // on every product form keystroke
+```
+
+Product form fields belong to React Hook Form, not Redux.
+
+## 8. NEVER DISPATCH FROM RANDOM UTILITY FILES
+
+Dispatch should normally happen from:
+
+- React components
+- custom hooks
+- approved middleware/listeners
+- explicitly designed application workflows
+
+Do not import the Redux store into random utility/service files and call:
+
+store.dispatch(...)
+
+unless there is a strong architectural reason.
+
+## 9. SELECTOR RULES
+
+Do not repeatedly access deeply nested Redux state directly.
+
+Instead of repeating:
+
+state.auth.user.permissions
+
+create a selector.
+
+Example:
+
+```ts
+export const selectCurrentUser = (state: RootState) => state.auth.user;
+
+export const selectPermissions = (state: RootState) =>
+  state.auth.user?.permissions ?? [];
+```
+
+Use memoized selectors when derived computation is meaningful.
+Do not use createSelector unnecessarily for trivial values.
+
+## 10. RTK QUERY IS THE DEFAULT API STATE TOOL
+
+Use RTK Query for backend API communication where client-side querying
+or mutation is required.
+
+Examples:
+
+```
+GET /products
+GET /products/:slug
+GET /admin/products
+POST /admin/products
+PATCH /admin/products/:id
+POST /admin/products/:id/publish
+POST /admin/products/:id/unpublish
+GET /admin/vendors
+GET /categories
+GET /countries
+```
+
+Do NOT create:
+
+productsSlice
+
+just to store the result of:
+
+GET /products
+
+RTK Query already owns that server state.
+
+## 11. API BASE QUERY
+
+Create one shared API configuration.
+
+Example concept:
+
+baseApi
+
+configured with:
+
+NEXT_PUBLIC_API_BASE_URL
+
+Do not repeat API base URLs throughout the application.
+
+## 12. RTK QUERY ENDPOINT NAMING
+
+Use meaningful names.
+
+Examples:
+
+getProducts
+getProductBySlug
+getAdminProducts
+getAdminProductById
+createProduct
+updateProduct
+publishProduct
+unpublishProduct
+getVendors
+getCategories
+getCountries
+
+Generated hooks should therefore be clear:
+
+useGetProductsQuery()
+useGetAdminProductByIdQuery()
+useCreateProductMutation()
+useUpdateProductMutation()
+usePublishProductMutation()
+
+## 13. QUERY VS MUTATION
+
+Use query for reads.
+
+GET → query
+
+Use mutation for state-changing operations.
+
+POST
+PATCH
+PUT
+DELETE
+→ mutation
+
+Do not use mutation for normal reads.
+
+## 14. CACHE TAGS
+
+Use RTK Query cache tags intentionally.
+
+Example:
+
+Product
+ProductList
+Vendor
+Category
+Country
+
+After:
+
+createProduct
+
+invalidate the relevant product list.
+
+After:
+
+updateProduct
+
+invalidate/update the affected product.
+
+After:
+
+publishProduct
+
+invalidate:
+
+- admin product
+- admin product list
+- public product list
+
+After:
+
+unpublishProduct
+
+invalidate:
+
+- admin product
+- admin list
+- public list
+- public detail where applicable
+
+Do not invalidate the entire API cache for every mutation.
+
+## 15. DO NOT DUPLICATE SERVER STATE
+
+BAD:
+
+```
+RTK Query
+    ↓
+API response
+    ↓
+dispatch(setProducts(response))
+    ↓
+productsSlice
+```
+
+GOOD:
+
+```
+RTK Query
+    ↓
+RTK Query cache
+    ↓
+Component
+```
+
+There must be a clear reason before copying server data into Redux state.
+
+## 16. LOADING STATE
+
+Use RTK Query states where available.
+
+Examples:
+
+isLoading
+isFetching
+isError
+error
+data
+
+Do NOT create redundant Redux state:
+
+productLoading
+productApiLoading
+loadingProducts
+
+when RTK Query already provides it.
+
+## 17. MUTATION STATE
+
+Example:
+
+```ts
+const [publishProduct, { isLoading: isPublishing }] =
+  usePublishProductMutation();
+```
+
+Use:
+
+isPublishing
+
+to disable the Publish button.
+
+Do NOT create another Redux variable for the same operation.
+
+## 18. MUTATION ERROR HANDLING
+
+Handle mutation errors explicitly.
+
+Example concept:
+
+```ts
+try {
+  await publishProduct(id).unwrap();
+  showSuccess(...);
+} catch (error) {
+  showError(...);
+}
+```
+
+Never assume a mutation succeeded before the backend confirms it.
+
+## 19. FORM STATE
+
+Use React Hook Form for complex forms.
+
+Product Add/Edit form must NOT be stored field-by-field in Redux.
+
+Example:
+
+```ts
+const {
+  register,
+  control,
+  handleSubmit,
+  formState: { errors, isSubmitting },
+} = useForm<ProductFormValues>();
+```
+
+Redux is not a form-state manager.
+
+## 20. FORM VALIDATION
+
+Use the project's approved validation strategy.
+
+If using Zod:
+
+```
+ProductForm
+     ↓
+Zod Schema
+     ↓
+React Hook Form
+     ↓
+Validated payload
+     ↓
+RTK Query mutation
+```
+
+Do not maintain different contradictory validation rules in multiple
+components.
+
+## 21. CREATE PRODUCT FLOW
+
+Expected architecture:
+
+```
+ProductForm
+     ↓
+React Hook Form
+     ↓
+Validation
+     ↓
+createProduct()
+     ↓
+RTK Query
+     ↓
+NestJS API
+     ↓
+Response
+     ↓
+Success/Error UI
+```
+
+Do NOT:
+
+```
+ProductForm
+     ↓
+dispatch every field
+     ↓
+Redux slice
+     ↓
+custom async thunk
+     ↓
+fetch()
+```
+
+unless there is a specific requirement.
+
+## 22. DRAFT FLOW
+
+Save Draft:
+
+```
+User completes available fields
+        ↓
+React Hook Form
+        ↓
+status = DRAFT
+        ↓
+createProduct/updateProduct mutation
+        ↓
+Backend
+        ↓
+Success response
+        ↓
+Show success feedback
+```
+
+Do not mark Draft as saved until backend success.
+
+## 23. PUBLISH FLOW
+
+Publish:
+
+```
+Product form
+      ↓
+Frontend validation
+      ↓
+Backend request
+      ↓
+Backend publish validation
+      ↓
+PUBLISHED
+      ↓
+Invalidate relevant RTK Query cache
+      ↓
+Refresh affected UI
+```
+
+Backend remains authoritative for publish eligibility.
+
+## 24. AUTH STATE
+
+Authentication state must remain minimal.
+
+Example:
+
+```ts
+interface AuthState {
+  user: AuthUser | null;
+}
+```
+
+Do not put unnecessary information into auth state.
+
+User can contain:
+
+id
+email
+name
+roles
+permissions
+
+Never store:
+
+password
+JWT secret
+AWS credentials
+database credentials
+
+## 25. PERMISSION SELECTORS
+
+Create reusable permission helpers.
+
+Example concept:
+
+```ts
+selectHasPermission(state, "product.publish");
+```
+
+Or:
+
+```ts
+usePermission("product.publish");
+```
+
+UI:
+
+```
+canPublish
+    ↓
+show Publish button
+```
+
+But backend authorization is still mandatory.
+
+## 26. REDUX PERSISTENCE
+
+Do NOT persist the entire Redux store.
+Do not automatically add redux-persist.
+Persist only data that genuinely must survive reloads.
+Never persist sensitive information without reviewing the security
+implications.
+
+## 27. SERIALIZABLE STATE
+
+Redux state must remain serializable.
+
+Do NOT store:
+
+DOM elements
+React components
+Promises
+functions
+class instances
+File objects
+complex browser objects
+
+Keep these in local state or dedicated APIs as appropriate.
+
+## 28. FILE UPLOAD STATE
+
+Do NOT put actual File objects into Redux.
+
+Product image upload:
+
+```
+File input
+    ↓
+local/form state
+    ↓
+upload API / S3 flow
+    ↓
+receive metadata
+    ↓
+update UI
+```
+
+Redux may store only safe serializable metadata if globally required.
+
+## 29. DERIVED STATE
+
+Do not store values that can easily be calculated.
+
+BAD:
+
+products
+productCount
+
+if:
+
+productCount = products.length
+
+Calculate derived values when needed.
+Store the source of truth, not unnecessary duplicates.
+
+## 30. NORMALIZATION
+
+Do not manually normalize every API response by default.
+RTK Query cache is sufficient for most Phase 1 use cases.
+Only introduce entity adapters/normalization when a real complexity
+requires it.
+
+## 31. ASYNC THUNK RULE
+
+Prefer RTK Query for API calls.
+Use createAsyncThunk only for workflows that genuinely do not fit
+RTK Query.
+Do NOT use createAsyncThunk for every REST endpoint.
+
+## 32. NO DIRECT FETCH IN PRESENTATION COMPONENTS
+
+Avoid:
+
+```ts
+const response = await fetch("/api/products");
+```
+
+inside ProductCard or random UI components.
+
+Use:
+
+RTK Query
+
+or the project's approved server-side data-fetching layer.
+
+## 33. NEXT.JS SERVER COMPONENT EXCEPTION
+
+Redux/RTK Query is NOT mandatory for server-side data fetching.
+
+If a Next.js Server Component can fetch data cleanly and the data does
+not require client-side Redux behavior, prefer the appropriate
+server-side approach.
+
+Do not force Redux into every Next.js page.
+
+## 34. REDUX PROVIDER
+
+Redux Provider must be introduced at the appropriate client boundary.
+
+Do NOT convert the entire Next.js root application into a Client
+Component simply to support Redux.
+
+Keep the Provider boundary as narrow and correct as possible.
+
+## 35. PRODUCT FILTER STATE
+
+Public catalogue filters should normally use URL state.
+
+Example:
+
+searchParams:
+
+search
+category
+minPrice
+maxPrice
+minMoq
+maxMoq
+country
+sort
+page
+
+Do NOT create:
+
+productFilterSlice
+
+unless there is a proven requirement that URL state cannot satisfy.
+
+## 36. PAGINATION STATE
+
+Public pagination belongs in the URL.
+
+Example:
+
+?page=3
+
+Admin pagination may also use URL state where practical.
+This ensures refresh/back/share behavior remains predictable.
+
+## 37. MODAL STATE
+
+Simple modal:
+
+```ts
+const [isOpen, setIsOpen] = useState(false);
+```
+
+Do NOT create:
+
+modalSlice
+
+for every modal.
+
+A global modal system may use Redux only when there is a demonstrated
+cross-application requirement.
+
+## 38. TOAST / NOTIFICATION STATE
+
+Use the selected notification library/service consistently.
+Do not create multiple toast systems.
+Do not store historical success notifications in Redux unless required.
+
+## 39. NAMING
+
+Redux slice:
+
+authSlice.ts
+
+API:
+
+productsApi.ts
+
+Selectors:
+
+authSelectors.ts
+
+Types:
+
+productTypes.ts
+
+Hooks:
+
+useProductPermissions.ts
+
+Actions should describe events/state changes clearly:
+
+setUser
+clearUser
+
+Avoid:
+
+updateData
+setValue
+handleState
+doAction
+
+## 40. FEATURE OWNERSHIP
+
+Keep feature-specific code together.
+
+Example:
+
+```
+features/
+  products/
+    api/
+      productsApi.ts
+    components/
+      ProductCard.tsx
+      ProductForm.tsx
+      ProductFilters.tsx
+    hooks/
+    schemas/
+      productFormSchema.ts
+    types/
+      product.types.ts
+    utils/
+```
+
+Do not scatter Product domain code randomly throughout the application.
+
+## 41. COMPONENT → STATE DIRECTION
+
+Maintain predictable data flow.
+
+```
+API
+↓
+RTK Query
+↓
+Component
+↓
+User action
+↓
+Mutation / dispatch
+↓
+State/API update
+↓
+UI rerender
+```
+
+Avoid circular state synchronization.
+
+## 42. ONE SOURCE OF TRUTH
+
+Never maintain the same value simultaneously in:
+
+URL
+Redux
+local state
+form state
+
+unless synchronization is explicitly required.
+
+Choose the correct owner.
+
+Example:
+
+Product search filter → URL
+Product form productName → React Hook Form
+API products → RTK Query
+Modal open → useState
+Authenticated user → Auth state
+
+## 43. RECOMMENDED DECISION TABLE
+
+| State | Tool |
+| --- | --- |
+| API/server data | RTK Query |
+| Authenticated user | Redux Toolkit |
+| Permissions | Redux/Auth state |
+| Product form | React Hook Form |
+| Form validation | Zod / approved validator |
+| Product search | URL searchParams |
+| Product filters | URL searchParams |
+| Sorting | URL searchParams |
+| Pagination | URL searchParams |
+| Modal | useState |
+| Dropdown | useState |
+| Tabs | local/URL depending UX |
+| Product API loading | RTK Query |
+| API errors | RTK Query + UI handling |
+| Uploaded File object | Local/Form state |
+
+## 44. AI RULE
+
+Before adding Redux state, Kiro/AI must answer:
+
+1. Is this server state?
+2. Is this URL state?
+3. Is this form state?
+4. Is this local UI state?
+5. Does it truly need to be global?
+
+Only if the answer to #5 is YES should a new Redux slice normally be
+created.
+
+## 45. GOLDEN REDUX RULE
+
+DO NOT USE REDUX JUST BECAUSE REDUX EXISTS.
+
+Use the smallest correct state owner.
+
+Server data      → RTK Query
+Global state     → Redux Toolkit
+Form state       → React Hook Form
+URL state        → searchParams
+Local UI state   → useState
