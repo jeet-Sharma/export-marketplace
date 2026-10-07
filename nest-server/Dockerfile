@@ -38,6 +38,14 @@ USER node
 
 EXPOSE 3005
 
-# The project is ESM ("type": "module"), so Node requires the explicit .js
-# extension — "node dist/main" fails with ERR_MODULE_NOT_FOUND.
-CMD ["node", "dist/main.js"]
+# On container start, apply any pending DB migrations, then launch the app.
+# - Migrations run via the TypeORM CLI against the COMPILED data-source
+#   (dist/database/data-source.js) using plain `node` — the dev-only `tsx`
+#   runner is pruned from this image, so the TS-based migration:run script
+#   cannot be used here; migration:run:prod exists for exactly this.
+# - `typeorm` is a production dependency, so its CLI is present after prune.
+# - The project is ESM ("type": "module"), so the entrypoint must reference
+#   dist/main.js with its explicit .js extension.
+# Using shell form so both commands run in sequence; migrations must succeed
+# before the API accepts traffic.
+CMD ["sh", "-c", "npm run migration:run:prod && node dist/main.js"]

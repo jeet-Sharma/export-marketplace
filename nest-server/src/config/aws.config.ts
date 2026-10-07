@@ -23,20 +23,28 @@ export interface AwsConfig {
     /** LocalStack S3 requires path-style URLs (http://host:4566/bucket/key). */
     forcePathStyle: boolean;
     /**
-     * Host-reachable base URL used to rewrite presigned URLs for clients
-     * outside the Compose network. The SDK signs URLs against `endpoint`
-     * (e.g. http://localstack:4566), which only resolves inside Docker; this
-     * value replaces that host so a user's browser can open the link.
+     * Host-reachable base URL for presigned S3 links used by clients outside
+     * the Compose network. When set, presigned URLs are SIGNED against this
+     * endpoint (not merely rewritten afterwards) so the SigV4 signature covers
+     * the host a browser will actually use — valid against signature-checking
+     * stores, not only permissive LocalStack.
      *
-     * Sourced ONLY from AWS_S3_PUBLIC_ENDPOINT — there is no implicit default,
-     * so URLs are left untouched unless an operator explicitly opts in with a
-     * known host-reachable address.
+     * Sourced ONLY from AWS_S3_PUBLIC_ENDPOINT — no implicit default. When
+     * unset (production/real AWS), the SDK's own endpoint is used unchanged.
      */
     publicEndpoint?: string;
   };
   sqs: {
     queueName: string;
   };
+  /**
+   * Whether to mount the unauthenticated /aws-demo helper routes. Read here
+   * (inside the config factory, after ConfigModule has loaded .env) rather
+   * than at module-import time, so a value set only in the app's .env file is
+   * honored and not missed due to evaluation ordering. Requires BOTH the
+   * explicit opt-in flag AND a local endpoint (never mounts against real AWS).
+   */
+  enableDemoRoutes: boolean;
 }
 
 export const awsConfig = registerAs('aws', (): AwsConfig => {
@@ -69,5 +77,9 @@ export const awsConfig = registerAs('aws', (): AwsConfig => {
     sqs: {
       queueName: process.env.AWS_SQS_QUEUE_NAME ?? 'export-marketplace-events',
     },
+    // Demo routes require explicit opt-in AND a local endpoint, so they can
+    // never be mounted against real AWS even if the flag is set by mistake.
+    enableDemoRoutes:
+      process.env.ENABLE_AWS_DEMO_ROUTES === 'true' && isLocal,
   };
 });

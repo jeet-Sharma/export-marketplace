@@ -8,6 +8,7 @@ import { S3Service } from './s3.service.js';
 import { SqsService } from './sqs.service.js';
 import { AwsBootstrapService } from './aws-bootstrap.service.js';
 import { AwsDemoController } from './aws-demo.controller.js';
+import { AwsDemoGuard } from './aws-demo.guard.js';
 
 /**
  * Builds the common client options shared by every AWS SDK client.
@@ -41,36 +42,27 @@ const sqsClientProvider: Provider = {
 };
 
 /**
- * The demo controller exposes UNAUTHENTICATED S3/SQS routes (read, upload,
- * delete). It is a local verification helper and must never be mounted in a
- * deployed environment, where those routes would be reachable by anyone able
- * to hit the published API port.
- *
- * It is OFF by default and only registered when the demo routes are explicitly
- * enabled (ENABLE_AWS_DEMO_ROUTES=true) AND the app is pointed at a local
- * endpoint (AWS_ENDPOINT set, i.e. LocalStack). Both conditions must hold, so a
- * stray env var alone cannot expose the routes in production.
- */
-const demoRoutesEnabled =
-  process.env.ENABLE_AWS_DEMO_ROUTES === 'true' &&
-  Boolean(process.env.AWS_ENDPOINT?.trim());
-const demoControllers = demoRoutesEnabled ? [AwsDemoController] : [];
-
-/**
  * Global module exposing configured S3 and SQS clients plus their services.
  * Marked @Global so S3Service and SqsService can be injected anywhere without
  * re-importing AwsModule in every feature module.
+ *
+ * The demo controller is always registered but every route is gated by
+ * AwsDemoGuard, which reads the loaded config (ConfigService) at request time.
+ * This replaces the previous import-time `process.env` check, which ran before
+ * ConfigModule loaded the app's .env and could leave the routes unregistered
+ * even when enabled there.
  */
 @Global()
 @Module({
   imports: [ConfigModule.forFeature(awsConfig)],
-  controllers: [...demoControllers],
+  controllers: [AwsDemoController],
   providers: [
     s3ClientProvider,
     sqsClientProvider,
     S3Service,
     SqsService,
     AwsBootstrapService,
+    AwsDemoGuard,
   ],
   exports: [S3Service, SqsService, S3_CLIENT, SQS_CLIENT],
 })

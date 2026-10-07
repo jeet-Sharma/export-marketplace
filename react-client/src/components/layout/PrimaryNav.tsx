@@ -1,14 +1,20 @@
+"use client";
+
 import Image from "next/image";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { routes } from "@/config/routes";
 
 /** Brand logo and wordmark. */
 function Brand() {
   return (
-    <div className="flex items-center gap-2">
+    <Link href={routes.home} className="flex items-center gap-2">
       <div className="flex size-7 items-center justify-center rounded-[10px] bg-amber text-[17px] text-ink">
         ∞
       </div>
       <span className="text-2xl text-white">looma</span>
-    </div>
+    </Link>
   );
 }
 
@@ -24,8 +30,27 @@ function DeliverTo() {
 
 /** Search bar with category selector and search action. */
 function SearchBar() {
+  const router = useRouter();
+  const [query, setQuery] = useState("");
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    // Prevent the native full-page reload; navigate client-side to the
+    // products listing with the query. Submitting works via both the button
+    // and the Enter key because this is a real <form> with a submit button.
+    event.preventDefault();
+    const trimmed = query.trim();
+    if (!trimmed) {
+      return;
+    }
+    router.push(routes.search(trimmed));
+  }
+
   return (
-    <div className="flex h-[42px] flex-1 items-center overflow-hidden rounded-[10px] bg-white">
+    <form
+      role="search"
+      onSubmit={handleSubmit}
+      className="flex h-[42px] flex-1 items-center overflow-hidden rounded-[10px] bg-white"
+    >
       <div className="flex h-full items-center bg-cream px-3">
         <span className="text-xs font-bold text-ink">All products ▾</span>
       </div>
@@ -35,11 +60,13 @@ function SearchBar() {
       <input
         id="marketplace-search"
         type="search"
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
         placeholder="Search products, suppliers and origins"
         className="flex-1 bg-transparent px-3 text-[13px] text-ink placeholder:text-ink/50 focus:outline-none"
       />
       <button
-        type="button"
+        type="submit"
         aria-label="Search"
         className="flex h-full w-[46px] items-center justify-center bg-amber"
       >
@@ -51,7 +78,7 @@ function SearchBar() {
           aria-hidden
         />
       </button>
-    </div>
+    </form>
   );
 }
 
@@ -60,15 +87,15 @@ function AccountLinks() {
   return (
     <>
       <span className="text-[13px] font-bold text-white">EN · USD</span>
-      <a href="#" className="text-[13px] font-bold text-white">
+      <Link href={routes.signIn} className="text-[13px] font-bold text-white">
         Sign in
-      </a>
-      <a href="#" className="text-[13px] font-bold text-white">
+      </Link>
+      <Link href={routes.orders} className="text-[13px] font-bold text-white">
         Orders
-      </a>
-      <a href="#" className="text-sm text-amber">
+      </Link>
+      <Link href={routes.cart} className="text-sm text-amber">
         Cart · 2
-      </a>
+      </Link>
     </>
   );
 }
@@ -76,7 +103,7 @@ function AccountLinks() {
 /** Primary navigation row: brand, delivery, search and account links. */
 export function PrimaryNav() {
   return (
-    <div className="flex h-[66px] items-center gap-[18px] bg-maroon px-7">
+    <div className="flex h-[66px] flex-wrap items-center gap-[18px] bg-maroon px-7">
       <Brand />
       <DeliverTo />
       <SearchBar />

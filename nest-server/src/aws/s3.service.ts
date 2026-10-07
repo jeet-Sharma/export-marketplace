@@ -33,12 +33,43 @@ export interface StoredObject {
 export class S3Service {
   private readonly logger = new Logger(S3Service.name);
   private readonly bucket: string;
+  /**
+   * Separate client used only for presigning, bound to the public endpoint
+   * when one is configured. Built lazily and cached. See getSigningClient().
+   */
+  private signingClient?: S3Client;
 
   constructor(
     @Inject(S3_CLIENT) private readonly client: S3Client,
     @Inject(awsConfig.KEY) private readonly config: ConfigType<typeof awsConfig>,
   ) {
     this.bucket = this.config.s3.bucket;
+  }
+
+  /**
+   * Returns the client to presign with. When AWS_S3_PUBLIC_ENDPOINT is set,
+   * presign against a client bound to that endpoint so the SigV4 signature
+   * covers the host the browser will actually use — a rewrite-after-signing
+   * approach only works on permissive stores (LocalStack) and is rejected by
+   * signature-validating ones (MinIO, real S3). When unset, the normal client
+   * is used and its own endpoint is signed, which is already host-reachable.
+   */
+  private getSigningClient(): S3Client {
+    const publicEndpoint = this.config.s3.publicEndpoint;
+    if (!publicEndpoint) {
+      return this.client;
+    }
+    if (!this.signingClient) {
+      this.signingClient = new S3Client({
+        region: this.config.region,
+        endpoint: publicEndpoint,
+        forcePathStyle: this.config.s3.forcePathStyle,
+        ...(this.config.credentials
+          ? { credentials: this.config.credentials }
+          : {}),
+      });
+    }
+    return this.signingClient;
   }
 
   /** Uploads an object and returns its key. */
@@ -82,10 +113,11 @@ export class S3Service {
     expiresInSeconds = 900,
   ): Promise<string> {
     const command = new GetObjectCommand({ Bucket: this.bucket, Key: key });
-    const url = await getSignedUrl(this.client, command, {
+    // Sign with the public-endpoint client so the signature is valid for the
+    // host the client will actually request (see getSigningClient).
+    return getSignedUrl(this.getSigningClient(), command, {
       expiresIn: expiresInSeconds,
     });
-    return this.toPublicUrl(url);
   }
 
   /** Generates a time-limited presigned URL for uploading an object directly. */
@@ -99,37 +131,9 @@ export class S3Service {
       Key: key,
       ContentType: contentType,
     });
-    const url = await getSignedUrl(this.client, command, {
+    return getSignedUrl(this.getSigningClient(), command, {
       expiresIn: expiresInSeconds,
     });
-    return this.toPublicUrl(url);
-  }
-
-  /**
-   * Rewrites the host of a presigned URL to the configured public endpoint so
-   * clients outside the Docker network can reach it. For path-style URLs the
-   * SigV4 signature does not cover the host, so swapping only the authority
-   * (scheme + host + port) leaves the signature valid. When no public endpoint
-   * is configured (production/real AWS), the URL is returned unchanged.
-   */
-  private toPublicUrl(signedUrl: string): string {
-    const publicEndpoint = this.config.s3.publicEndpoint;
-    if (!publicEndpoint) {
-      return signedUrl;
-    }
-    try {
-      const signed = new URL(signedUrl);
-      const target = new URL(publicEndpoint);
-      signed.protocol = target.protocol;
-      signed.host = target.host; // host includes port
-      return signed.toString();
-    } catch (error) {
-      this.logger.warn(
-        `Failed to rewrite presigned URL host to "${publicEndpoint}": ${(error as Error).message
-        }. Returning the original URL.`,
-      );
-      return signedUrl;
-    }
   }
 
   /**

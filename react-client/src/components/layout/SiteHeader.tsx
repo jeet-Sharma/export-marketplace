@@ -5,7 +5,7 @@ import { CategoryNav } from "@/components/layout/CategoryNav";
 /** Full site header: concept bar, primary navigation and category strip. */
 export function SiteHeader() {
   return (
-    <header className="flex flex-col overflow-hidden">
+    <header className="flex flex-col">
       <ConceptBar />
       <PrimaryNav />
       <CategoryNav />

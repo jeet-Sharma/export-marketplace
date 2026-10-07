@@ -1,5 +1,7 @@
+import Link from "next/link";
 import { ProductCard } from "@/components/ui/ProductCard";
 import { TRENDING_PRODUCTS } from "@/data/products";
+import { routes } from "@/config/routes";
 
 /** "Trending across Looma" section rendering the product grid. */
 export function TrendingProducts() {
@@ -12,12 +14,14 @@ export function TrendingProducts() {
             Independent goods with exceptional customer ratings
           </p>
         </div>
-        <a href="#" className="text-[13px] text-pink">
+        <Link href={routes.products} className="text-[13px] text-pink">
           See all trending →
-        </a>
+        </Link>
       </div>
 
-      <div className="grid grid-cols-4 gap-3">
+      {/* Responsive grid: 1 col on phones, scaling up to 4 on wide screens,
+          so the row never forces horizontal overflow on small viewports. */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {TRENDING_PRODUCTS.map((product) => (
           <ProductCard key={product.name} {...product} />
         ))}
