@@ -10,15 +10,17 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set a strong POSTGRES_PASSWORD in .env}
       POSTGRES_DB: ${POSTGRES_DB:-export_marketplace}
     ports:
-      - "${POSTGRES_HOST_PORT:-55432}:5432"
+      # Bind to loopback so the database is reachable from the host only,
+      # never from other machines on the network.
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-55432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-export_marketplace}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB:-export_marketplace}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -36,7 +38,8 @@ services:
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-test}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-test}
     ports:
-      - "${LOCALSTACK_HOST_PORT:-4566}:4566"
+      # Loopback only — this is an internal backing service, not a public API.
+      - "127.0.0.1:${LOCALSTACK_HOST_PORT:-4566}:4566"
     volumes:
       - localstack_data:/var/lib/localstack
     healthcheck:
@@ -44,6 +47,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      # Give LocalStack time to initialize s3/sqs before the first check counts.
+      start_period: 20s
     networks:
       - app-net
 
@@ -58,8 +63,8 @@ services:
       # Service names resolve on the shared network — not localhost.
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set a strong POSTGRES_PASSWORD in .env}
       POSTGRES_DB: ${POSTGRES_DB:-export_marketplace}
       AWS_REGION: ${AWS_REGION:-us-east-1}
       AWS_ENDPOINT: http://localstack:4566
@@ -67,8 +72,9 @@ services:
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-test}
       AWS_S3_BUCKET: ${AWS_S3_BUCKET:-export-marketplace-documents}
       AWS_SQS_QUEUE_NAME: ${AWS_SQS_QUEUE_NAME:-export-marketplace-events}
-      AUTH_ACCESS_SECRET: ${AUTH_ACCESS_SECRET:-change-me-access}
-      AUTH_REFRESH_SECRET: ${AUTH_REFRESH_SECRET:-change-me-refresh}
+      # Demo routes stay OFF in production — never set ENABLE_AWS_DEMO_ROUTES here.
+      AUTH_ACCESS_SECRET: ${AUTH_ACCESS_SECRET:?set a strong random AUTH_ACCESS_SECRET in .env}
+      AUTH_REFRESH_SECRET: ${AUTH_REFRESH_SECRET:?set a strong random AUTH_REFRESH_SECRET in .env}
       AUTH_ACCESS_TTL_SECONDS: ${AUTH_ACCESS_TTL_SECONDS:-900}
       AUTH_REFRESH_TTL_SECONDS: ${AUTH_REFRESH_TTL_SECONDS:-2592000}
       AUTH_MAX_FAILED_LOGINS: ${AUTH_MAX_FAILED_LOGINS:-5}
@@ -84,7 +90,7 @@ services:
       postgres:
         condition: service_healthy
       localstack:
-        condition: service_started
+        condition: service_healthy
     networks:
       - app-net
 

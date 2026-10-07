@@ -41,6 +41,22 @@ const sqsClientProvider: Provider = {
 };
 
 /**
+ * The demo controller exposes UNAUTHENTICATED S3/SQS routes (read, upload,
+ * delete). It is a local verification helper and must never be mounted in a
+ * deployed environment, where those routes would be reachable by anyone able
+ * to hit the published API port.
+ *
+ * It is OFF by default and only registered when the demo routes are explicitly
+ * enabled (ENABLE_AWS_DEMO_ROUTES=true) AND the app is pointed at a local
+ * endpoint (AWS_ENDPOINT set, i.e. LocalStack). Both conditions must hold, so a
+ * stray env var alone cannot expose the routes in production.
+ */
+const demoRoutesEnabled =
+  process.env.ENABLE_AWS_DEMO_ROUTES === 'true' &&
+  Boolean(process.env.AWS_ENDPOINT?.trim());
+const demoControllers = demoRoutesEnabled ? [AwsDemoController] : [];
+
+/**
  * Global module exposing configured S3 and SQS clients plus their services.
  * Marked @Global so S3Service and SqsService can be injected anywhere without
  * re-importing AwsModule in every feature module.
@@ -48,7 +64,7 @@ const sqsClientProvider: Provider = {
 @Global()
 @Module({
   imports: [ConfigModule.forFeature(awsConfig)],
-  controllers: [AwsDemoController],
+  controllers: [...demoControllers],
   providers: [
     s3ClientProvider,
     sqsClientProvider,

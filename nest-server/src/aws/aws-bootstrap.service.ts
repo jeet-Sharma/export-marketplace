@@ -31,6 +31,11 @@ export class AwsBootstrapService implements OnApplicationBootstrap {
     @Inject(awsConfig.KEY) private readonly config: ConfigType<typeof awsConfig>,
   ) { }
 
+  /** Max attempts for each resource before giving up. */
+  private static readonly MAX_ATTEMPTS = 10;
+  /** Base delay between attempts; grows linearly per attempt. */
+  private static readonly RETRY_BASE_MS = 1000;
+
   async onApplicationBootstrap(): Promise<void> {
     if (!this.config.isLocal) {
       this.logger.log(
@@ -39,40 +44,98 @@ export class AwsBootstrapService implements OnApplicationBootstrap {
       return;
     }
 
-    await this.ensureBucket();
-    await this.ensureQueue();
+    try {
+      await this.ensureBucket();
+      await this.ensureQueue();
+    } catch (error) {
+      // Fail the bootstrap: the app must not report a successful startup when
+      // its required S3 bucket or SQS queue could not be provisioned, since
+      // later requests would fail with NoSuchBucket / QueueDoesNotExist.
+      this.logger.error(
+        `AWS resource bootstrap failed; aborting startup: ${(error as Error).message}`,
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Retries an idempotent operation until it succeeds or attempts are
+   * exhausted. Protects startup against LocalStack not being fully ready yet.
+   * If every attempt fails the final error is rethrown so the bootstrap hook
+   * aborts startup rather than leaving the API without its resources.
+   */
+  private async withRetries<T>(
+    label: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    let lastError: unknown;
+    for (
+      let attempt = 1;
+      attempt <= AwsBootstrapService.MAX_ATTEMPTS;
+      attempt++
+    ) {
+      try {
+        return await operation();
+      } catch (error) {
+        lastError = error;
+        const message = (error as Error).message;
+        if (attempt === AwsBootstrapService.MAX_ATTEMPTS) {
+          break;
+        }
+        const delayMs = AwsBootstrapService.RETRY_BASE_MS * attempt;
+        this.logger.warn(
+          `${label} attempt ${attempt} failed (${message}); retrying in ${delayMs}ms.`,
+        );
+        await this.sleep(delayMs);
+      }
+    }
+    throw new Error(
+      `${label} failed after ${AwsBootstrapService.MAX_ATTEMPTS} attempts: ${(lastError as Error)?.message ?? 'unknown error'
+      }`,
+    );
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   private async ensureBucket(): Promise<void> {
     const bucket = this.config.s3.bucket;
-    try {
-      await this.s3.send(new HeadBucketCommand({ Bucket: bucket }));
-      this.logger.log(`S3 bucket "${bucket}" already exists.`);
-    } catch {
+    await this.withRetries(`Ensure S3 bucket "${bucket}"`, async () => {
       try {
-        await this.s3.send(new CreateBucketCommand({ Bucket: bucket }));
-        this.logger.log(`Created S3 bucket "${bucket}".`);
+        await this.s3.send(new HeadBucketCommand({ Bucket: bucket }));
+        this.logger.log(`S3 bucket "${bucket}" already exists.`);
+        return;
       } catch (error) {
-        this.logger.error(
-          `Failed to create S3 bucket "${bucket}": ${(error as Error).message}`,
-        );
+        // A 404/NotFound means the bucket is absent and should be created.
+        // Any other error (e.g. LocalStack not ready) propagates so the
+        // operation is retried rather than treated as "needs creating".
+        if (!this.isNotFound(error)) {
+          throw error;
+        }
       }
-    }
+      await this.s3.send(new CreateBucketCommand({ Bucket: bucket }));
+      this.logger.log(`Created S3 bucket "${bucket}".`);
+    });
   }
 
   private async ensureQueue(): Promise<void> {
     const queueName = this.config.sqs.queueName;
-    try {
+    await this.withRetries(`Ensure SQS queue "${queueName}"`, async () => {
       // CreateQueue is idempotent: if the queue already exists with the same
       // attributes, SQS returns the existing queue URL without error.
       const result = await this.sqs.send(
         new CreateQueueCommand({ QueueName: queueName }),
       );
       this.logger.log(`SQS queue ready: ${result.QueueUrl}`);
-    } catch (error) {
-      this.logger.error(
-        `Failed to create SQS queue "${queueName}": ${(error as Error).message}`,
-      );
-    }
+    });
+  }
+
+  /** True when an error indicates the bucket does not exist (vs. not ready). */
+  private isNotFound(error: unknown): boolean {
+    const name = (error as { name?: string })?.name;
+    const status = (error as { $metadata?: { httpStatusCode?: number } })
+      ?.$metadata?.httpStatusCode;
+    return name === 'NotFound' || name === 'NoSuchBucket' || status === 404;
   }
 }

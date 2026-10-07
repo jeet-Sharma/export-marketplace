@@ -82,7 +82,10 @@ export class S3Service {
     expiresInSeconds = 900,
   ): Promise<string> {
     const command = new GetObjectCommand({ Bucket: this.bucket, Key: key });
-    return getSignedUrl(this.client, command, { expiresIn: expiresInSeconds });
+    const url = await getSignedUrl(this.client, command, {
+      expiresIn: expiresInSeconds,
+    });
+    return this.toPublicUrl(url);
   }
 
   /** Generates a time-limited presigned URL for uploading an object directly. */
@@ -96,19 +99,74 @@ export class S3Service {
       Key: key,
       ContentType: contentType,
     });
-    return getSignedUrl(this.client, command, { expiresIn: expiresInSeconds });
+    const url = await getSignedUrl(this.client, command, {
+      expiresIn: expiresInSeconds,
+    });
+    return this.toPublicUrl(url);
   }
 
-  /** Lists objects, optionally filtered by key prefix. */
+  /**
+   * Rewrites the host of a presigned URL to the configured public endpoint so
+   * clients outside the Docker network can reach it. For path-style URLs the
+   * SigV4 signature does not cover the host, so swapping only the authority
+   * (scheme + host + port) leaves the signature valid. When no public endpoint
+   * is configured (production/real AWS), the URL is returned unchanged.
+   */
+  private toPublicUrl(signedUrl: string): string {
+    const publicEndpoint = this.config.s3.publicEndpoint;
+    if (!publicEndpoint) {
+      return signedUrl;
+    }
+    try {
+      const signed = new URL(signedUrl);
+      const target = new URL(publicEndpoint);
+      signed.protocol = target.protocol;
+      signed.host = target.host; // host includes port
+      return signed.toString();
+    } catch (error) {
+      this.logger.warn(
+        `Failed to rewrite presigned URL host to "${publicEndpoint}": ${(error as Error).message
+        }. Returning the original URL.`,
+      );
+      return signedUrl;
+    }
+  }
+
+  /**
+   * Lists objects, optionally filtered by key prefix.
+   *
+   * ListObjectsV2 returns at most 1000 keys per response, so this follows the
+   * NextContinuationToken until the bucket is fully enumerated — otherwise
+   * large buckets would silently return only the first page.
+   */
   async list(prefix?: string): Promise<StoredObject[]> {
-    const result = await this.client.send(
-      new ListObjectsV2Command({ Bucket: this.bucket, Prefix: prefix }),
-    );
-    return (result.Contents ?? []).map((item) => ({
-      key: item.Key ?? '',
-      size: item.Size,
-      lastModified: item.LastModified,
-    }));
+    const objects: StoredObject[] = [];
+    let continuationToken: string | undefined;
+
+    do {
+      const result = await this.client.send(
+        new ListObjectsV2Command({
+          Bucket: this.bucket,
+          Prefix: prefix,
+          ContinuationToken: continuationToken,
+        }),
+      );
+
+      for (const item of result.Contents ?? []) {
+        objects.push({
+          key: item.Key ?? '',
+          size: item.Size,
+          lastModified: item.LastModified,
+        });
+      }
+
+      // IsTruncated indicates more pages; NextContinuationToken fetches them.
+      continuationToken = result.IsTruncated
+        ? result.NextContinuationToken
+        : undefined;
+    } while (continuationToken);
+
+    return objects;
   }
 
   /** Deletes an object. No error is thrown if the key does not exist. */
