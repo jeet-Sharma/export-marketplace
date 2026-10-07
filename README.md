@@ -201,6 +201,69 @@ npm run dev
 
 The web application is available at [http://localhost:3000](http://localhost:3000) by default. If both applications run at the same time, assign one of them a different port.
 
+## Running with Docker
+
+The repository ships with a full Docker setup for both applications plus
+PostgreSQL and LocalStack (S3 + SQS) for local AWS emulation.
+
+### Prerequisites
+
+- Docker Engine 24+ with the Docker Compose v2 plugin (`docker compose`).
+
+### Configure environment
+
+```bash
+cp .env.docker.example .env
+```
+
+Edit `.env` to change ports or secrets. Every value has a safe default, so the
+file is optional for a first run.
+
+### Development (hot reload)
+
+Source directories are bind-mounted so edits on the host reload inside the
+containers.
+
+```bash
+docker compose -f docker-compose.dev.yml up --build
+```
+
+- Web: [http://localhost:3000](http://localhost:3000)
+- API: [http://localhost:3005](http://localhost:3005)
+- PostgreSQL: `localhost:55432`
+- LocalStack: `localhost:4566`
+
+### Production-style build
+
+Builds optimized images: a pruned NestJS runtime and a Next.js standalone image.
+
+```bash
+docker compose up -d --build
+```
+
+### Common commands
+
+```bash
+docker compose logs -f api          # Tail API logs
+docker compose logs -f web          # Tail web logs
+docker compose ps                   # List running services
+docker compose down                 # Stop and remove containers
+docker compose down -v              # Also remove the database/localstack volumes
+```
+
+### Service overview
+
+| Service      | Image / Build            | Container port | Host port (default) |
+| ------------ | ------------------------ | -------------- | ------------------- |
+| `web`        | `react-client/Dockerfile`| 3000           | 3000                |
+| `api`        | `nest-server/Dockerfile` | 3005           | 3005                |
+| `postgres`   | `postgres:16-alpine`     | 5432           | 55432               |
+| `localstack` | `localstack/localstack`  | 4566           | 4566                |
+
+Inside the Docker network, the API reaches other services by name
+(`postgres:5432`, `http://localstack:4566`) rather than `localhost`. The
+browser reaches the API through the host port via `NEXT_PUBLIC_API_URL`.
+
 ## Development Commands
 
 ### API
