@@ -3,9 +3,11 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Product } from '../../database/entities/product.entity.js';
 import { ProductCountry } from '../../database/entities/product-country.entity.js';
+import { ProductImage } from '../../database/entities/product-image.entity.js';
 import { ProductPriceTier } from '../../database/entities/product-price-tier.entity.js';
 import { PaginatedResponseDto } from '../../common/dto/paginated-response.dto.js';
 import { ProductDetailDto, toProductDetailDto } from '../../common/dto/product-detail.dto.js';
+import { toProductImageResponseDto } from '../products/dto/product-image-response.dto.js';
 import type { QueryPublicProductsDto } from './dto/query-public-products.dto.js';
 
 const PUBLISHED = 'PUBLISHED';
@@ -24,6 +26,8 @@ export class PublicProductsService {
     private readonly priceTierRepository: Repository<ProductPriceTier>,
     @InjectRepository(ProductCountry)
     private readonly productCountryRepository: Repository<ProductCountry>,
+    @InjectRepository(ProductImage)
+    private readonly productImageRepository: Repository<ProductImage>,
   ) {}
 
   async findAll(query: QueryPublicProductsDto): Promise<PaginatedResponseDto<Product>> {
@@ -99,13 +103,15 @@ export class PublicProductsService {
       throw new NotFoundException('Product not found');
     }
 
-    const [priceTiers, productCountries] = await Promise.all([
+    const [images, priceTiers, productCountries] = await Promise.all([
+      this.productImageRepository.find({ where: { productId: product.id }, order: { sortOrder: 'ASC' } }),
       this.priceTierRepository.find({ where: { productId: product.id }, order: { minQuantity: 'ASC' } }),
       this.productCountryRepository.find({ where: { productId: product.id }, relations: ['country'] }),
     ]);
 
     return toProductDetailDto(
       product,
+      images.map(toProductImageResponseDto),
       priceTiers,
       productCountries.map((pc) => pc.country),
     );

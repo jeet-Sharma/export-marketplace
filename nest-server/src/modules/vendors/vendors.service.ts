@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Vendor } from '../../database/entities/vendor.entity.js';
+import { toVendorResponseDto, VendorResponseDto } from './dto/vendor-response.dto.js';
 
 @Injectable()
 export class VendorsService {
@@ -15,10 +16,17 @@ export class VendorsService {
   // doesn't specify whether an admin selector should exclude INACTIVE
   // vendors, and showing them (clearly labeled by status) is safer than
   // silently hiding a vendor an admin might need to re-activate.
-  findAll(): Promise<Vendor[]> {
-    return this.vendorRepository.find({
+  //
+  // Returns { items: [...] }, matching section 10.1's example response
+  // exactly — note this is unpaginated (no `pagination` block), unlike
+  // the product list endpoints; the spec's own example for this
+  // endpoint doesn't include one, and the vendor master list is
+  // expected to be small enough not to need it in Phase 1.
+  async findAll(): Promise<{ items: VendorResponseDto[] }> {
+    const vendors = await this.vendorRepository.find({
       relations: ['country'],
       order: { companyName: 'ASC' },
     });
+    return { items: vendors.map(toVendorResponseDto) };
   }
 }

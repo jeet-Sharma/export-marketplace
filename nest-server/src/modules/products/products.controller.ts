@@ -13,7 +13,6 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Product } from '../../database/entities/product.entity.js';
-import { ProductImage } from '../../database/entities/product-image.entity.js';
 import { PaginatedResponseDto } from '../../common/dto/paginated-response.dto.js';
 import { ProductDetailDto } from '../../common/dto/product-detail.dto.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
@@ -24,6 +23,7 @@ import type { AccessTokenPayload } from '../auth/jwt-payload.interface.js';
 import { UploadUrlResponseDto } from '../storage/dto/upload-url-response.dto.js';
 import { CreateProductImageDto } from './dto/create-product-image.dto.js';
 import { CreateProductDto } from './dto/create-product.dto.js';
+import { ProductImageResponseDto } from './dto/product-image-response.dto.js';
 import { QueryAdminProductsDto } from './dto/query-admin-products.dto.js';
 import { RequestUploadUrlDto } from './dto/request-upload-url.dto.js';
 import { UpdateProductDto } from './dto/update-product.dto.js';
@@ -99,7 +99,7 @@ export class ProductsController {
   addImage(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: CreateProductImageDto,
-  ): Promise<ProductImage> {
+  ): Promise<ProductImageResponseDto> {
     return this.productsService.addImage(id, dto);
   }
 

@@ -27,10 +27,15 @@ interface ErrorEnvelope {
 //
 // Three shapes of HttpException are handled:
 // 1. Already-structured ones thrown deliberately with a {code, message,
-//    errors} body (see ProductsService.assertPublishable/
-//    assertPriceTiersDoNotOverlap) — passed through as-is.
-// 2. Nest's built-in ValidationPipe failures (class-validator) — their
-//    response body is a string[] of messages; mapped into `errors`.
+//    errors} body — this is what both ProductsService's manual checks
+//    (assertPublishable/assertPriceTiersDoNotOverlap) AND the global
+//    ValidationPipe's custom exceptionFactory (see
+//    validation-exception-factory.ts) now produce, so DTO validation
+//    failures get real `errors[].field` values, not a placeholder.
+// 2. Nest's *default* ValidationPipe shape — { message: string[] } with
+//    no field info — handled only as a defensive fallback in case some
+//    route-level pipe doesn't use the global exceptionFactory; the
+//    primary path (1) above should always apply in practice.
 // 3. Plain built-in exceptions (NotFoundException, UnauthorizedException,
 //    etc. thrown with just a string) — given a derived `code` from the
 //    HTTP status and the string becomes `message`.

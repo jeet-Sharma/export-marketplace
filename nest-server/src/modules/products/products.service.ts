@@ -13,8 +13,10 @@ import { ProductPriceTier } from '../../database/entities/product-price-tier.ent
 import { PaginatedResponseDto } from '../../common/dto/paginated-response.dto.js';
 import { ProductDetailDto, toProductDetailDto } from '../../common/dto/product-detail.dto.js';
 import { StorageService } from '../storage/storage.service.js';
+import { MAX_IMAGE_UPLOAD_BYTES } from '../storage/storage.constants.js';
 import type { CreateProductImageDto } from './dto/create-product-image.dto.js';
 import type { CreateProductDto } from './dto/create-product.dto.js';
+import { ProductImageResponseDto, toProductImageResponseDto } from './dto/product-image-response.dto.js';
 import type { PriceTierDto } from './dto/price-tier.dto.js';
 import type { QueryAdminProductsDto } from './dto/query-admin-products.dto.js';
 import type { UpdateProductDto } from './dto/update-product.dto.js';
@@ -120,13 +122,15 @@ export class ProductsService {
       throw new NotFoundException('Product not found');
     }
 
-    const [priceTiers, productCountries] = await Promise.all([
+    const [images, priceTiers, productCountries] = await Promise.all([
+      this.productImageRepository.find({ where: { productId: id }, order: { sortOrder: 'ASC' } }),
       this.priceTierRepository.find({ where: { productId: id }, order: { minQuantity: 'ASC' } }),
       this.productCountryRepository.find({ where: { productId: id }, relations: ['country'] }),
     ]);
 
     return toProductDetailDto(
       product,
+      images.map(toProductImageResponseDto),
       priceTiers,
       productCountries.map((pc) => pc.country),
     );
@@ -354,7 +358,7 @@ export class ProductsService {
   // product's — or an arbitrary — bucket key to this product's metadata;
   // (2) the object must actually exist in the bucket, which prevents
   // recording metadata for an upload that never happened.
-  async addImage(productId: string, dto: CreateProductImageDto): Promise<ProductImage> {
+  async addImage(productId: string, dto: CreateProductImageDto): Promise<ProductImageResponseDto> {
     await this.assertProductExists(productId);
 
     if (!this.storageService.keyBelongsToProduct(dto.objectKey, productId)) {
@@ -365,7 +369,8 @@ export class ProductsService {
       });
     }
 
-    if (!(await this.storageService.objectExists(dto.objectKey))) {
+    const metadata = await this.storageService.getObjectMetadata(dto.objectKey);
+    if (!metadata.exists) {
       throw new BadRequestException({
         code: 'VALIDATION_ERROR',
         message: 'Image object was not found in storage',
@@ -373,8 +378,30 @@ export class ProductsService {
       });
     }
 
+    // Authoritative size check (API spec section 15: "Restrict product
+    // image type, size and upload behavior") — a presigned PUT URL alone
+    // can't enforce a hard max (see StorageService.getSignedUploadUrl's
+    // comment), so this is the real enforcement point, checked against
+    // what was actually uploaded rather than trusting the client's
+    // declared contentLengthBytes from the upload-url request. An
+    // oversized object is deleted immediately rather than left orphaned
+    // in the bucket.
+    if (metadata.sizeBytes > MAX_IMAGE_UPLOAD_BYTES) {
+      await this.storageService.deleteObject(dto.objectKey);
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: 'Image exceeds the maximum allowed size',
+        errors: [
+          {
+            field: 'objectKey',
+            message: `Uploaded file is ${metadata.sizeBytes} bytes, which exceeds the ${MAX_IMAGE_UPLOAD_BYTES} byte limit`,
+          },
+        ],
+      });
+    }
+
     try {
-      return await this.dataSource.transaction(async (manager) => {
+      const saved = await this.dataSource.transaction(async (manager) => {
         // Only one primary image per product (API spec section 14). This
         // demote-then-insert is the application-level enforcement; the
         // UQ_product_images_product_id_primary partial unique index
@@ -395,6 +422,7 @@ export class ProductsService {
         });
         return await manager.save(ProductImage, image);
       });
+      return toProductImageResponseDto(saved);
     } catch (error) {
       if (this.isUniqueViolation(error)) {
         throw new ConflictException({

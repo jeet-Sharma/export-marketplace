@@ -2,6 +2,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import cookieParser from 'cookie-parser';
 import { AppModule, ObserveInstrument } from './app.module.js';
+import { validationExceptionFactory } from './common/validation/validation-exception-factory.js';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter.js';
 
 async function bootstrap() {
@@ -21,6 +22,11 @@ async function bootstrap() {
       whitelist: true,
       forbidNonWhitelisted: true,
       transform: true,
+      // Builds the error envelope's {code, message, errors} body
+      // directly from the real field names, instead of letting Nest's
+      // default factory collapse everything into an unlabeled string[]
+      // — see validation-exception-factory.ts.
+      exceptionFactory: validationExceptionFactory,
     }),
   );
 

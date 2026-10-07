@@ -68,22 +68,41 @@ export class StorageService implements OnModuleInit {
     return key.startsWith(`products/${productId}/`);
   }
 
-  // Confirms the object actually exists in the bucket. Called before
-  // persisting image metadata so a bogus or not-yet-uploaded key can't
-  // be recorded as if the upload had succeeded.
-  async objectExists(key: string): Promise<boolean> {
+  // Confirms the object actually exists in the bucket, and returns its
+  // actual size. Called before persisting image metadata so (a) a bogus
+  // or not-yet-uploaded key can't be recorded as if the upload had
+  // succeeded, and (b) the declared contentLengthBytes from
+  // RequestUploadUrlDto can be checked against what was actually
+  // uploaded — a presigned PUT URL alone can't enforce a hard size
+  // ceiling (see getSignedUploadUrl's comment), so this HeadObjectCommand
+  // check after the fact is the authoritative size enforcement.
+  async getObjectMetadata(key: string): Promise<{ exists: true; sizeBytes: number } | { exists: false }> {
     this.assertAvailable();
 
     try {
-      await this.s3Client.send(new HeadObjectCommand({ Bucket: this.bucket, Key: key }));
-      return true;
+      const result = await this.s3Client.send(new HeadObjectCommand({ Bucket: this.bucket, Key: key }));
+      return { exists: true, sizeBytes: result.ContentLength ?? 0 };
     } catch {
-      return false;
+      return { exists: false };
     }
   }
 
   // Returns a time-limited presigned PUT URL. The client uploads the
   // image bytes directly to S3 — this server process never buffers them.
+  //
+  // Size limit note: this deliberately does NOT set ContentLength on the
+  // PutObjectCommand to cap upload size. A presigned PUT's ContentLength
+  // (if set) must match the uploaded body EXACTLY — it's not a ceiling,
+  // so setting it to MAX_IMAGE_UPLOAD_BYTES would reject every upload
+  // that isn't precisely that many bytes, which is wrong. (The AWS SDK's
+  // own ContentLength-based example confirms this: "the size of the body
+  // ... must match what you specified ... exact".) The real max-size
+  // enforcement happens after upload, in ProductsService.addImage, via
+  // StorageService.getObjectMetadata's HeadObjectCommand check against
+  // the object as actually stored. A true pre-upload hard ceiling would
+  // require switching to createPresignedPost's content-length-range
+  // condition instead of a plain presigned PUT — out of scope for this
+  // fix; revisit if the two-step (DTO + post-upload) check isn't enough.
   async getSignedUploadUrl(
     key: string,
     contentType: string,
