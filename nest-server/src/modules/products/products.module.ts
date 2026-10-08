@@ -17,7 +17,14 @@ import { ProductsService } from './products.service.js';
 // src/aws/aws.module.ts), registered once in AppModule, so S3Service is
 // already injectable here without a module-level import.
 @Module({
-  imports: [TypeOrmModule.forFeature([Product, ProductPriceTier, ProductCountry, ProductImage])],
+  imports: [
+    TypeOrmModule.forFeature([
+      Product,
+      ProductPriceTier,
+      ProductCountry,
+      ProductImage,
+    ]),
+  ],
   controllers: [ProductsController],
   providers: [ProductsService],
   exports: [ProductsService],

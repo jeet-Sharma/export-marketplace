@@ -61,9 +61,14 @@ export class HttpExceptionFilter implements ExceptionFilter {
       'Unhandled exception',
       exception instanceof Error ? exception.stack : String(exception),
     );
-    response.status(HttpStatus.INTERNAL_SERVER_ERROR).json(
-      this.toEnvelope(HttpStatus.INTERNAL_SERVER_ERROR, 'Internal server error'),
-    );
+    response
+      .status(HttpStatus.INTERNAL_SERVER_ERROR)
+      .json(
+        this.toEnvelope(
+          HttpStatus.INTERNAL_SERVER_ERROR,
+          'Internal server error',
+        ),
+      );
   }
 
   private toEnvelope(status: number, body: unknown): ErrorEnvelope {

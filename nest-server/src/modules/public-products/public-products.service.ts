@@ -6,7 +6,10 @@ import { ProductCountry } from '../../database/entities/product-country.entity.j
 import { ProductImage } from '../../database/entities/product-image.entity.js';
 import { ProductPriceTier } from '../../database/entities/product-price-tier.entity.js';
 import { PaginatedResponseDto } from '../../common/dto/paginated-response.dto.js';
-import { ProductDetailDto, toProductDetailDto } from '../../common/dto/product-detail.dto.js';
+import {
+  ProductDetailDto,
+  toProductDetailDto,
+} from '../../common/dto/product-detail.dto.js';
 import { toProductImageResponseDto } from '../products/dto/product-image-response.dto.js';
 import type { QueryPublicProductsDto } from './dto/query-public-products.dto.js';
 
@@ -30,7 +33,9 @@ export class PublicProductsService {
     private readonly productImageRepository: Repository<ProductImage>,
   ) {}
 
-  async findAll(query: QueryPublicProductsDto): Promise<PaginatedResponseDto<Product>> {
+  async findAll(
+    query: QueryPublicProductsDto,
+  ): Promise<PaginatedResponseDto<Product>> {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 24;
 
@@ -42,13 +47,19 @@ export class PublicProductsService {
       .where('product.status = :status', { status: PUBLISHED });
 
     if (query.search) {
-      qb.andWhere('product.name ILIKE :search', { search: `%${query.search}%` });
+      qb.andWhere('product.name ILIKE :search', {
+        search: `%${query.search}%`,
+      });
     }
     if (query.categoryId) {
-      qb.andWhere('product.categoryId = :categoryId', { categoryId: query.categoryId });
+      qb.andWhere('product.categoryId = :categoryId', {
+        categoryId: query.categoryId,
+      });
     }
     if (query.sourceCountryId) {
-      qb.andWhere('product.sourceCountryId = :sourceCountryId', { sourceCountryId: query.sourceCountryId });
+      qb.andWhere('product.sourceCountryId = :sourceCountryId', {
+        sourceCountryId: query.sourceCountryId,
+      });
     }
     if (query.minPrice !== undefined) {
       qb.andWhere('product.price >= :minPrice', { minPrice: query.minPrice });
@@ -104,9 +115,18 @@ export class PublicProductsService {
     }
 
     const [images, priceTiers, productCountries] = await Promise.all([
-      this.productImageRepository.find({ where: { productId: product.id }, order: { sortOrder: 'ASC' } }),
-      this.priceTierRepository.find({ where: { productId: product.id }, order: { minQuantity: 'ASC' } }),
-      this.productCountryRepository.find({ where: { productId: product.id }, relations: ['country'] }),
+      this.productImageRepository.find({
+        where: { productId: product.id },
+        order: { sortOrder: 'ASC' },
+      }),
+      this.priceTierRepository.find({
+        where: { productId: product.id },
+        order: { minQuantity: 'ASC' },
+      }),
+      this.productCountryRepository.find({
+        where: { productId: product.id },
+        relations: ['country'],
+      }),
     ]);
 
     return toProductDetailDto(

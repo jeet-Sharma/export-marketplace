@@ -18,7 +18,10 @@ import { Product } from './product.entity.js';
 // migration 1759751600000-AddProductImagePrimaryUniqueIndex. A plain
 // UNIQUE(productId, isPrimary) would be wrong here since it would also
 // forbid multiple non-primary images per product.
-@Index('UQ_product_images_product_id_primary', ['productId'], { unique: true, where: '"is_primary" = true' })
+@Index('UQ_product_images_product_id_primary', ['productId'], {
+  unique: true,
+  where: '"is_primary" = true',
+})
 export class ProductImage {
   @PrimaryGeneratedColumn('uuid')
   id!: string;

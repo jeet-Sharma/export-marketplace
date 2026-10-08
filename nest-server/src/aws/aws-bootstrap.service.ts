@@ -10,16 +10,15 @@ import {
   HeadBucketCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
-import { CreateQueueCommand, SQSClient } from '@aws-sdk/client-sqs';
 import { awsConfig } from '../config/aws.config.js';
-import { S3_CLIENT, SQS_CLIENT } from './aws.constants.js';
+import { S3_CLIENT } from './aws.constants.js';
 
 /**
- * Ensures the S3 bucket and SQS queue exist when the app starts.
+ * Ensures the S3 bucket exists when the app starts.
  *
  * This only runs against LocalStack (isLocal === true). In production the
- * bucket and queue are expected to be provisioned by infrastructure-as-code,
- * and the app should not attempt to create them.
+ * bucket is expected to be provisioned by infrastructure-as-code, and the
+ * app should not attempt to create it.
  */
 @Injectable()
 export class AwsBootstrapService implements OnApplicationBootstrap {
@@ -27,9 +26,9 @@ export class AwsBootstrapService implements OnApplicationBootstrap {
 
   constructor(
     @Inject(S3_CLIENT) private readonly s3: S3Client,
-    @Inject(SQS_CLIENT) private readonly sqs: SQSClient,
-    @Inject(awsConfig.KEY) private readonly config: ConfigType<typeof awsConfig>,
-  ) { }
+    @Inject(awsConfig.KEY)
+    private readonly config: ConfigType<typeof awsConfig>,
+  ) {}
 
   /** Max attempts for each resource before giving up. */
   private static readonly MAX_ATTEMPTS = 10;
@@ -46,11 +45,10 @@ export class AwsBootstrapService implements OnApplicationBootstrap {
 
     try {
       await this.ensureBucket();
-      await this.ensureQueue();
     } catch (error) {
       // Fail the bootstrap: the app must not report a successful startup when
-      // its required S3 bucket or SQS queue could not be provisioned, since
-      // later requests would fail with NoSuchBucket / QueueDoesNotExist.
+      // its required S3 bucket could not be provisioned, since later requests
+      // would fail with NoSuchBucket.
       this.logger.error(
         `AWS resource bootstrap failed; aborting startup: ${(error as Error).message}`,
       );
@@ -90,7 +88,8 @@ export class AwsBootstrapService implements OnApplicationBootstrap {
       }
     }
     throw new Error(
-      `${label} failed after ${AwsBootstrapService.MAX_ATTEMPTS} attempts: ${(lastError as Error)?.message ?? 'unknown error'
+      `${label} failed after ${AwsBootstrapService.MAX_ATTEMPTS} attempts: ${
+        (lastError as Error)?.message ?? 'unknown error'
       }`,
     );
   }
@@ -116,18 +115,6 @@ export class AwsBootstrapService implements OnApplicationBootstrap {
       }
       await this.s3.send(new CreateBucketCommand({ Bucket: bucket }));
       this.logger.log(`Created S3 bucket "${bucket}".`);
-    });
-  }
-
-  private async ensureQueue(): Promise<void> {
-    const queueName = this.config.sqs.queueName;
-    await this.withRetries(`Ensure SQS queue "${queueName}"`, async () => {
-      // CreateQueue is idempotent: if the queue already exists with the same
-      // attributes, SQS returns the existing queue URL without error.
-      const result = await this.sqs.send(
-        new CreateQueueCommand({ QueueName: queueName }),
-      );
-      this.logger.log(`SQS queue ready: ${result.QueueUrl}`);
     });
   }
 

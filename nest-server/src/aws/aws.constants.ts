@@ -1,6 +1,5 @@
 /** DI tokens for the shared AWS SDK clients. */
 export const S3_CLIENT = Symbol('S3_CLIENT');
-export const SQS_CLIENT = Symbol('SQS_CLIENT');
 
 // Max accepted product image size, in bytes. Phase-1-API-Specification-v0.1
 // section 15 requires restricting "product image type, size and upload

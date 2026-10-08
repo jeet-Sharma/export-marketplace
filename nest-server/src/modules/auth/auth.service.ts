@@ -7,7 +7,10 @@ import { Repository } from 'typeorm';
 import { RolePermission } from '../../database/entities/role-permission.entity.js';
 import { User } from '../../database/entities/user.entity.js';
 import { UserRole } from '../../database/entities/user-role.entity.js';
-import { AccessTokenPayload, RefreshTokenPayload } from './jwt-payload.interface.js';
+import {
+  AccessTokenPayload,
+  RefreshTokenPayload,
+} from './jwt-payload.interface.js';
 
 export interface AuthenticatedUser {
   id: string;
@@ -29,7 +32,8 @@ export interface TokenPair {
 // the real "wrong password" path, so response timing doesn't reveal
 // whether an email is registered. The underlying plaintext is irrelevant;
 // this hash is never meant to match any real input.
-const DUMMY_PASSWORD_HASH = '$2b$12$CwTycUXWue0Thq9StjUM0uJ8vMwkhHjN0DMx1k8dX3SRwKEUH8Rfy';
+const DUMMY_PASSWORD_HASH =
+  '$2b$12$CwTycUXWue0Thq9StjUM0uJ8vMwkhHjN0DMx1k8dX3SRwKEUH8Rfy';
 
 @Injectable()
 export class AuthService {
@@ -58,7 +62,10 @@ export class AuthService {
   // enumerate registered emails by measuring response time, since
   // bcrypt.compare is deliberately slow and would otherwise only run
   // when a user actually exists.
-  async validateCredentials(email: string, password: string): Promise<AuthenticatedUser> {
+  async validateCredentials(
+    email: string,
+    password: string,
+  ): Promise<AuthenticatedUser> {
     const normalizedEmail = email.toLowerCase();
     const user = await this.userRepository
       .createQueryBuilder('user')
@@ -92,7 +99,9 @@ export class AuthService {
   // tables — User/Role entities have no inverse relations by design (see
   // user-role.entity.ts), so this is done with explicit queries rather
   // than entity-graph traversal.
-  async getRolesAndPermissions(userId: string): Promise<{ roles: string[]; permissions: string[] }> {
+  async getRolesAndPermissions(
+    userId: string,
+  ): Promise<{ roles: string[]; permissions: string[] }> {
     const userRoles = await this.userRoleRepository.find({
       where: { userId },
       relations: ['role'],
@@ -109,7 +118,11 @@ export class AuthService {
       .innerJoinAndSelect('rolePermission.permission', 'permission')
       .where('rolePermission.roleId IN (:...roleIds)', { roleIds })
       .getMany();
-    const permissions = [...new Set(rolePermissions.map((rolePermission) => rolePermission.permission.code))];
+    const permissions = [
+      ...new Set(
+        rolePermissions.map((rolePermission) => rolePermission.permission.code),
+      ),
+    ];
 
     return { roles, permissions };
   }
@@ -144,11 +157,15 @@ export class AuthService {
     // values are always valid duration strings (see jwt.config.ts).
     const accessToken = this.jwtService.sign(accessPayload, {
       secret: this.configService.getOrThrow<string>('jwt.accessSecret'),
-      expiresIn: this.configService.getOrThrow<string>('jwt.accessExpiresIn') as never,
+      expiresIn: this.configService.getOrThrow<string>(
+        'jwt.accessExpiresIn',
+      ) as never,
     });
     const refreshToken = this.jwtService.sign(refreshPayload, {
       secret: this.configService.getOrThrow<string>('jwt.refreshSecret'),
-      expiresIn: this.configService.getOrThrow<string>('jwt.refreshExpiresIn') as never,
+      expiresIn: this.configService.getOrThrow<string>(
+        'jwt.refreshExpiresIn',
+      ) as never,
     });
 
     return { accessToken, refreshToken };
@@ -171,7 +188,9 @@ export class AuthService {
       throw new UnauthorizedException('Invalid token type');
     }
 
-    const user = await this.userRepository.findOne({ where: { id: payload.sub } });
+    const user = await this.userRepository.findOne({
+      where: { id: payload.sub },
+    });
     if (!user || user.status !== 'ACTIVE') {
       throw new UnauthorizedException('Account is not active');
     }

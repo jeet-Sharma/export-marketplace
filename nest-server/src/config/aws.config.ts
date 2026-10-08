@@ -10,10 +10,9 @@ import { registerAs } from '@nestjs/config';
  * endpoint, accessKeyId/secretAccessKey (now under `credentials`), and
  * s3Bucket (now `s3.bucket`) — this version just adds the fields the
  * Docker/LocalStack integration needs (`isLocal`, `s3.forcePathStyle`,
- * `s3.publicEndpoint`, `sqs.queueName`) and exports via a named
- * `awsConfig` (registerAs's own ConfigType pattern) instead of a default
- * export, matching every other AWS-consuming file (AwsModule, S3Service,
- * SqsService, AwsBootstrapService).
+ * `s3.publicEndpoint`) and exports via a named `awsConfig` (registerAs's
+ * own ConfigType pattern) instead of a default export, matching every
+ * other AWS-consuming file (AwsModule, S3Service, AwsBootstrapService).
  *
  * When AWS_ENDPOINT is set (local development with LocalStack) the SDK is
  * pointed at that endpoint and path-style addressing is forced, which is what
@@ -46,9 +45,6 @@ export interface AwsConfig {
      */
     publicEndpoint?: string;
   };
-  sqs: {
-    queueName: string;
-  };
 }
 
 export const awsConfig = registerAs('aws', (): AwsConfig => {
@@ -77,9 +73,6 @@ export const awsConfig = registerAs('aws', (): AwsConfig => {
       // (production/real AWS, or a stack that doesn't expose LocalStack to the
       // host), the SDK's signed URL is returned unchanged.
       publicEndpoint: process.env.AWS_S3_PUBLIC_ENDPOINT?.trim() || undefined,
-    },
-    sqs: {
-      queueName: process.env.AWS_SQS_QUEUE_NAME ?? 'export-marketplace-events',
     },
   };
 });

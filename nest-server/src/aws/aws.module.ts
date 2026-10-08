@@ -1,11 +1,9 @@
 import { Global, Module, type Provider } from '@nestjs/common';
 import { ConfigModule, ConfigType } from '@nestjs/config';
 import { S3Client } from '@aws-sdk/client-s3';
-import { SQSClient } from '@aws-sdk/client-sqs';
 import { awsConfig } from '../config/aws.config.js';
-import { S3_CLIENT, SQS_CLIENT } from './aws.constants.js';
+import { S3_CLIENT } from './aws.constants.js';
 import { S3Service } from './s3.service.js';
-import { SqsService } from './sqs.service.js';
 import { AwsBootstrapService } from './aws-bootstrap.service.js';
 import { AwsDemoController } from './aws-demo.controller.js';
 
@@ -33,15 +31,8 @@ const s3ClientProvider: Provider = {
     }),
 };
 
-const sqsClientProvider: Provider = {
-  provide: SQS_CLIENT,
-  inject: [awsConfig.KEY],
-  useFactory: (config: ConfigType<typeof awsConfig>) =>
-    new SQSClient(baseClientConfig(config)),
-};
-
 /**
- * The demo controller exposes UNAUTHENTICATED S3/SQS routes (read, upload,
+ * The demo controller exposes UNAUTHENTICATED S3 routes (read, upload,
  * delete). It is a local verification helper and must never be mounted in a
  * deployed environment, where those routes would be reachable by anyone able
  * to hit the published API port.
@@ -57,21 +48,15 @@ const demoRoutesEnabled =
 const demoControllers = demoRoutesEnabled ? [AwsDemoController] : [];
 
 /**
- * Global module exposing configured S3 and SQS clients plus their services.
- * Marked @Global so S3Service and SqsService can be injected anywhere without
- * re-importing AwsModule in every feature module.
+ * Global module exposing a configured S3 client plus its service. Marked
+ * @Global so S3Service can be injected anywhere without re-importing
+ * AwsModule in every feature module.
  */
 @Global()
 @Module({
   imports: [ConfigModule.forFeature(awsConfig)],
   controllers: [...demoControllers],
-  providers: [
-    s3ClientProvider,
-    sqsClientProvider,
-    S3Service,
-    SqsService,
-    AwsBootstrapService,
-  ],
-  exports: [S3Service, SqsService, S3_CLIENT, SQS_CLIENT],
+  providers: [s3ClientProvider, S3Service, AwsBootstrapService],
+  exports: [S3Service, S3_CLIENT],
 })
-export class AwsModule { }
+export class AwsModule {}

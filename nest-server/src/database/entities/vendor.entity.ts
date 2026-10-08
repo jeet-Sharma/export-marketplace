@@ -19,7 +19,12 @@ export class Vendor {
   @Column({ type: 'varchar', length: 250, name: 'company_name' })
   companyName!: string;
 
-  @Column({ type: 'varchar', length: 200, name: 'display_name', nullable: true })
+  @Column({
+    type: 'varchar',
+    length: 200,
+    name: 'display_name',
+    nullable: true,
+  })
   displayName!: string | null;
 
   @Column({ type: 'varchar', length: 320, nullable: true })
@@ -29,7 +34,11 @@ export class Vendor {
   phone!: string | null;
 
   // Supplier home/registered country — TBD in the source doc, so nullable.
-  @ManyToOne(() => Country, { nullable: true, onDelete: 'RESTRICT', onUpdate: 'RESTRICT' })
+  @ManyToOne(() => Country, {
+    nullable: true,
+    onDelete: 'RESTRICT',
+    onUpdate: 'RESTRICT',
+  })
   @JoinColumn({ name: 'country_id' })
   country!: Country | null;
 

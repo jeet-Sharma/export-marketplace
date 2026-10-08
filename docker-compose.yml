@@ -33,7 +33,7 @@ services:
     image: localstack/localstack:4.4.0
     restart: unless-stopped
     environment:
-      SERVICES: s3,sqs
+      SERVICES: s3
       DEFAULT_REGION: ${AWS_REGION:-us-east-1}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-test}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-test}
@@ -47,7 +47,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      # Give LocalStack time to initialize s3/sqs before the first check counts.
+      # Give LocalStack time to initialize s3 before the first check counts.
       start_period: 20s
     networks:
       - app-net
@@ -61,34 +61,36 @@ services:
       NODE_ENV: production
       PORT: 3005
       # Service names resolve on the shared network — not localhost.
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set a strong POSTGRES_PASSWORD in .env}
-      POSTGRES_DB: ${POSTGRES_DB:-export_marketplace}
+      # NOTE: these map to the DB_* names actually read by
+      # src/config/database.config.ts and src/database/data-source.ts.
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?set a strong POSTGRES_PASSWORD in .env}
+      DB_NAME: ${POSTGRES_DB:-export_marketplace}
       AWS_REGION: ${AWS_REGION:-us-east-1}
       AWS_ENDPOINT: http://localstack:4566
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-test}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-test}
       AWS_S3_BUCKET: ${AWS_S3_BUCKET:-export-marketplace-documents}
-      AWS_SQS_QUEUE_NAME: ${AWS_SQS_QUEUE_NAME:-export-marketplace-events}
       # AWS_S3_PUBLIC_ENDPOINT is intentionally NOT set here: this stack uses
       # LocalStack as a loopback-only internal service and does not serve
       # presigned links to external clients. With it unset, presigned URLs are
       # returned unmodified. When you move to real AWS, leave AWS_ENDPOINT empty
       # and the SDK's native (already host-reachable) URLs are used.
       # Demo routes stay OFF in production — never set ENABLE_AWS_DEMO_ROUTES here.
-      AUTH_ACCESS_SECRET: ${AUTH_ACCESS_SECRET:?set a strong random AUTH_ACCESS_SECRET in .env}
-      AUTH_REFRESH_SECRET: ${AUTH_REFRESH_SECRET:?set a strong random AUTH_REFRESH_SECRET in .env}
-      AUTH_ACCESS_TTL_SECONDS: ${AUTH_ACCESS_TTL_SECONDS:-900}
-      AUTH_REFRESH_TTL_SECONDS: ${AUTH_REFRESH_TTL_SECONDS:-2592000}
-      AUTH_MAX_FAILED_LOGINS: ${AUTH_MAX_FAILED_LOGINS:-5}
-      AUTH_LOCKOUT_MINUTES: ${AUTH_LOCKOUT_MINUTES:-15}
-      MAIL_HOST: ${MAIL_HOST:-}
-      MAIL_PORT: ${MAIL_PORT:-587}
-      MAIL_USER: ${MAIL_USER:-}
-      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
-      MAIL_FROM: ${MAIL_FROM:-}
+      # NOTE: these map to the JWT_* names actually read by
+      # src/config/jwt.config.ts (previously set as AUTH_* here, which that
+      # file never reads — tokens were silently signed with the insecure
+      # dev-only fallback secret).
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?set a strong random JWT_ACCESS_SECRET in .env}
+      JWT_ACCESS_EXPIRES_IN: ${JWT_ACCESS_EXPIRES_IN:-15m}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?set a strong random JWT_REFRESH_SECRET in .env}
+      JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
+      # Host-reachable origin(s) allowed to make credentialed cross-origin
+      # requests (browser calls the API via the published host port, which
+      # is a different origin than the API itself) — see main.ts CORS setup.
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
     ports:
       - "${API_HOST_PORT:-3005}:3005"
     depends_on:

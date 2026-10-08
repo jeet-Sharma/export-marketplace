@@ -8,7 +8,14 @@ import { PublicProductsController } from './public-products.controller.js';
 import { PublicProductsService } from './public-products.service.js';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Product, ProductPriceTier, ProductCountry, ProductImage])],
+  imports: [
+    TypeOrmModule.forFeature([
+      Product,
+      ProductPriceTier,
+      ProductCountry,
+      ProductImage,
+    ]),
+  ],
   controllers: [PublicProductsController],
   providers: [PublicProductsService],
 })

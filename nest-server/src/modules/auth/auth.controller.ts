@@ -11,16 +11,24 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import {
+  ApiBearerAuth,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+  ApiUnauthorizedResponse,
+} from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 import { AuthService } from './auth.service.js';
 import { CurrentUser } from './decorators/current-user.decorator.js';
 import { LoginDto } from './dto/login.dto.js';
-import type { LoginResponseDto } from './dto/login-response.dto.js';
+import { LoginResponseDto } from './dto/login-response.dto.js';
 import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
 import type { AccessTokenPayload } from './jwt-payload.interface.js';
 
 const REFRESH_TOKEN_COOKIE = 'refreshToken';
 
+@ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
   private readonly logger = new Logger(AuthController.name);
@@ -30,11 +38,23 @@ export class AuthController {
     private readonly configService: ConfigService,
   ) {}
 
+  @ApiOperation({ summary: 'Authenticate a Platform User (section 5.1)' })
+  @ApiOkResponse({ type: LoginResponseDto })
+  @ApiUnauthorizedResponse({
+    description: 'Invalid credentials or inactive account.',
+  })
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response): Promise<LoginResponseDto> {
-    const authenticatedUser = await this.authService.validateCredentials(dto.email, dto.password);
-    const { accessToken, refreshToken } = this.authService.issueTokenPair(authenticatedUser);
+  async login(
+    @Body() dto: LoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<LoginResponseDto> {
+    const authenticatedUser = await this.authService.validateCredentials(
+      dto.email,
+      dto.password,
+    );
+    const { accessToken, refreshToken } =
+      this.authService.issueTokenPair(authenticatedUser);
 
     this.setRefreshTokenCookie(res, refreshToken);
 
@@ -51,6 +71,17 @@ export class AuthController {
     };
   }
 
+  @ApiOperation({
+    summary: 'Issue a refreshed access token (section 5.2)',
+    description:
+      'Reads the HTTP-only refreshToken cookie set by /auth/login — not part of the request body.',
+  })
+  @ApiOkResponse({
+    schema: { properties: { accessToken: { type: 'string' } } },
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Missing, invalid, or expired refresh token.',
+  })
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   async refresh(
@@ -68,10 +99,18 @@ export class AuthController {
     return { accessToken: tokens.accessToken };
   }
 
+  @ApiOperation({ summary: 'End the current session (section 5.3)' })
+  @ApiBearerAuth('access-token')
+  @ApiOkResponse({
+    schema: { properties: { success: { type: 'boolean', example: true } } },
+  })
   @UseGuards(JwtAuthGuard)
   @Post('logout')
   @HttpCode(HttpStatus.OK)
-  logout(@CurrentUser() _user: AccessTokenPayload, @Res({ passthrough: true }) res: Response): { success: true } {
+  logout(
+    @CurrentUser() _user: AccessTokenPayload,
+    @Res({ passthrough: true }) res: Response,
+  ): { success: true } {
     // Phase 1 has no server-side refresh-token revocation store (no
     // denylist/session table) — logout clears the cookie client-side.
     // A stolen refresh token issued before logout would remain valid
@@ -87,7 +126,12 @@ export class AuthController {
     });
   }
 
-  private cookieOptions(): { httpOnly: true; secure: boolean; sameSite: 'strict'; path: string } {
+  private cookieOptions(): {
+    httpOnly: true;
+    secure: boolean;
+    sameSite: 'strict';
+    path: string;
+  } {
     return {
       httpOnly: true,
       // Only sent over HTTPS outside local dev — secure cookies are
@@ -100,7 +144,8 @@ export class AuthController {
   }
 
   private refreshTokenMaxAgeMs(): number {
-    const expiresIn = this.configService.get<string>('jwt.refreshExpiresIn') ?? '7d';
+    const expiresIn =
+      this.configService.get<string>('jwt.refreshExpiresIn') ?? '7d';
     const match = /^(\d+)([smhd])$/.exec(expiresIn);
     if (!match) {
       // Falling back silently here would mean the cookie's lifetime
@@ -116,7 +161,12 @@ export class AuthController {
       return 7 * 24 * 60 * 60 * 1000;
     }
     const [, amount, unit] = match;
-    const unitMs: Record<string, number> = { s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 };
+    const unitMs: Record<string, number> = {
+      s: 1000,
+      m: 60_000,
+      h: 3_600_000,
+      d: 86_400_000,
+    };
     return Number(amount) * unitMs[unit];
   }
 }

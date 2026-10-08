@@ -1,3 +1,4 @@
+import { ApiProperty } from '@nestjs/swagger';
 import { IsIn, IsInt, IsString, Max, Min, MinLength } from 'class-validator';
 import { MAX_IMAGE_UPLOAD_BYTES } from '../../../aws/aws.constants.js';
 
@@ -18,13 +19,20 @@ import { MAX_IMAGE_UPLOAD_BYTES } from '../../../aws/aws.constants.js';
 // HeadObjectCommand check (via S3Service.getObjectMetadata) for the
 // second, authoritative one.
 export class RequestUploadUrlDto {
+  @ApiProperty({ example: 'turmeric-powder.jpg' })
   @IsString()
   @MinLength(1)
   filename!: string;
 
+  @ApiProperty({ enum: ['image/jpeg', 'image/png', 'image/webp'] })
   @IsIn(['image/jpeg', 'image/png', 'image/webp'])
   contentType!: 'image/jpeg' | 'image/png' | 'image/webp';
 
+  @ApiProperty({
+    example: 204800,
+    maximum: MAX_IMAGE_UPLOAD_BYTES,
+    description: `Declared file size in bytes; max ${MAX_IMAGE_UPLOAD_BYTES} (${MAX_IMAGE_UPLOAD_BYTES / (1024 * 1024)}MB). The actual uploaded size is re-verified server-side after upload.`,
+  })
   @IsInt()
   @Min(1)
   @Max(MAX_IMAGE_UPLOAD_BYTES, {

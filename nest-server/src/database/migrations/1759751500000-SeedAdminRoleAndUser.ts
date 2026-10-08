@@ -21,12 +21,36 @@ export class SeedAdminRoleAndUser1759751500000 implements MigrationInterface {
   name = 'SeedAdminRoleAndUser1759751500000';
 
   // Permissions recommended in Phase-1-API-Specification-v0.1 section 3.
-  private readonly permissions: Array<{ code: string; name: string; description: string }> = [
-    { code: 'product.view', name: 'View Products', description: 'View admin product records, including drafts.' },
-    { code: 'product.create', name: 'Create Product', description: 'Create a product.' },
-    { code: 'product.edit', name: 'Edit Product', description: 'Edit product data.' },
-    { code: 'product.publish', name: 'Publish Product', description: 'Publish a draft product.' },
-    { code: 'product.unpublish', name: 'Unpublish Product', description: 'Unpublish a published product.' },
+  private readonly permissions: Array<{
+    code: string;
+    name: string;
+    description: string;
+  }> = [
+    {
+      code: 'product.view',
+      name: 'View Products',
+      description: 'View admin product records, including drafts.',
+    },
+    {
+      code: 'product.create',
+      name: 'Create Product',
+      description: 'Create a product.',
+    },
+    {
+      code: 'product.edit',
+      name: 'Edit Product',
+      description: 'Edit product data.',
+    },
+    {
+      code: 'product.publish',
+      name: 'Publish Product',
+      description: 'Publish a draft product.',
+    },
+    {
+      code: 'product.unpublish',
+      name: 'Unpublish Product',
+      description: 'Unpublish a published product.',
+    },
     {
       code: 'vendor.view',
       name: 'View Vendors',
@@ -105,6 +129,8 @@ export class SeedAdminRoleAndUser1759751500000 implements MigrationInterface {
       DELETE FROM "permissions"
       WHERE "code" IN ('product.view', 'product.create', 'product.edit', 'product.publish', 'product.unpublish', 'vendor.view')
     `);
-    await queryRunner.query(`DELETE FROM "roles" WHERE "code" = 'PLATFORM_ADMIN'`);
+    await queryRunner.query(
+      `DELETE FROM "roles" WHERE "code" = 'PLATFORM_ADMIN'`,
+    );
   }
 }

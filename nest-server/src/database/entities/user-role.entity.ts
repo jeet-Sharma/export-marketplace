@@ -1,4 +1,11 @@
-import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryColumn } from 'typeorm';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  JoinColumn,
+  ManyToOne,
+  PrimaryColumn,
+} from 'typeorm';
 import { Role } from './role.entity.js';
 import { User } from './user.entity.js';
 
@@ -25,7 +32,11 @@ export class UserRole {
   assignedAt!: Date;
 
   // Platform user who assigned the role.
-  @ManyToOne(() => User, { nullable: true, onDelete: 'RESTRICT', onUpdate: 'RESTRICT' })
+  @ManyToOne(() => User, {
+    nullable: true,
+    onDelete: 'RESTRICT',
+    onUpdate: 'RESTRICT',
+  })
   @JoinColumn({ name: 'assigned_by' })
   assignedByUser!: User | null;
 

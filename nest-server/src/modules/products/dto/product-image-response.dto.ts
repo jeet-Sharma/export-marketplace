@@ -1,3 +1,4 @@
+import { ApiProperty } from '@nestjs/swagger';
 import { ProductImage } from '../../../database/entities/product-image.entity.js';
 
 // Maps ProductImage onto the shape documented in
@@ -8,15 +9,28 @@ import { ProductImage } from '../../../database/entities/product-image.entity.js
 // that translation happens; never rename the entity column to match the
 // API field name — that would just move the mismatch to the DB layer.
 export class ProductImageResponseDto {
+  @ApiProperty({ format: 'uuid' })
   id!: string;
+
+  @ApiProperty({ format: 'uuid' })
   productId!: string;
+
+  @ApiProperty({ example: 'products/<product-id>/<image-id>.jpg' })
   objectKey!: string;
+
+  @ApiProperty({ nullable: true, example: 'Organic turmeric powder' })
   altText!: string | null;
+
+  @ApiProperty()
   isPrimary!: boolean;
+
+  @ApiProperty()
   sortOrder!: number;
 }
 
-export function toProductImageResponseDto(image: ProductImage): ProductImageResponseDto {
+export function toProductImageResponseDto(
+  image: ProductImage,
+): ProductImageResponseDto {
   return {
     id: image.id,
     productId: image.productId,

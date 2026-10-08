@@ -25,6 +25,8 @@ export class AddProductImagePrimaryUniqueIndex1759751600000 implements Migration
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`DROP INDEX "UQ_product_images_product_id_primary"`);
+    await queryRunner.query(
+      `DROP INDEX "UQ_product_images_product_id_primary"`,
+    );
   }
 }

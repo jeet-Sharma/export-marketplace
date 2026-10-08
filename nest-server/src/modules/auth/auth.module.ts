@@ -15,7 +15,13 @@ import { JwtStrategy } from './strategies/jwt.strategy.js';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, Role, Permission, UserRole, RolePermission]),
+    TypeOrmModule.forFeature([
+      User,
+      Role,
+      Permission,
+      UserRole,
+      RolePermission,
+    ]),
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       inject: [ConfigService],
@@ -26,7 +32,9 @@ import { JwtStrategy } from './strategies/jwt.strategy.js';
           // template-literal union (e.g. '15m') rather than a general
           // string. Our config value is always one of our own duration
           // strings (see jwt.config.ts), so this cast is safe.
-          expiresIn: configService.getOrThrow<string>('jwt.accessExpiresIn') as never,
+          expiresIn: configService.getOrThrow<string>(
+            'jwt.accessExpiresIn',
+          ) as never,
         },
       }),
     }),

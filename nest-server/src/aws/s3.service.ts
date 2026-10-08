@@ -38,7 +38,8 @@ export class S3Service {
 
   constructor(
     @Inject(S3_CLIENT) private readonly client: S3Client,
-    @Inject(awsConfig.KEY) private readonly config: ConfigType<typeof awsConfig>,
+    @Inject(awsConfig.KEY)
+    private readonly config: ConfigType<typeof awsConfig>,
   ) {
     this.bucket = this.config.s3.bucket;
   }
@@ -75,9 +76,13 @@ export class S3Service {
   // client-declared one — is checked against MAX_IMAGE_UPLOAD_BYTES, the
   // authoritative size enforcement (see getPresignedUploadUrl's comment
   // for why a presigned PUT can't enforce a hard ceiling by itself).
-  async getObjectMetadata(key: string): Promise<{ exists: true; sizeBytes: number } | { exists: false }> {
+  async getObjectMetadata(
+    key: string,
+  ): Promise<{ exists: true; sizeBytes: number } | { exists: false }> {
     try {
-      const result = await this.client.send(new HeadObjectCommand({ Bucket: this.bucket, Key: key }));
+      const result = await this.client.send(
+        new HeadObjectCommand({ Bucket: this.bucket, Key: key }),
+      );
       return { exists: true, sizeBytes: result.ContentLength ?? 0 };
     } catch (error) {
       if (this.isNotFound(error)) {
@@ -185,7 +190,8 @@ export class S3Service {
       return signed.toString();
     } catch (error) {
       this.logger.warn(
-        `Failed to rewrite presigned URL host to "${publicEndpoint}": ${(error as Error).message
+        `Failed to rewrite presigned URL host to "${publicEndpoint}": ${
+          (error as Error).message
         }. Returning the original URL.`,
       );
       return signedUrl;

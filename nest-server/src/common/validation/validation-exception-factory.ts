@@ -6,11 +6,16 @@ import type { ValidationError } from 'class-validator';
 // flattens that tree into dotted/indexed field paths — e.g.
 // "priceTiers.0.minQuantity" — so the error envelope's `errors[].field`
 // is still useful for nested validation failures, not just top-level ones.
-function flattenValidationErrors(errors: ValidationError[], parentPath = ''): Array<{ field: string; message: string }> {
+function flattenValidationErrors(
+  errors: ValidationError[],
+  parentPath = '',
+): Array<{ field: string; message: string }> {
   const result: Array<{ field: string; message: string }> = [];
 
   for (const error of errors) {
-    const path = parentPath ? `${parentPath}.${error.property}` : error.property;
+    const path = parentPath
+      ? `${parentPath}.${error.property}`
+      : error.property;
 
     if (error.constraints) {
       for (const message of Object.values(error.constraints)) {
@@ -37,7 +42,9 @@ function flattenValidationErrors(errors: ValidationError[], parentPath = ''): Ar
 // isStructuredBody/toEnvelope) handles it correctly with no filter
 // changes needed, and `errors[].field` matches the API spec section 13
 // example (`{"field": "moq", "message": "..."}`) instead of a placeholder.
-export function validationExceptionFactory(errors: ValidationError[]): BadRequestException {
+export function validationExceptionFactory(
+  errors: ValidationError[],
+): BadRequestException {
   return new BadRequestException({
     code: 'VALIDATION_ERROR',
     message: 'Request validation failed',

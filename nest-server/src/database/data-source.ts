@@ -16,12 +16,11 @@ import {
 
 // Standalone TypeORM DataSource used by the TypeORM CLI for generating and
 // running migrations (npm run migration:*), and for `migration:generate`
-// to diff these entities against the current schema. This is intentionally
-// not wired into AppModule yet — AppModule does not import TypeOrmModule,
-// so nothing in the running app talks to Postgres. Once that's deliberately
-// added, this config (or an equivalent one built via @nestjs/typeorm's
-// forRootAsync) should become the source the app itself connects with, so
-// schema and migration history stay in one place.
+// to diff these entities against the current schema. AppModule wires up its
+// own connection via TypeOrmModule.forRootAsync (see app.module.ts), reading
+// the same DB_* env vars through database.config.ts — kept as a separate
+// DataSource here only because the TypeORM CLI needs one outside of Nest's
+// DI container, not because the app itself skips TypeOrmModule.
 const dataSource = new DataSource({
   type: 'postgres',
   host: process.env.DB_HOST ?? 'localhost',
