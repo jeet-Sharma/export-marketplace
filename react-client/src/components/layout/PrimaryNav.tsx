@@ -18,13 +18,18 @@ function Brand() {
   );
 }
 
-/** Delivery destination indicator. */
+/** Delivery destination indicator with pin icon and dropdown. */
 function DeliverTo() {
   return (
-    <div className="w-[125px] text-white">
-      <p className="text-xs leading-[1.35]">Deliver to</p>
-      <p className="text-[13px] font-extrabold leading-[1.35]">Rotterdam 3011</p>
-    </div>
+    <button className="flex items-center gap-[6px] rounded-[8px] border border-white/20 px-[10px] py-[5px] text-white hover:border-white/40 transition-colors">
+      <svg width="12" height="14" viewBox="0 0 12 14" fill="none" aria-hidden>
+        <path d="M6 0C3.24 0 1 2.24 1 5c0 3.75 5 9 5 9s5-5.25 5-9c0-2.76-2.24-5-5-5zm0 6.5C5.17 6.5 4.5 5.83 4.5 5S5.17 3.5 6 3.5 7.5 4.17 7.5 5 6.83 6.5 6 6.5z" fill="currentColor"/>
+      </svg>
+      <div className="text-left">
+        <p className="text-[10px] leading-[1.2] opacity-70">Deliver to</p>
+        <p className="text-[12px] font-extrabold leading-[1.3]">Rotterdam 3011 ▾</p>
+      </div>
+    </button>
   );
 }
 
@@ -51,8 +56,8 @@ function SearchBar() {
       onSubmit={handleSubmit}
       className="flex h-[42px] flex-1 items-center overflow-hidden rounded-[10px] bg-white"
     >
-      <div className="flex h-full items-center bg-cream px-3">
-        <span className="text-xs font-bold text-ink">All products ▾</span>
+      <div className="flex h-full items-center border-r border-black/10 bg-cream px-3">
+        <span className="whitespace-nowrap text-xs font-bold text-ink">All categories ▾</span>
       </div>
       <label className="sr-only" htmlFor="marketplace-search">
         Search products, suppliers and origins
@@ -82,19 +87,33 @@ function SearchBar() {
   );
 }
 
+/** Cart pill with item count and view link. */
+function CartPill() {
+  return (
+    <Link
+      href={routes.cart}
+      className="flex items-center gap-[6px] rounded-[8px] border border-white/20 px-[10px] py-[5px] text-white hover:border-white/40 transition-colors"
+    >
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+        <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4zM3 6h18M16 10a4 4 0 01-8 0" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+      <span className="text-[12px] font-bold">Cart · 2</span>
+      <span className="rounded-[5px] bg-amber px-[7px] py-[2px] text-[11px] font-extrabold text-ink">View</span>
+    </Link>
+  );
+}
+
 /** Account-related quick links. */
 function AccountLinks() {
   return (
     <>
-      <span className="text-[13px] font-bold text-white">EN · USD</span>
+      <CartPill />
+      <span className="text-[13px] font-bold text-white opacity-80">EN · USD</span>
       <Link href={routes.signIn} className="text-[13px] font-bold text-white">
         Sign in
       </Link>
       <Link href={routes.orders} className="text-[13px] font-bold text-white">
         Orders
-      </Link>
-      <Link href={routes.cart} className="text-sm text-amber">
-        Cart · 2
       </Link>
     </>
   );

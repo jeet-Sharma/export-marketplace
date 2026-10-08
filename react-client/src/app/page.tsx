@@ -17,13 +17,14 @@ export default function HomePage() {
 
       <main className="flex flex-col gap-9 px-7 pb-7 pt-[22px]">
         <PromotionalStories />
+        {/* Trust bar sits directly beneath the hero, matching the Figma design */}
+        <AssuranceBar />
         <ShopByCategory />
         <TrendingProducts />
         <TradeAndExport />
       </main>
 
       <section className="flex flex-col bg-white">
-        <AssuranceBar />
         <Footer />
       </section>
     </div>
