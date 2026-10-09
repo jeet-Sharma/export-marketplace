@@ -1,0 +1,128 @@
+# Production-style stack for export-marketplace.
+#
+#   docker compose up -d --build
+#
+# Copy .env.docker.example -> .env before running and adjust secrets.
+# Values below fall back to sensible defaults if a var is not set.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set a strong POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-export_marketplace}
+    ports:
+      # Bind to loopback so the database is reachable from the host only,
+      # never from other machines on the network.
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-55432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB:-export_marketplace}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-net
+
+  localstack:
+    # Pinned to a community (free) image. The "latest" tag now points at the
+    # Pro edition, which requires a paid LOCALSTACK_AUTH_TOKEN to start.
+    image: localstack/localstack:4.4.0
+    restart: unless-stopped
+    environment:
+      SERVICES: s3
+      DEFAULT_REGION: ${AWS_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-test}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-test}
+    ports:
+      # Loopback only — this is an internal backing service, not a public API.
+      - "127.0.0.1:${LOCALSTACK_HOST_PORT:-4566}:4566"
+    volumes:
+      - localstack_data:/var/lib/localstack
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:4566/_localstack/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      # Give LocalStack time to initialize s3 before the first check counts.
+      start_period: 20s
+    networks:
+      - app-net
+
+  api:
+    build:
+      context: ./nest-server
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3005
+      # Service names resolve on the shared network — not localhost.
+      # NOTE: these map to the DB_* names actually read by
+      # src/config/database.config.ts and src/database/data-source.ts.
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?set a strong POSTGRES_PASSWORD in .env}
+      DB_NAME: ${POSTGRES_DB:-export_marketplace}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_ENDPOINT: http://localstack:4566
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-test}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-test}
+      AWS_S3_BUCKET: ${AWS_S3_BUCKET:-export-marketplace-documents}
+      # AWS_S3_PUBLIC_ENDPOINT is intentionally NOT set here: this stack uses
+      # LocalStack as a loopback-only internal service and does not serve
+      # presigned links to external clients. With it unset, presigned URLs are
+      # returned unmodified. When you move to real AWS, leave AWS_ENDPOINT empty
+      # and the SDK's native (already host-reachable) URLs are used.
+      # Demo routes stay OFF in production — never set ENABLE_AWS_DEMO_ROUTES here.
+      # NOTE: these map to the JWT_* names actually read by
+      # src/config/jwt.config.ts (previously set as AUTH_* here, which that
+      # file never reads — tokens were silently signed with the insecure
+      # dev-only fallback secret).
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?set a strong random JWT_ACCESS_SECRET in .env}
+      JWT_ACCESS_EXPIRES_IN: ${JWT_ACCESS_EXPIRES_IN:-15m}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?set a strong random JWT_REFRESH_SECRET in .env}
+      JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
+      # Host-reachable origin(s) allowed to make credentialed cross-origin
+      # requests (browser calls the API via the published host port, which
+      # is a different origin than the API itself) — see main.ts CORS setup.
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+    ports:
+      - "${API_HOST_PORT:-3005}:3005"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+    networks:
+      - app-net
+
+  web:
+    build:
+      context: ./react-client
+      dockerfile: Dockerfile
+      args:
+        # Browser calls the API via the host port, so use a host-reachable URL.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3005}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+    ports:
+      - "${WEB_HOST_PORT:-3000}:3000"
+    depends_on:
+      - api
+    networks:
+      - app-net
+
+volumes:
+  postgres_data:
+  localstack_data:
+
+networks:
+  app-net:
+    driver: bridge

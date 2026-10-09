@@ -1,0 +1,128 @@
+# Development stack with hot reload.
+#
+#   docker compose -f docker-compose.dev.yml up --build
+#
+# Source directories are bind-mounted so changes on the host trigger reloads
+# inside the containers. node_modules are kept in anonymous volumes so the
+# container's installed deps are not clobbered by the host mount.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-export_marketplace}
+    ports:
+      # Loopback only: the dev database uses weak default credentials, so it
+      # must never be reachable from other machines on the network.
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-55432}:5432"
+    volumes:
+      - postgres_data_dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-export_marketplace}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-net
+
+  localstack:
+    # Pinned to a community (free) image; "latest" is the paid Pro edition.
+    image: localstack/localstack:4.4.0
+    restart: unless-stopped
+    environment:
+      SERVICES: s3
+      DEFAULT_REGION: ${AWS_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-test}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-test}
+    ports:
+      # Loopback only — internal backing service, not for remote access.
+      - "127.0.0.1:${LOCALSTACK_HOST_PORT:-4566}:4566"
+    volumes:
+      - localstack_data_dev:/var/lib/localstack
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:4566/_localstack/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      # Give LocalStack time to initialize s3 before the first check counts.
+      start_period: 20s
+    networks:
+      - app-net
+
+  api:
+    build:
+      context: ./nest-server
+      dockerfile: Dockerfile.dev
+    environment:
+      NODE_ENV: development
+      PORT: 3005
+      # NOTE: these map to the DB_* names actually read by
+      # src/config/database.config.ts and src/database/data-source.ts.
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: ${POSTGRES_USER:-postgres}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      DB_NAME: ${POSTGRES_DB:-export_marketplace}
+      # NOTE: these map to the JWT_* names actually read by
+      # src/config/jwt.config.ts. Safe insecure defaults for local dev only.
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev-only-insecure-access-secret}
+      JWT_ACCESS_EXPIRES_IN: ${JWT_ACCESS_EXPIRES_IN:-15m}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev-only-insecure-refresh-secret}
+      JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
+      # Host-reachable origin allowed to make credentialed cross-origin
+      # requests — see main.ts CORS setup.
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_ENDPOINT: http://localstack:4566
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-test}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-test}
+      AWS_S3_BUCKET: ${AWS_S3_BUCKET:-export-marketplace-documents}
+      # Host-reachable endpoint so presigned S3 URLs open in a host browser.
+      AWS_S3_PUBLIC_ENDPOINT: ${AWS_S3_PUBLIC_ENDPOINT:-http://localhost:${LOCALSTACK_HOST_PORT:-4566}}
+      # Enables the unauthenticated /aws-demo helper routes. Dev stack only —
+      # intentionally absent from docker-compose.yml so they never deploy.
+      ENABLE_AWS_DEMO_ROUTES: "true"
+    ports:
+      - "${API_HOST_PORT:-3005}:3005"
+    volumes:
+      - ./nest-server:/app
+      - /app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+    networks:
+      - app-net
+
+  web:
+    build:
+      context: ./react-client
+      dockerfile: Dockerfile.dev
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3005}
+      # Helps file-watching reliability for bind mounts (esp. on Windows/WSL).
+      WATCHPACK_POLLING: "true"
+    ports:
+      - "${WEB_HOST_PORT:-3000}:3000"
+    volumes:
+      - ./react-client:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      - api
+    networks:
+      - app-net
+
+volumes:
+  postgres_data_dev:
+  localstack_data_dev:
+
+networks:
+  app-net:
+    driver: bridge

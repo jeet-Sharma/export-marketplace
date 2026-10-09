@@ -50,7 +50,11 @@ export class Product {
   @Column({ type: 'text', nullable: true })
   description!: string | null;
 
-  @ManyToOne(() => Category, { nullable: true, onDelete: 'RESTRICT', onUpdate: 'RESTRICT' })
+  @ManyToOne(() => Category, {
+    nullable: true,
+    onDelete: 'RESTRICT',
+    onUpdate: 'RESTRICT',
+  })
   @JoinColumn({ name: 'category_id' })
   category!: Category | null;
 
@@ -88,7 +92,11 @@ export class Product {
   @Column({ type: 'varchar', length: 20, name: 'hs_code', nullable: true })
   hsCode!: string | null;
 
-  @ManyToOne(() => Country, { nullable: true, onDelete: 'RESTRICT', onUpdate: 'RESTRICT' })
+  @ManyToOne(() => Country, {
+    nullable: true,
+    onDelete: 'RESTRICT',
+    onUpdate: 'RESTRICT',
+  })
   @JoinColumn({ name: 'source_country_id' })
   sourceCountry!: Country | null;
 
@@ -96,14 +104,24 @@ export class Product {
   sourceCountryId!: string | null;
 
   // Informational export eligibility value; vocabulary TBD.
-  @Column({ type: 'varchar', length: 50, name: 'export_eligibility', nullable: true })
+  @Column({
+    type: 'varchar',
+    length: 50,
+    name: 'export_eligibility',
+    nullable: true,
+  })
   exportEligibility!: string | null;
 
   @Column({ type: 'text', name: 'country_restrictions', nullable: true })
   countryRestrictions!: string | null;
 
   // Display text such as "10-15 business days".
-  @Column({ type: 'varchar', length: 150, name: 'estimated_delivery_text', nullable: true })
+  @Column({
+    type: 'varchar',
+    length: 150,
+    name: 'estimated_delivery_text',
+    nullable: true,
+  })
   estimatedDeliveryText!: string | null;
 
   @Column({ type: 'text', name: 'duties_taxes_note', nullable: true })
