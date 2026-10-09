@@ -46,44 +46,60 @@ function isPlaceholderSecret(secret: string | undefined): boolean {
 // (it only checks the var is set, not that its value is safe). Outside
 // production, the same conditions only log a warning so local development
 // stays convenient.
-const accessSecret = process.env.JWT_ACCESS_SECRET;
-const refreshSecret = process.env.JWT_REFRESH_SECRET;
-const isProduction = process.env.NODE_ENV === 'production';
+//
+// IMPORTANT: all of this validation runs INSIDE the registerAs() factory
+// callback, not at module top-level. ConfigModule.forRoot() invokes this
+// factory only after it has loaded .env (via dotenv) into process.env —
+// but importing this module (e.g. via config.module.ts's `load: [...,
+// jwtConfig]` array) happens earlier, as part of normal ES module
+// evaluation, before ConfigModule.forRoot() has run at all. Reading
+// process.env.JWT_ACCESS_SECRET at top-level would therefore see an empty
+// process.env in any deployment that supplies secrets solely through a
+// .env file (as opposed to real OS-level environment variables set before
+// the process starts), and would wrongly throw as if the secrets were
+// unset — see Qodo review comment on this file.
+export default registerAs('jwt', () => {
+  const accessSecret = process.env.JWT_ACCESS_SECRET;
+  const refreshSecret = process.env.JWT_REFRESH_SECRET;
+  const isProduction = process.env.NODE_ENV === 'production';
 
-const problems: string[] = [];
-if (!accessSecret) {
-  problems.push('JWT_ACCESS_SECRET is not set');
-} else if (isPlaceholderSecret(accessSecret)) {
-  problems.push('JWT_ACCESS_SECRET is set to a known placeholder value');
-}
-if (!refreshSecret) {
-  problems.push('JWT_REFRESH_SECRET is not set');
-} else if (isPlaceholderSecret(refreshSecret)) {
-  problems.push('JWT_REFRESH_SECRET is set to a known placeholder value');
-}
-if (accessSecret && refreshSecret && accessSecret === refreshSecret) {
-  problems.push('JWT_ACCESS_SECRET and JWT_REFRESH_SECRET must be different');
-}
-
-if (problems.length > 0) {
-  const message =
-    `Insecure JWT configuration: ${problems.join('; ')}. ` +
-    'Generate strong random secrets, e.g. `openssl rand -hex 32`, and set ' +
-    'JWT_ACCESS_SECRET / JWT_REFRESH_SECRET to different values.';
-  if (isProduction) {
-    // Fail fast — never let the app accept traffic while able to sign/verify
-    // tokens with a secret an attacker can already guess or read.
-    throw new Error(message);
+  const problems: string[] = [];
+  if (!accessSecret) {
+    problems.push('JWT_ACCESS_SECRET is not set');
+  } else if (isPlaceholderSecret(accessSecret)) {
+    problems.push('JWT_ACCESS_SECRET is set to a known placeholder value');
   }
-  logger.warn(
-    `${message} This is fine for local development but must never happen ` +
-      'in a shared or production environment.',
-  );
-}
+  if (!refreshSecret) {
+    problems.push('JWT_REFRESH_SECRET is not set');
+  } else if (isPlaceholderSecret(refreshSecret)) {
+    problems.push('JWT_REFRESH_SECRET is set to a known placeholder value');
+  }
+  if (accessSecret && refreshSecret && accessSecret === refreshSecret) {
+    problems.push(
+      'JWT_ACCESS_SECRET and JWT_REFRESH_SECRET must be different',
+    );
+  }
 
-export default registerAs('jwt', () => ({
-  accessSecret: accessSecret ?? DEV_ACCESS_SECRET_PLACEHOLDER,
-  accessExpiresIn: process.env.JWT_ACCESS_EXPIRES_IN ?? '15m',
-  refreshSecret: refreshSecret ?? DEV_REFRESH_SECRET_PLACEHOLDER,
-  refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN ?? '7d',
-}));
+  if (problems.length > 0) {
+    const message =
+      `Insecure JWT configuration: ${problems.join('; ')}. ` +
+      'Generate strong random secrets, e.g. `openssl rand -hex 32`, and set ' +
+      'JWT_ACCESS_SECRET / JWT_REFRESH_SECRET to different values.';
+    if (isProduction) {
+      // Fail fast — never let the app accept traffic while able to sign/verify
+      // tokens with a secret an attacker can already guess or read.
+      throw new Error(message);
+    }
+    logger.warn(
+      `${message} This is fine for local development but must never happen ` +
+        'in a shared or production environment.',
+    );
+  }
+
+  return {
+    accessSecret: accessSecret ?? DEV_ACCESS_SECRET_PLACEHOLDER,
+    accessExpiresIn: process.env.JWT_ACCESS_EXPIRES_IN ?? '15m',
+    refreshSecret: refreshSecret ?? DEV_REFRESH_SECRET_PLACEHOLDER,
+    refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN ?? '7d',
+  };
+});
