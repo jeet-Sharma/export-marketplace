@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import {
+  BadRequestException,
   Inject,
   Injectable,
   Logger,
@@ -7,6 +8,10 @@ import {
 } from '@nestjs/common';
 import type { ConfigType } from '@nestjs/config';
 import { v2 as cloudinary } from 'cloudinary';
+import {
+  ALLOWED_IMAGE_FORMATS,
+  type AllowedImageContentType,
+} from '../aws/aws.constants.js';
 import { cloudinaryConfig } from '../config/cloudinary.config.js';
 import type {
   PresignedUpload,
@@ -14,23 +19,66 @@ import type {
   StorageStrategy,
 } from './storage-strategy.interface.js';
 
+/** Maps the client-declared image Content-Type to Cloudinary's format name. */
+const CONTENT_TYPE_TO_CLOUDINARY_FORMAT: Record<
+  AllowedImageContentType,
+  string
+> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+};
+
+/**
+ * Reverse of CONTENT_TYPE_TO_CLOUDINARY_FORMAT — maps the format Cloudinary
+ * reports back (detected from the actual uploaded bytes, via its own
+ * server-side content inspection) to the Content-Type ProductsService.addImage
+ * checks against ALLOWED_IMAGE_CONTENT_TYPES. Cloudinary normalizes jpeg's
+ * extension to "jpg", hence the explicit key here rather than deriving it
+ * from the MIME type string.
+ */
+const CLOUDINARY_FORMAT_TO_CONTENT_TYPE: Record<
+  string,
+  AllowedImageContentType
+> = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+};
+
+/**
+ * Cloudinary's signed-upload `timestamp` parameter is only accepted within a
+ * fixed, provider-enforced window of its own clock — documented by
+ * Cloudinary as approximately one hour — and this is NOT configurable
+ * per-request (unlike S3's POST policy `Expires`, which the caller sets
+ * directly). There is no signed parameter that can shorten or extend it.
+ * This constant documents the actual enforced behavior so
+ * getPresignedUpload can report a truthful `expiresInSeconds` back to
+ * callers instead of echoing whatever the caller asked for — see Qodo
+ * review Bug #11 and PresignedUpload's doc comment.
+ */
+const CLOUDINARY_SIGNATURE_VALIDITY_SECONDS = 3600;
+
 /**
  * Cloudinary-backed StorageStrategy. Mirrors S3StorageStrategy's contract so
  * ProductsService works unchanged regardless of which strategy is active.
  *
- * Upload model: Cloudinary has no S3-style presigned PUT URL. The
- * provider-agnostic equivalent — and what keeps this a true direct-to-provider
- * upload (the backend never receives file bytes, same as the S3 flow) — is a
- * *signed upload*: the backend signs a small parameter set (public_id,
- * timestamp, folder) with the API secret, and the client POSTs the file plus
- * those signed params directly to Cloudinary's upload endpoint. This method
- * still returns a single string to satisfy the existing
- * `getPresignedUploadUrl(): Promise<string>` contract: the signed params are
- * serialized onto the Cloudinary upload endpoint URL as a query string, so
- * the caller's shape (`UploadUrlResponseDto.uploadUrl`) doesn't change — only
- * the client-side upload mechanics differ (a signed POST instead of a plain
- * PUT), which is unavoidable given Cloudinary's API and is documented for
- * whoever implements the dev-environment upload client.
+ * Upload model: Cloudinary has no S3-style presigned PUT URL — a *signed
+ * upload* is the provider-agnostic equivalent that keeps this a true
+ * direct-to-provider upload (the backend never receives file bytes, same as
+ * the S3 flow). The backend signs a parameter set (public_id, timestamp)
+ * with the API secret via `getPresignedUpload` below, and the client sends a
+ * multipart/form-data POST directly to Cloudinary's upload endpoint with
+ * those signed params as form fields plus the file itself — returned as the
+ * same `{ url, httpMethod, fields }` shape S3StorageStrategy returns (see
+ * `PresignedUpload` in storage-strategy.interface.ts), so ProductsService
+ * and the API contract are identical regardless of which provider is
+ * active. Earlier versions of this file encoded the signed params as a query
+ * string on the URL and returned a bare string — that doesn't match how
+ * Cloudinary's upload API or S3's POST policy actually work (both require
+ * the signed params as multipart form fields, not query params), which is
+ * what this method now returns correctly.
  *
  * Credential validation is deliberately NOT done in the constructor: this
  * class is always instantiated by StorageModule regardless of which
@@ -102,7 +150,19 @@ export class CloudinaryStorageStrategy implements StorageStrategy {
   /**
    * Returns a Cloudinary signed-upload POST target: the client submits a
    * multipart/form-data POST to `url` carrying every entry in `fields`
-   * (public_id, timestamp, api_key, signature) plus the file itself.
+   * (public_id, timestamp, allowed_formats, api_key, signature) plus the
+   * file itself, added last.
+   *
+   * File-type enforcement: `allowed_formats` is signed into the request
+   * (included in paramsToSign below), so Cloudinary itself verifies the
+   * ACTUAL uploaded file's detected format server-side and rejects the
+   * upload if it doesn't match — not merely the client-declared
+   * Content-Type header, which a malicious or buggy client could set to
+   * anything regardless of the real file content. Because it's part of
+   * the signed payload, a client cannot widen or strip this restriction
+   * without invalidating the signature. `contentType` is required (not
+   * optional) for this strategy specifically so there's always a format
+   * to translate and sign — see CONTENT_TYPE_TO_CLOUDINARY_FORMAT.
    *
    * IMPORTANT size-enforcement limitation (unlike S3StorageStrategy):
    * Cloudinary's raw signed-upload API has no server-enforced hard byte
@@ -116,16 +176,49 @@ export class CloudinaryStorageStrategy implements StorageStrategy {
    * somewhere this gap matters, an eager async-moderation webhook or a
    * stricter upload preset enforced on the Cloudinary account itself would
    * be the next step, which is out of scope for this fix.
+   *
+   * IMPORTANT expiry limitation (unlike S3StorageStrategy): the requested
+   * `expiresInSeconds` is NOT honored. Cloudinary's signed `timestamp` is
+   * only valid for a fixed, provider-enforced window
+   * (CLOUDINARY_SIGNATURE_VALIDITY_SECONDS, ~1 hour) that cannot be
+   * shortened or lengthened per-request — there is no signed parameter for
+   * this. The returned `PresignedUpload.expiresInSeconds` reports that
+   * ACTUAL enforced window rather than echoing the input, so the API
+   * contract never understates (or overstates) how long the upload URL
+   * stays valid — see Qodo review Bug #11.
    */
   async getPresignedUpload(
     key: string,
     _expiresInSeconds: number,
     _maxSizeBytes: number,
-    _contentType?: string,
+    contentType?: string,
   ): Promise<PresignedUpload> {
     this.ensureConfigured();
+
+    const format =
+      CONTENT_TYPE_TO_CLOUDINARY_FORMAT[
+        contentType as AllowedImageContentType
+      ];
+    if (!format) {
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: 'Unsupported image content type for Cloudinary upload',
+        errors: [
+          {
+            field: 'contentType',
+            message: `contentType must be one of: ${Object.keys(CONTENT_TYPE_TO_CLOUDINARY_FORMAT).join(', ')}`,
+          },
+        ],
+      });
+    }
+
     const timestamp = Math.floor(Date.now() / 1000);
-    const paramsToSign = { public_id: key, timestamp };
+    const allowedFormats = ALLOWED_IMAGE_FORMATS.join(',');
+    const paramsToSign = {
+      public_id: key,
+      timestamp,
+      allowed_formats: allowedFormats,
+    };
 
     let signed: { signature: string; api_key: string };
     try {
@@ -142,24 +235,47 @@ export class CloudinaryStorageStrategy implements StorageStrategy {
       );
     }
 
-    const url = `https://api.cloudinary.com/v1_1/${this.config.cloudName}/auto/upload`;
+    // The signed resource_type must match what the upload actually sends;
+    // "auto" (used for getObjectMetadata/delete lookups when the type is
+    // unknown) cannot be part of the signature here since the client would
+    // then need to resend a resource_type field matching exactly what was
+    // signed — "image" is correct and sufficient since this flow (and
+    // ALLOWED_IMAGE_FORMATS) is image-only.
+    const url = `https://api.cloudinary.com/v1_1/${this.config.cloudName}/image/upload`;
     return {
       url,
+      httpMethod: 'POST',
       fields: {
         public_id: key,
         timestamp: String(timestamp),
+        allowed_formats: allowedFormats,
         api_key: signed.api_key,
         signature: signed.signature,
       },
+      // Not the requested value — Cloudinary enforces its own fixed window
+      // regardless of what was asked for. See the method's doc comment and
+      // CLOUDINARY_SIGNATURE_VALIDITY_SECONDS.
+      expiresInSeconds: CLOUDINARY_SIGNATURE_VALIDITY_SECONDS,
     };
   }
 
   /**
-   * Confirms the asset exists and returns its byte size, via Cloudinary's
-   * Admin API `resource` lookup — the equivalent of S3's HeadObjectCommand.
-   * Tries `image` then `video` resource types since the public_id alone
-   * doesn't indicate which; `raw` is not attempted (unsupported media type
-   * for this flow — see RequestUploadUrlDto's image/video-only allowlist).
+   * Confirms the asset exists and returns its byte size plus detected
+   * content type, via Cloudinary's Admin API `resource` lookup — the
+   * equivalent of S3's HeadObjectCommand. Tries `image` then `video`
+   * resource types since the public_id alone doesn't indicate which; `raw`
+   * is not attempted (unsupported media type for this flow — see
+   * RequestUploadUrlDto's image-only allowlist).
+   *
+   * `detectedContentType` comes from Cloudinary's own `format` field,
+   * which reflects what Cloudinary detected the asset actually is after
+   * upload — not a client-declared value. `allowed_formats` (signed into
+   * every upload via getPresignedUpload) already makes Cloudinary reject
+   * a mismatched upload before it's ever stored, so by the time this
+   * method runs the format should always be an allowed one; mapping it
+   * back to a Content-Type here lets ProductsService.addImage apply the
+   * exact same check uniformly across both storage strategies rather than
+   * trusting Cloudinary's upload-time enforcement alone.
    */
   async getObjectMetadata(key: string): Promise<StorageObjectMetadata> {
     this.ensureConfigured();
@@ -168,7 +284,16 @@ export class CloudinaryStorageStrategy implements StorageStrategy {
         const result = await cloudinary.api.resource(key, {
           resource_type: resourceType,
         });
-        return { exists: true, sizeBytes: result.bytes ?? 0 };
+        const detectedContentType = result.format
+          ? CLOUDINARY_FORMAT_TO_CONTENT_TYPE[
+              String(result.format).toLowerCase()
+            ]
+          : undefined;
+        return {
+          exists: true,
+          sizeBytes: result.bytes ?? 0,
+          detectedContentType,
+        };
       } catch (error) {
         if (!this.isNotFound(error)) {
           this.logger.error(
@@ -219,5 +344,19 @@ export class CloudinaryStorageStrategy implements StorageStrategy {
   private isNotFound(error: unknown): boolean {
     const httpCode = (error as { http_code?: number })?.http_code;
     return httpCode === 404;
+  }
+
+  /**
+   * Builds Cloudinary's direct delivery URL for an image: assets uploaded
+   * via the signed-upload flow above are public under the account's
+   * cloud_name, so this is a plain string template — no signing, no
+   * expiry, and no SDK/network call needed (unlike S3's presigned GET).
+   * `expiresInSeconds` is accepted for interface parity with
+   * S3StorageStrategy but is intentionally unused: Cloudinary delivery
+   * URLs for public assets do not expire.
+   */
+  async getDisplayUrl(key: string, _expiresInSeconds?: number): Promise<string> {
+    this.ensureConfigured();
+    return `https://res.cloudinary.com/${this.config.cloudName}/image/upload/${key}`;
   }
 }

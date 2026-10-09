@@ -16,6 +16,7 @@ describe('ProductsService update/publish/unpublish', () => {
       getPresignedUpload: vi.fn(),
       getObjectMetadata: vi.fn(),
       delete: vi.fn(),
+      getDisplayUrl: vi.fn(),
     };
   }
 

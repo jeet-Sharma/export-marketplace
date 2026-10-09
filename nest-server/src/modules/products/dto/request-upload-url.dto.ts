@@ -1,6 +1,10 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsIn, IsInt, IsString, Max, Min, MinLength } from 'class-validator';
-import { MAX_IMAGE_UPLOAD_BYTES } from '../../../aws/aws.constants.js';
+import {
+  ALLOWED_IMAGE_CONTENT_TYPES,
+  type AllowedImageContentType,
+  MAX_IMAGE_UPLOAD_BYTES,
+} from '../../../aws/aws.constants.js';
 
 // Not explicitly itemized as its own row in API spec section 4/9 — the
 // spec's section 9 intro says "the exact upload implementation may use
@@ -24,9 +28,9 @@ export class RequestUploadUrlDto {
   @MinLength(1)
   filename!: string;
 
-  @ApiProperty({ enum: ['image/jpeg', 'image/png', 'image/webp'] })
-  @IsIn(['image/jpeg', 'image/png', 'image/webp'])
-  contentType!: 'image/jpeg' | 'image/png' | 'image/webp';
+  @ApiProperty({ enum: ALLOWED_IMAGE_CONTENT_TYPES })
+  @IsIn(ALLOWED_IMAGE_CONTENT_TYPES)
+  contentType!: AllowedImageContentType;
 
   @ApiProperty({
     example: 204800,

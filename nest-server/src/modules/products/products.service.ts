@@ -22,7 +22,11 @@ import {
   ProductDetailDto,
   toProductDetailDto,
 } from '../../common/dto/product-detail.dto.js';
-import { MAX_IMAGE_UPLOAD_BYTES } from '../../aws/aws.constants.js';
+import {
+  ALLOWED_IMAGE_CONTENT_TYPES,
+  type AllowedImageContentType,
+  MAX_IMAGE_UPLOAD_BYTES,
+} from '../../aws/aws.constants.js';
 import {
   STORAGE_STRATEGY,
   type StorageStrategy,
@@ -175,7 +179,11 @@ export class ProductsService {
 
     return toProductDetailDto(
       product,
-      images.map(toProductImageResponseDto),
+      await Promise.all(
+        images.map((image) =>
+          toProductImageResponseDto(image, this.storageStrategy),
+        ),
+      ),
       priceTiers,
       productCountries.map((pc) => pc.country),
     );
@@ -557,17 +565,25 @@ export class ProductsService {
       productId,
       filename,
     );
-    const { url, fields } = await this.storageStrategy.getPresignedUpload(
-      key,
-      PRESIGNED_UPLOAD_URL_TTL_SECONDS,
-      MAX_IMAGE_UPLOAD_BYTES,
-      contentType,
-    );
+    const { url, httpMethod, fields, expiresInSeconds } =
+      await this.storageStrategy.getPresignedUpload(
+        key,
+        PRESIGNED_UPLOAD_URL_TTL_SECONDS,
+        MAX_IMAGE_UPLOAD_BYTES,
+        contentType,
+      );
+    // Relay the strategy's ACTUAL achieved expiry, not the requested
+    // PRESIGNED_UPLOAD_URL_TTL_SECONDS constant — S3 honors the request
+    // exactly, but Cloudinary enforces its own fixed window regardless of
+    // what was asked for, so echoing the constant unconditionally would
+    // misreport the real expiry for Cloudinary uploads. See Qodo review
+    // Bug #11 and PresignedUpload's doc comment.
     return {
       uploadUrl: url,
+      httpMethod,
       fields,
       key,
-      expiresInSeconds: PRESIGNED_UPLOAD_URL_TTL_SECONDS,
+      expiresInSeconds,
     };
   }
 
@@ -663,6 +679,35 @@ export class ProductsService {
       });
     }
 
+    // Authoritative file-TYPE check, based on the uploaded object's actual
+    // content (see StorageStrategy.getObjectMetadata's detectedContentType),
+    // never the client-declared Content-Type header used to request the
+    // upload URL — a malicious or buggy client can set that header to
+    // anything regardless of what bytes it actually sends. An object whose
+    // real content doesn't match one of ALLOWED_IMAGE_CONTENT_TYPES (e.g.
+    // an HTML/script/executable file renamed with a .jpg-looking key) is
+    // rejected and deleted immediately, the same treatment as an oversized
+    // upload above — it must not be left in storage, and must never be
+    // persisted as product image metadata.
+    if (
+      !metadata.detectedContentType ||
+      !ALLOWED_IMAGE_CONTENT_TYPES.includes(
+        metadata.detectedContentType as AllowedImageContentType,
+      )
+    ) {
+      await this.storageStrategy.delete(dto.objectKey);
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: 'Uploaded file is not a supported image format',
+        errors: [
+          {
+            field: 'objectKey',
+            message: `The uploaded file's content does not match an allowed image format (${ALLOWED_IMAGE_CONTENT_TYPES.join(', ')})`,
+          },
+        ],
+      });
+    }
+
     try {
       const saved = await this.dataSource.transaction(async (manager) => {
         // Only one primary image per product (API spec section 14). This
@@ -689,7 +734,7 @@ export class ProductsService {
         });
         return await manager.save(ProductImage, image);
       });
-      return toProductImageResponseDto(saved);
+      return await toProductImageResponseDto(saved, this.storageStrategy);
     } catch (error) {
       const constraint = this.getUniqueViolationConstraint(error);
       if (constraint === 'UQ_product_images_s3_object_key') {

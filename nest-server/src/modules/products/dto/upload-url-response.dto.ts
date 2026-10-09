@@ -19,6 +19,16 @@ export class UploadUrlResponseDto {
   uploadUrl!: string;
 
   @ApiProperty({
+    enum: ['POST'],
+    example: 'POST',
+    description:
+      'HTTP method to use for the upload request. Always POST today for ' +
+      'both S3 and Cloudinary — included explicitly so clients never need ' +
+      'to assume it.',
+  })
+  httpMethod!: 'POST';
+
+  @ApiProperty({
     description:
       'Form fields to include in the POST, in order, before the file field.',
     example: {
@@ -35,6 +45,15 @@ export class UploadUrlResponseDto {
   @ApiProperty({ example: 'products/<product-id>/<uuid>-photo.jpg' })
   key!: string;
 
-  @ApiProperty({ example: 900 })
+  @ApiProperty({
+    example: 900,
+    description:
+      'The ACTUAL expiry of this upload authorization, in seconds from ' +
+      'now — not necessarily what was requested. S3 honors the requested ' +
+      'TTL exactly. Cloudinary enforces its own fixed signed-upload ' +
+      'window (~3600s) regardless of what was requested, so this value ' +
+      'may differ from the configured default depending on which ' +
+      'storage provider is active.',
+  })
   expiresInSeconds!: number;
 }

@@ -13,7 +13,11 @@ import {
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { createPresignedPost } from '@aws-sdk/s3-presigned-post';
 import { awsConfig } from '../config/aws.config.js';
-import { S3_CLIENT, S3_PRESIGNING_CLIENT } from './aws.constants.js';
+import {
+  IMAGE_MAGIC_NUMBERS,
+  S3_CLIENT,
+  S3_PRESIGNING_CLIENT,
+} from './aws.constants.js';
 
 export interface UploadObjectInput {
   key: string;
@@ -72,26 +76,88 @@ export class S3Service {
   }
 
   // Confirms the object actually exists in the bucket and returns its
-  // real size. Used two ways in ProductsService.addImage: (1) a bogus or
-  // not-yet-uploaded key can't be recorded as if the upload had
-  // succeeded, and (2) the object's actual size — not merely a
-  // client-declared one — is checked against MAX_IMAGE_UPLOAD_BYTES, the
-  // authoritative size enforcement (see getPresignedUploadUrl's comment
-  // for why a presigned PUT can't enforce a hard ceiling by itself).
+  // real size plus its content-sniffed type. Used in ProductsService.addImage
+  // for three checks: (1) a bogus or not-yet-uploaded key can't be recorded
+  // as if the upload had succeeded; (2) the object's actual size — not
+  // merely a client-declared one — is checked against
+  // MAX_IMAGE_UPLOAD_BYTES, the authoritative size enforcement (see
+  // getPresignedUploadPost's comment for why a presigned PUT alone can't
+  // enforce a hard ceiling); (3) detectedContentType is checked against
+  // the allowed image types, the authoritative file-TYPE enforcement — a
+  // client can set any Content-Type header it wants on the upload, so the
+  // only trustworthy signal is the actual bytes stored, sniffed here via
+  // detectImageContentType.
   async getObjectMetadata(
     key: string,
-  ): Promise<{ exists: true; sizeBytes: number } | { exists: false }> {
+  ): Promise<
+    | { exists: true; sizeBytes: number; detectedContentType?: string }
+    | { exists: false }
+  > {
     try {
       const result = await this.client.send(
         new HeadObjectCommand({ Bucket: this.bucket, Key: key }),
       );
-      return { exists: true, sizeBytes: result.ContentLength ?? 0 };
+      const detectedContentType = await this.detectImageContentType(key);
+      return {
+        exists: true,
+        sizeBytes: result.ContentLength ?? 0,
+        detectedContentType,
+      };
     } catch (error) {
       if (this.isNotFound(error)) {
         return { exists: false };
       }
       throw error;
     }
+  }
+
+  /**
+   * Sniffs the object's real image type from its file-signature (magic
+   * number) bytes, fetched via a cheap byte-range GET rather than
+   * downloading the whole object — the longest signature checked
+   * (IMAGE_MAGIC_NUMBERS) is 4 bytes, so a small fixed-size range request
+   * covers every case. Returns undefined if the object is too short to
+   * contain any known signature, or its leading bytes don't match any
+   * allowed image type (e.g. it's actually an HTML/script/executable file
+   * with a spoofed Content-Type) — the caller (addImage) treats undefined
+   * as "reject", never as "assume it's fine".
+   */
+  private async detectImageContentType(
+    key: string,
+  ): Promise<string | undefined> {
+    const sniffLength = Math.max(
+      ...IMAGE_MAGIC_NUMBERS.map((entry) => entry.signature.length),
+    );
+    let bytes: Uint8Array;
+    try {
+      const result = await this.client.send(
+        new GetObjectCommand({
+          Bucket: this.bucket,
+          Key: key,
+          Range: `bytes=0-${sniffLength - 1}`,
+        }),
+      );
+      if (!result.Body) {
+        return undefined;
+      }
+      bytes = await result.Body.transformToByteArray();
+    } catch (error) {
+      this.logger.warn(
+        `Failed to sniff content type for "${key}": ${(error as Error).message}`,
+      );
+      return undefined;
+    }
+
+    for (const { contentType, signature } of IMAGE_MAGIC_NUMBERS) {
+      if (bytes.length < signature.length) {
+        continue;
+      }
+      const matches = signature.every((byte, index) => bytes[index] === byte);
+      if (matches) {
+        return contentType;
+      }
+    }
+    return undefined;
   }
 
   /** Uploads an object and returns its key. */

@@ -55,15 +55,44 @@ export class AddVendorCategoryCreatePermissions1759751800000 implements Migratio
     `);
   }
 
+  // Qodo review Bug #9: the original down() deleted BOTH permissions and
+  // EVERY role_permissions grant referencing them, purely by code match —
+  // with no check that this migration is what created them. up() is
+  // idempotent (ON CONFLICT DO NOTHING), so re-running this migration
+  // against an environment where 'vendor.create'/'category.create'
+  // already existed (seeded by another process, or granted to a role
+  // other than PLATFORM_ADMIN since) is a safe no-op — but the original
+  // down() didn't mirror that: it would delete those pre-existing grants
+  // and permission rows too, including grants to roles this migration
+  // never touched.
+  //
+  // Fix: only revoke PLATFORM_ADMIN's specific grant (not any other
+  // role's), and only delete a permission row once NO role_permissions
+  // reference it at all — if some other role was already granted it
+  // before this migration ran, that grant (and the permission row it
+  // depends on) must survive the rollback.
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`
-      DELETE FROM "role_permissions"
-      WHERE "permission_id" IN (
-        SELECT "id" FROM "permissions" WHERE "code" IN ('vendor.create', 'category.create')
-      )
-    `);
+    const permissionCodes = this.permissions.map((p) => p.code);
+    const placeholders = permissionCodes.map((_, i) => `$${i + 1}`).join(', ');
+
     await queryRunner.query(
-      `DELETE FROM "permissions" WHERE "code" IN ('vendor.create', 'category.create')`,
+      `
+      DELETE FROM "role_permissions"
+      WHERE "role_id" IN (SELECT "id" FROM "roles" WHERE "code" = 'PLATFORM_ADMIN')
+        AND "permission_id" IN (
+          SELECT "id" FROM "permissions" WHERE "code" IN (${placeholders})
+        )
+    `,
+      permissionCodes,
+    );
+
+    await queryRunner.query(
+      `
+      DELETE FROM "permissions"
+      WHERE "code" IN (${placeholders})
+        AND "id" NOT IN (SELECT "permission_id" FROM "role_permissions")
+    `,
+      permissionCodes,
     );
   }
 }

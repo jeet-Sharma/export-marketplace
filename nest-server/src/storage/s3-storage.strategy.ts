@@ -31,12 +31,16 @@ export class S3StorageStrategy implements StorageStrategy {
     maxSizeBytes: number,
     contentType?: string,
   ): Promise<PresignedUpload> {
-    return this.s3Service.getPresignedUploadPost(
+    const { url, fields } = await this.s3Service.getPresignedUploadPost(
       key,
       expiresInSeconds,
       maxSizeBytes,
       contentType,
     );
+    // S3's POST policy `Expires` is fully caller-controlled, so the actual
+    // expiry equals exactly what was requested — see PresignedUpload's
+    // `expiresInSeconds` doc comment (Qodo review Bug #11).
+    return { url, httpMethod: 'POST', fields, expiresInSeconds };
   }
 
   async getObjectMetadata(key: string): Promise<StorageObjectMetadata> {
@@ -45,5 +49,13 @@ export class S3StorageStrategy implements StorageStrategy {
 
   async delete(key: string): Promise<void> {
     await this.s3Service.delete(key);
+  }
+
+  async getDisplayUrl(key: string, expiresInSeconds?: number): Promise<string> {
+    // Passing `undefined` through explicitly still triggers
+    // getPresignedDownloadUrl's own default parameter (JS treats an
+    // undefined argument as "not provided"), so no extra default is
+    // needed here.
+    return this.s3Service.getPresignedDownloadUrl(key, expiresInSeconds);
   }
 }

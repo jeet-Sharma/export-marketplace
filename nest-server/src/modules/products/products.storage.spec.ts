@@ -18,6 +18,7 @@ describe('ProductsService storage integration', () => {
       getPresignedUpload: vi.fn(),
       getObjectMetadata: vi.fn(),
       delete: vi.fn(),
+      getDisplayUrl: vi.fn().mockResolvedValue('https://display.example/image.jpg'),
     };
   }
 
@@ -50,7 +51,9 @@ describe('ProductsService storage integration', () => {
       );
       vi.mocked(storageStrategy.getPresignedUpload).mockResolvedValue({
         url: 'https://upload.example/signed',
+        httpMethod: 'POST',
         fields: { key: 'products/p1/uuid-photo.jpg' },
+        expiresInSeconds: 900,
       });
       const { service, productRepository } = createService(storageStrategy);
       productRepository.exists.mockResolvedValue(true);
@@ -73,10 +76,36 @@ describe('ProductsService storage integration', () => {
       );
       expect(result).toEqual({
         uploadUrl: 'https://upload.example/signed',
+        httpMethod: 'POST',
         fields: { key: 'products/p1/uuid-photo.jpg' },
         key: 'products/p1/uuid-photo.jpg',
         expiresInSeconds: 900,
       });
+    });
+
+    it('relays the strategy-reported expiresInSeconds, not the requested TTL constant, when they differ (e.g. Cloudinary)', async () => {
+      const storageStrategy = createStorageStrategyMock();
+      vi.mocked(storageStrategy.buildProductImageKey).mockReturnValue(
+        'products/p1/uuid-photo.jpg',
+      );
+      vi.mocked(storageStrategy.getPresignedUpload).mockResolvedValue({
+        url: 'https://api.cloudinary.com/v1_1/demo/image/upload',
+        httpMethod: 'POST',
+        fields: { public_id: 'products/p1/uuid-photo.jpg' },
+        // Cloudinary's actual enforced window, independent of the 900s
+        // requested by ProductsService (PRESIGNED_UPLOAD_URL_TTL_SECONDS).
+        expiresInSeconds: 3600,
+      });
+      const { service, productRepository } = createService(storageStrategy);
+      productRepository.exists.mockResolvedValue(true);
+
+      const result = await service.requestImageUploadUrl(
+        'p1',
+        'photo.jpg',
+        'image/jpeg',
+      );
+
+      expect(result.expiresInSeconds).toBe(3600);
     });
 
     it('throws NotFoundException without calling the strategy when the product does not exist', async () => {
@@ -151,12 +180,32 @@ describe('ProductsService storage integration', () => {
       );
     });
 
-    it('persists the image metadata when validation passes', async () => {
+    it('rejects when the uploaded content does not match an allowed image type', async () => {
       const storageStrategy = createStorageStrategyMock();
       vi.mocked(storageStrategy.keyBelongsToProduct).mockReturnValue(true);
       vi.mocked(storageStrategy.getObjectMetadata).mockResolvedValue({
         exists: true,
         sizeBytes: 1024,
+        detectedContentType: undefined,
+      });
+      const { service, productRepository } = createService(storageStrategy);
+      productRepository.exists.mockResolvedValue(true);
+
+      await expect(
+        service.addImage('p1', { objectKey: 'products/p1/not-an-image.jpg' }),
+      ).rejects.toThrow(BadRequestException);
+      expect(storageStrategy.delete).toHaveBeenCalledWith(
+        'products/p1/not-an-image.jpg',
+      );
+    });
+
+    it('persists the image metadata when validation passes, including the resolved display url', async () => {
+      const storageStrategy = createStorageStrategyMock();
+      vi.mocked(storageStrategy.keyBelongsToProduct).mockReturnValue(true);
+      vi.mocked(storageStrategy.getObjectMetadata).mockResolvedValue({
+        exists: true,
+        sizeBytes: 1024,
+        detectedContentType: 'image/jpeg',
       });
       const { service, productRepository, dataSource } =
         createService(storageStrategy);
@@ -187,6 +236,7 @@ describe('ProductsService storage integration', () => {
         id: 'img1',
         productId: 'p1',
         objectKey: 'products/p1/x.jpg',
+        url: 'https://display.example/image.jpg',
         altText: null,
         isPrimary: false,
         sortOrder: 0,
@@ -199,6 +249,7 @@ describe('ProductsService storage integration', () => {
       vi.mocked(storageStrategy.getObjectMetadata).mockResolvedValue({
         exists: true,
         sizeBytes: 1024,
+        detectedContentType: 'image/jpeg',
       });
       const { service, productRepository, dataSource } =
         createService(storageStrategy);

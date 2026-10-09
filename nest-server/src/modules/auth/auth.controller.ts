@@ -24,6 +24,7 @@ import { CurrentUser } from './decorators/current-user.decorator.js';
 import { LoginDto } from './dto/login.dto.js';
 import { LoginResponseDto } from './dto/login-response.dto.js';
 import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
+import { LoginThrottlerGuard } from './guards/login-throttler.guard.js';
 import type { AccessTokenPayload } from './jwt-payload.interface.js';
 
 const REFRESH_TOKEN_COOKIE = 'refreshToken';
@@ -43,6 +44,10 @@ export class AuthController {
   @ApiUnauthorizedResponse({
     description: 'Invalid credentials or inactive account.',
   })
+  // Rate limited to curb brute-force credential guessing and the CPU
+  // cost each attempt incurs (bcrypt.compare is deliberately slow) — see
+  // LoginThrottlerGuard and AuthModule's ThrottlerModule.forRoot comment.
+  @UseGuards(LoginThrottlerGuard)
   @Post('login')
   @HttpCode(HttpStatus.OK)
   async login(
@@ -82,6 +87,9 @@ export class AuthController {
   @ApiUnauthorizedResponse({
     description: 'Missing, invalid, or expired refresh token.',
   })
+  // Also unauthenticated and token-bearing — same brute-force/CPU-cost
+  // reasoning as POST /auth/login above.
+  @UseGuards(LoginThrottlerGuard)
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   async refresh(

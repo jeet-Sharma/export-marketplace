@@ -1,8 +1,8 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
-import { Product } from '../../database/entities/product.entity.js';
 import { PaginatedResponseDto } from '../../common/dto/paginated-response.dto.js';
 import { ProductDetailDto } from '../../common/dto/product-detail.dto.js';
 import { QueryPublicProductsDto } from './dto/query-public-products.dto.js';
+import type { PublicProductListItemDto } from './dto/public-product-list-item.dto.js';
 import { PublicProductsService } from './public-products.service.js';
 
 // Public marketplace catalogue — section 12. No auth guard: these are
@@ -15,7 +15,7 @@ export class PublicProductsController {
   @Get()
   findAll(
     @Query() query: QueryPublicProductsDto,
-  ): Promise<PaginatedResponseDto<Product>> {
+  ): Promise<PaginatedResponseDto<PublicProductListItemDto>> {
     return this.publicProductsService.findAll(query);
   }
 

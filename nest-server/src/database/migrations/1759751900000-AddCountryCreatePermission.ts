@@ -33,13 +33,23 @@ export class AddCountryCreatePermission1759751900000 implements MigrationInterfa
     `);
   }
 
+  // Same rollback-safety fix as AddVendorCategoryCreatePermissions'
+  // down() (Qodo review Bug #9) — this migration has the identical
+  // idempotent-up()/unconditional-down() pattern, so it's exposed to the
+  // same data-loss risk: deleting 'country.create' and its grants even
+  // if they predate this migration or are also granted to another role.
+  // Only PLATFORM_ADMIN's own grant is revoked, and the permission row
+  // itself is only deleted once no role references it at all.
   public async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       DELETE FROM "role_permissions"
-      WHERE "permission_id" IN (SELECT "id" FROM "permissions" WHERE "code" = 'country.create')
+      WHERE "role_id" IN (SELECT "id" FROM "roles" WHERE "code" = 'PLATFORM_ADMIN')
+        AND "permission_id" IN (SELECT "id" FROM "permissions" WHERE "code" = 'country.create')
     `);
-    await queryRunner.query(
-      `DELETE FROM "permissions" WHERE "code" = 'country.create'`,
-    );
+    await queryRunner.query(`
+      DELETE FROM "permissions"
+      WHERE "code" = 'country.create'
+        AND "id" NOT IN (SELECT "permission_id" FROM "role_permissions")
+    `);
   }
 }

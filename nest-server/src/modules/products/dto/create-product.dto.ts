@@ -13,7 +13,14 @@ import {
   MinLength,
   ValidateNested,
 } from 'class-validator';
+import { IsNumericPrecision } from '../../../common/validation/is-numeric-precision.decorator.js';
 import { PriceTierDto } from './price-tier.dto.js';
+
+// Matches products.price/products.moq's numeric(18, 4) column definition
+// (see product.entity.ts) — see IsNumericPrecision's own comment for why
+// this is a custom decorator rather than @IsNumber({ maxDecimalPlaces }).
+const PRODUCT_NUMERIC_PRECISION = 18;
+const PRODUCT_NUMERIC_SCALE = 4;
 
 // Mirrors Phase-1-API-Specification-v0.1 section 7 (Product Payload).
 // Fields marked TBD in the source Data Model/API spec (description,
@@ -55,11 +62,14 @@ export class CreateProductDto {
 
   @ApiPropertyOptional({
     example: 8.5,
-    description: 'Base product price. TBD publish requirement.',
+    description:
+      'Base product price. TBD publish requirement. Up to 4 decimal ' +
+      'places, 18 digits total (numeric(18,4)).',
   })
   @IsOptional()
   @IsNumber()
   @Min(0)
+  @IsNumericPrecision(PRODUCT_NUMERIC_PRECISION, PRODUCT_NUMERIC_SCALE)
   price?: number;
 
   @ApiPropertyOptional({
@@ -83,11 +93,14 @@ export class CreateProductDto {
 
   @ApiPropertyOptional({
     example: 100,
-    description: 'Minimum Order Quantity. TBD publish requirement.',
+    description:
+      'Minimum Order Quantity. TBD publish requirement. Up to 4 decimal ' +
+      'places, 18 digits total (numeric(18,4)).',
   })
   @IsOptional()
   @IsNumber()
   @Min(0.0001, { message: 'moq must be greater than 0' })
+  @IsNumericPrecision(PRODUCT_NUMERIC_PRECISION, PRODUCT_NUMERIC_SCALE)
   moq?: number;
 
   @ApiPropertyOptional({

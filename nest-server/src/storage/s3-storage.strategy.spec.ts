@@ -14,6 +14,7 @@ describe('S3StorageStrategy', () => {
       getPresignedUploadPost: vi.fn(),
       getObjectMetadata: vi.fn(),
       delete: vi.fn(),
+      getPresignedDownloadUrl: vi.fn(),
     } as unknown as S3Service;
   }
 
@@ -70,8 +71,28 @@ describe('S3StorageStrategy', () => {
     );
     expect(result).toEqual({
       url: 'https://signed.example/upload',
+      httpMethod: 'POST',
+      fields: { key: 'products/p1/x.jpg' },
+      expiresInSeconds: 900,
+    });
+  });
+
+  it('reports the exact requested expiresInSeconds back unchanged, since S3 honors it exactly', async () => {
+    const s3Service = createMockS3Service();
+    vi.mocked(s3Service.getPresignedUploadPost).mockResolvedValue({
+      url: 'https://signed.example/upload',
       fields: { key: 'products/p1/x.jpg' },
     });
+    const strategy = new S3StorageStrategy(s3Service);
+
+    const result = await strategy.getPresignedUpload(
+      'products/p1/x.jpg',
+      1800,
+      5 * 1024 * 1024,
+      'image/jpeg',
+    );
+
+    expect(result.expiresInSeconds).toBe(1800);
   });
 
   it('delegates getObjectMetadata to S3Service', async () => {
@@ -79,6 +100,7 @@ describe('S3StorageStrategy', () => {
     vi.mocked(s3Service.getObjectMetadata).mockResolvedValue({
       exists: true,
       sizeBytes: 1024,
+      detectedContentType: 'image/jpeg',
     });
     const strategy = new S3StorageStrategy(s3Service);
 
@@ -87,7 +109,11 @@ describe('S3StorageStrategy', () => {
     expect(s3Service.getObjectMetadata).toHaveBeenCalledWith(
       'products/p1/x.jpg',
     );
-    expect(result).toEqual({ exists: true, sizeBytes: 1024 });
+    expect(result).toEqual({
+      exists: true,
+      sizeBytes: 1024,
+      detectedContentType: 'image/jpeg',
+    });
   });
 
   it('delegates delete to S3Service', async () => {
@@ -97,5 +123,21 @@ describe('S3StorageStrategy', () => {
     await strategy.delete('products/p1/x.jpg');
 
     expect(s3Service.delete).toHaveBeenCalledWith('products/p1/x.jpg');
+  });
+
+  it('delegates getDisplayUrl to S3Service.getPresignedDownloadUrl', async () => {
+    const s3Service = createMockS3Service();
+    vi.mocked(s3Service.getPresignedDownloadUrl).mockResolvedValue(
+      'https://signed.example/download',
+    );
+    const strategy = new S3StorageStrategy(s3Service);
+
+    const result = await strategy.getDisplayUrl('products/p1/x.jpg', 3600);
+
+    expect(s3Service.getPresignedDownloadUrl).toHaveBeenCalledWith(
+      'products/p1/x.jpg',
+      3600,
+    );
+    expect(result).toBe('https://signed.example/download');
   });
 });

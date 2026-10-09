@@ -1,6 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Product } from '../../database/entities/product.entity.js';
 import { ProductCountry } from '../../database/entities/product-country.entity.js';
 import { ProductImage } from '../../database/entities/product-image.entity.js';
@@ -10,8 +10,19 @@ import {
   ProductDetailDto,
   toProductDetailDto,
 } from '../../common/dto/product-detail.dto.js';
-import { toProductImageResponseDto } from '../products/dto/product-image-response.dto.js';
+import {
+  DISPLAY_URL_TTL_SECONDS,
+  toProductImageResponseDto,
+} from '../products/dto/product-image-response.dto.js';
+import {
+  STORAGE_STRATEGY,
+  type StorageStrategy,
+} from '../../storage/storage-strategy.interface.js';
 import type { QueryPublicProductsDto } from './dto/query-public-products.dto.js';
+import {
+  type PublicProductListItemDto,
+  toPublicProductListItemDto,
+} from './dto/public-product-list-item.dto.js';
 
 const PUBLISHED = 'PUBLISHED';
 
@@ -31,11 +42,13 @@ export class PublicProductsService {
     private readonly productCountryRepository: Repository<ProductCountry>,
     @InjectRepository(ProductImage)
     private readonly productImageRepository: Repository<ProductImage>,
+    @Inject(STORAGE_STRATEGY)
+    private readonly storageStrategy: StorageStrategy,
   ) {}
 
   async findAll(
     query: QueryPublicProductsDto,
-  ): Promise<PaginatedResponseDto<Product>> {
+  ): Promise<PaginatedResponseDto<PublicProductListItemDto>> {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 24;
 
@@ -89,7 +102,39 @@ export class PublicProductsService {
 
     qb.skip((page - 1) * pageSize).take(pageSize);
 
-    const [items, totalItems] = await qb.getManyAndCount();
+    const [products, totalItems] = await qb.getManyAndCount();
+
+    // Batch-fetch each listed product's primary image in a single query
+    // (IN clause over this page's product IDs) rather than one query per
+    // product — a per-row query would turn one paginated list request
+    // into up to `pageSize` additional round-trips. Previously this
+    // endpoint attached no image data at all (see Qodo review Bug #13);
+    // only the primary image is resolved here (not the full images[]
+    // array a detail view returns) since a catalogue grid only ever
+    // needs one representative thumbnail per product.
+    const productIds = products.map((product) => product.id);
+    const primaryImagesByProductId = new Map<string, ProductImage>();
+    if (productIds.length > 0) {
+      const primaryImages = await this.productImageRepository.find({
+        where: { productId: In(productIds), isPrimary: true },
+      });
+      for (const image of primaryImages) {
+        primaryImagesByProductId.set(image.productId, image);
+      }
+    }
+
+    const items = await Promise.all(
+      products.map(async (product) => {
+        const primaryImage = primaryImagesByProductId.get(product.id);
+        const primaryImageUrl = primaryImage
+          ? await this.storageStrategy.getDisplayUrl(
+              primaryImage.s3ObjectKey,
+              DISPLAY_URL_TTL_SECONDS,
+            )
+          : null;
+        return toPublicProductListItemDto(product, primaryImageUrl);
+      }),
+    );
 
     return {
       items,
@@ -131,7 +176,11 @@ export class PublicProductsService {
 
     return toProductDetailDto(
       product,
-      images.map(toProductImageResponseDto),
+      await Promise.all(
+        images.map((image) =>
+          toProductImageResponseDto(image, this.storageStrategy),
+        ),
+      ),
       priceTiers,
       productCountries.map((pc) => pc.country),
     );

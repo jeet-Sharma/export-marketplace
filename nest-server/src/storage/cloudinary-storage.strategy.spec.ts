@@ -1,4 +1,4 @@
-import { ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, ServiceUnavailableException } from '@nestjs/common';
 import type { ConfigType } from '@nestjs/config';
 
 // Mock the cloudinary SDK before importing the strategy under test, since
@@ -102,14 +102,47 @@ describe('CloudinaryStorageStrategy', () => {
       );
 
       expect(result.url).toBe(
-        'https://api.cloudinary.com/v1_1/demo-cloud/auto/upload',
+        'https://api.cloudinary.com/v1_1/demo-cloud/image/upload',
       );
+      expect(result.httpMethod).toBe('POST');
       expect(result.fields).toEqual({
         public_id: 'products/p1/abc-photo',
         timestamp: expect.any(String),
+        allowed_formats: 'jpg,png,webp',
         api_key: 'demo-key',
         signature: 'sig123',
       });
+    });
+
+    it('returns its own fixed ~3600s expiry regardless of what was requested', async () => {
+      const strategy = createStrategy();
+      vi.mocked(cloudinary.utils.sign_request).mockReturnValue({
+        signature: 'sig123',
+        api_key: 'demo-key',
+      });
+
+      const result = await strategy.getPresignedUpload(
+        'products/p1/abc-photo',
+        900, // requested — must be ignored
+        5 * 1024 * 1024,
+        'image/jpeg',
+      );
+
+      expect(result.expiresInSeconds).toBe(3600);
+    });
+
+    it('rejects an unsupported content type before attempting to sign anything', async () => {
+      const strategy = createStrategy();
+
+      await expect(
+        strategy.getPresignedUpload(
+          'products/p1/abc-photo',
+          900,
+          5242880,
+          'application/pdf',
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(cloudinary.utils.sign_request).not.toHaveBeenCalled();
     });
 
     it('wraps signing failures in a ServiceUnavailableException', async () => {
@@ -119,16 +152,22 @@ describe('CloudinaryStorageStrategy', () => {
       });
 
       await expect(
-        strategy.getPresignedUpload('products/p1/abc-photo', 900, 5242880),
+        strategy.getPresignedUpload(
+          'products/p1/abc-photo',
+          900,
+          5242880,
+          'image/jpeg',
+        ),
       ).rejects.toThrow(ServiceUnavailableException);
     });
   });
 
   describe('getObjectMetadata', () => {
-    it('returns exists:true with the byte size when the image resource is found', async () => {
+    it('returns exists:true with the byte size and detected content type when the image resource is found', async () => {
       const strategy = createStrategy();
       vi.mocked(cloudinary.api.resource).mockResolvedValueOnce({
         bytes: 2048,
+        format: 'jpg',
       } as never);
 
       const result = await strategy.getObjectMetadata('products/p1/abc-photo');
@@ -137,14 +176,34 @@ describe('CloudinaryStorageStrategy', () => {
         'products/p1/abc-photo',
         { resource_type: 'image' },
       );
-      expect(result).toEqual({ exists: true, sizeBytes: 2048 });
+      expect(result).toEqual({
+        exists: true,
+        sizeBytes: 2048,
+        detectedContentType: 'image/jpeg',
+      });
+    });
+
+    it('returns detectedContentType undefined for a format outside the allowlist', async () => {
+      const strategy = createStrategy();
+      vi.mocked(cloudinary.api.resource).mockResolvedValueOnce({
+        bytes: 2048,
+        format: 'gif',
+      } as never);
+
+      const result = await strategy.getObjectMetadata('products/p1/abc-photo');
+
+      expect(result).toEqual({
+        exists: true,
+        sizeBytes: 2048,
+        detectedContentType: undefined,
+      });
     });
 
     it('falls back to video resource type when image lookup 404s', async () => {
       const strategy = createStrategy();
       vi.mocked(cloudinary.api.resource)
         .mockRejectedValueOnce({ http_code: 404 })
-        .mockResolvedValueOnce({ bytes: 4096 } as never);
+        .mockResolvedValueOnce({ bytes: 4096, format: 'png' } as never);
 
       const result = await strategy.getObjectMetadata('products/p1/clip');
 
@@ -158,7 +217,11 @@ describe('CloudinaryStorageStrategy', () => {
         'products/p1/clip',
         { resource_type: 'video' },
       );
-      expect(result).toEqual({ exists: true, sizeBytes: 4096 });
+      expect(result).toEqual({
+        exists: true,
+        sizeBytes: 4096,
+        detectedContentType: 'image/png',
+      });
     });
 
     it('returns exists:false when neither resource type is found', async () => {
@@ -219,6 +282,36 @@ describe('CloudinaryStorageStrategy', () => {
       await expect(strategy.delete('products/p1/x')).rejects.toThrow(
         ServiceUnavailableException,
       );
+    });
+  });
+
+  describe('getDisplayUrl', () => {
+    it('builds a direct, unsigned Cloudinary delivery URL', async () => {
+      const strategy = createStrategy();
+
+      const url = await strategy.getDisplayUrl('products/p1/abc-photo');
+
+      expect(url).toBe(
+        'https://res.cloudinary.com/demo-cloud/image/upload/products/p1/abc-photo',
+      );
+    });
+
+    it('ignores expiresInSeconds (Cloudinary delivery URLs do not expire)', async () => {
+      const strategy = createStrategy();
+
+      const url = await strategy.getDisplayUrl('products/p1/abc-photo', 60);
+
+      expect(url).toBe(
+        'https://res.cloudinary.com/demo-cloud/image/upload/products/p1/abc-photo',
+      );
+    });
+
+    it('throws ServiceUnavailableException when credentials are missing', async () => {
+      const strategy = createStrategy({});
+
+      await expect(
+        strategy.getDisplayUrl('products/p1/abc-photo'),
+      ).rejects.toThrow(ServiceUnavailableException);
     });
   });
 });
