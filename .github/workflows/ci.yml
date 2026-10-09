@@ -18,6 +18,39 @@ jobs:
     defaults:
       run:
         working-directory: nest-server
+    # AppModule (imported by test/app.e2e-spec.ts) wires up TypeOrmModule
+    # against a real Postgres connection even though the e2e test itself
+    # only hits GET / — without a database to connect to, the test hangs
+    # until TypeOrmModule's retry loop exhausts and the test hook times
+    # out (see the "Hook timed out" / "Cannot read properties of
+    # undefined (reading 'close')" CI failure this fixes). This service
+    # container gives CI the same kind of local Postgres instance
+    # docker-compose.dev.yml provides for local dev.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: export_marketplace
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d export_marketplace"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: export_marketplace
+      # CI-only secrets — never reused outside this workflow. jwt.config.ts
+      # only hard-fails on insecure secrets when NODE_ENV=production, which
+      # CI does not set, so these just need to be present and non-empty.
+      JWT_ACCESS_SECRET: ci-test-access-secret
+      JWT_REFRESH_SECRET: ci-test-refresh-secret
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -37,6 +70,9 @@ jobs:
 
       - name: Run unit tests
         run: npm test
+
+      - name: Run database migrations
+        run: npm run migration:run
 
       - name: Run end-to-end tests
         run: npm run test:e2e

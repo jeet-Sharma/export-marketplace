@@ -47,7 +47,11 @@ export class User {
   updatedAt!: Date;
 
   // NULL for Platform Users; set for Vendor Users once Vendor login exists.
-  @ManyToOne(() => Vendor, { nullable: true, onDelete: 'RESTRICT', onUpdate: 'RESTRICT' })
+  @ManyToOne(() => Vendor, {
+    nullable: true,
+    onDelete: 'RESTRICT',
+    onUpdate: 'RESTRICT',
+  })
   @JoinColumn({ name: 'vendor_id' })
   @Index()
   vendor!: Vendor | null;

@@ -1,0 +1,486 @@
+﻿EXPORT MARKETPLACE PLATFORM
+Phase 1 API Specification
+Version 0.1
+Item
+Value
+Document
+Phase-1-API-Specification-v0.1
+Backend
+NestJS + TypeScript
+Database
+PostgreSQL
+Authentication
+JWT-based authentication
+Storage
+AWS S3 for product images
+API style
+REST / JSON
+Base path
+/api/v1
+Status
+Draft for review
+
+1. Purpose
+This document defines the Phase 1 REST API contract for the Export Marketplace Platform. It covers Platform User authentication, product management, vendor/category/country reference data, product images, bulk pricing, and the public product catalogue.
+Public endpoints expose only PUBLISHED products.
+Authorized Platform Users manage DRAFT and PUBLISHED products.
+A product is associated with one supplier/vendor in the current Phase 1 model.
+Shipping, duties and taxes are estimates only; Phase 1 has no live logistics, customs or tax calculation service.
+Vendor login/onboarding, Buyer accounts, RFQ, checkout, orders, payments and inventory APIs are outside Phase 1.
+2. API Conventions
+Convention
+Phase 1 rule
+Base URL
+/api/v1
+Content type
+application/json; multipart/presigned-upload flow for images as implementation requires
+Authentication
+Bearer JWT for protected Platform APIs
+Identifiers
+UUID for internal resource IDs
+Public product identifier
+slug
+Dates
+ISO 8601 UTC timestamps
+Currency
+ISO 4217 code such as USD
+Country
+Country master IDs internally; ISO codes may be exposed in responses
+Pagination
+page + pageSize
+Errors
+Consistent JSON error envelope
+
+3. Authorization Model
+Recommended atomic permissions for Phase 1:
+Permission
+Purpose
+product.view
+View admin product records, including drafts.
+product.create
+Create a product.
+product.edit
+Edit product data.
+product.publish
+Publish a draft product.
+product.unpublish
+Unpublish a published product.
+vendor.view
+Read supplier/vendor master data for product assignment.
+
+Authorization must be enforced by NestJS guards/policies on protected endpoints; hiding buttons in the frontend is not sufficient.
+4. Endpoint Summary
+Area
+Method
+Endpoint
+Auth
+Purpose
+Auth
+POST
+/auth/login
+Public
+Authenticate Platform User.
+Auth
+POST
+/auth/refresh
+Refresh token
+Issue refreshed access token.
+Auth
+POST
+/auth/logout
+Authenticated
+End/revoke session according to token strategy.
+Admin Products
+GET
+/admin/products
+product.view
+List drafts and published products.
+Admin Products
+GET
+/admin/products/:id
+product.view
+Get one product for management.
+Admin Products
+POST
+/admin/products
+product.create
+Create draft or publish immediately.
+Admin Products
+PATCH
+/admin/products/:id
+product.edit
+Edit product.
+Admin Products
+POST
+/admin/products/:id/publish
+product.publish
+Publish product.
+Admin Products
+POST
+/admin/products/:id/unpublish
+product.unpublish
+Return product to DRAFT.
+Images
+POST
+/admin/products/:id/images
+product.edit
+Add product image metadata/upload.
+Images
+DELETE
+/admin/products/:id/images/:imageId
+product.edit
+Remove product image.
+Reference
+GET
+/admin/vendors
+vendor.view
+Supplier dropdown data.
+Reference
+GET
+/categories
+Public
+Active category data.
+Reference
+GET
+/countries
+Public
+Active country data.
+Public
+GET
+/products
+Public
+Published catalogue listing.
+Public
+GET
+/products/:slug
+Public
+Published product detail.
+
+5. Authentication APIs
+5.1 POST /auth/login
+Authenticates an active Platform User.
+Request{  "email": "admin@example.com",  "password": "********"}Response 200{  "accessToken": "<jwt>",  "refreshToken": "<token-if-used>",  "user": {    "id": "uuid",    "email": "admin@example.com",    "firstName": "Platform",    "lastName": "Admin",    "roles": ["PLATFORM_ADMIN"],    "permissions": ["product.view", "product.create", "product.edit", "product.publish", "product.unpublish"]  }}
+Status
+When
+200
+Login successful.
+400
+Malformed request.
+401
+Invalid credentials.
+403
+Inactive/unauthorized account.
+
+5.2 POST /auth/refresh
+Refreshes an access token according to the selected JWT refresh-token strategy. Exact cookie vs body transport is an implementation/security decision.
+5.3 POST /auth/logout
+Ends the current authenticated session according to the selected refresh-token/revocation strategy.
+6. Admin Product APIs
+6.1 GET /admin/products
+Lists products for Platform Product Management, including DRAFT and PUBLISHED products subject to authorization.
+Example query/admin/products?page=1&pageSize=20&status=DRAFT&categoryId=<uuid>&vendorId=<uuid>&search=turmeric&sort=newest
+Parameter
+Type
+Required
+Notes
+page
+integer
+No
+Default 1.
+pageSize
+integer
+No
+Default/maximum to be finalized.
+status
+DRAFT | PUBLISHED
+No
+Admin lifecycle filter.
+categoryId
+uuid
+No
+Category filter.
+vendorId
+uuid
+No
+Supplier/vendor filter.
+search
+string
+No
+Product name/keyword search.
+sort
+string
+No
+newest, price_asc, price_desc.
+
+6.2 GET /admin/products/:id
+Returns the complete management view of a product, including images, pricing tiers, vendor and country mappings.
+6.3 POST /admin/products
+Creates a product. The caller may save it as DRAFT or request immediate PUBLISHED status. Publish validation must run before a PUBLISHED record is committed.
+Example request{  "name": "Organic Turmeric Powder",  "description": "Export-grade turmeric powder.",  "categoryId": "uuid",  "vendorId": "uuid",  "status": "DRAFT",  "price": 8.50,  "currencyCode": "USD",  "unit": "kg",  "moq": 100,  "hsCode": "0910.30",  "sourceCountryId": "uuid",  "targetCountryIds": ["uuid", "uuid"],  "exportEligibility": "ELIGIBLE",  "countryRestrictions": "None specified",  "estimatedDeliveryText": "10-15 business days",  "dutiesTaxesNote": "Estimates vary by destination.",  "priceTiers": [    {      "minQuantity": 100,      "maxQuantity": 499,      "price": 8.50,      "shippingEstimate": 1.20,      "dutiesEstimate": 0.80,      "taxesEstimate": 0.50,      "currencyCode": "USD"    },    {      "minQuantity": 500,      "maxQuantity": null,      "price": 8.00,      "shippingEstimate": 1.00,      "dutiesEstimate": 0.75,      "taxesEstimate": 0.45,      "currencyCode": "USD"    }  ]}
+The server derives created_by from the authenticated Platform User; clients must not choose arbitrary audit-user IDs.
+6.4 PATCH /admin/products/:id
+Partially updates a product. If the product is already PUBLISHED, saving valid changes keeps it PUBLISHED under the current Phase 1 rule. If a change would violate mandatory publish requirements, the API should reject the update rather than silently expose invalid public data.
+6.5 POST /admin/products/:id/publish
+Transitions DRAFT â†’ PUBLISHED after permission and publish-validation checks.
+Response 200{  "id": "uuid",  "status": "PUBLISHED",  "publishedAt": "2026-10-06T06:00:00Z"}
+6.6 POST /admin/products/:id/unpublish
+Transitions PUBLISHED â†’ DRAFT. The product must immediately stop being returned by public catalogue/detail APIs.
+7. Product Payload
+Field
+Type
+Draft
+Publish
+Notes
+name
+string
+Required
+Required
+Product name.
+description
+string
+TBD
+TBD
+Final publish requirement pending.
+categoryId
+uuid
+TBD
+TBD
+One category in current v0.1 model; confirm.
+vendorId
+uuid
+TBD
+TBD
+Selected supplier/vendor.
+price
+decimal
+TBD
+TBD
+Base product price.
+currencyCode
+string(3)
+TBD
+TBD
+ISO 4217.
+unit
+string
+TBD
+TBD
+kg, piece, box, etc.
+moq
+decimal
+TBD
+TBD
+Minimum order quantity.
+hsCode
+string
+TBD
+TBD
+Publish requirement pending.
+sourceCountryId
+uuid
+TBD
+TBD
+Source/origin country.
+targetCountryIds
+uuid[]
+Optional
+TBD
+Available/target markets.
+exportEligibility
+string
+Optional
+TBD
+Vocabulary to be finalized.
+countryRestrictions
+string
+Optional
+Optional
+Informational in Phase 1.
+estimatedDeliveryText
+string
+Optional
+Optional
+Informational estimate.
+dutiesTaxesNote
+string
+Optional
+Optional
+Informational disclaimer/note.
+priceTiers
+array
+Optional
+Optional
+Bulk pricing and estimated costs.
+
+8. Price Tier Contract
+Each optional bulk price tier can carry the UI cost-breakdown values currently required by the Product Onboarding design.
+Field
+Type
+Rule
+minQuantity
+decimal
+Required; > 0.
+maxQuantity
+decimal | null
+Must be >= minQuantity when present; null means open-ended.
+price
+decimal
+Required; >= 0.
+shippingEstimate
+decimal | null
+Estimated shipping amount; >= 0 when supplied.
+dutiesEstimate
+decimal | null
+Estimated duties amount; >= 0 when supplied.
+taxesEstimate
+decimal | null
+Estimated tax amount; >= 0 when supplied.
+currencyCode
+string(3)
+ISO 4217; currency consistency rule to be finalized.
+
+Price tiers for the same product must not overlap. Shipping, duties and taxes are stored/displayed estimates, not live calculations in Phase 1.
+9. Product Image APIs
+Product image binaries are stored in AWS S3 and image metadata is stored in product_images. The exact upload implementation may use direct multipart upload or a presigned-S3 flow; the contract should avoid storing temporary signed URLs as permanent database values.
+9.1 POST /admin/products/:id/images
+Example metadata response{  "id": "uuid",  "productId": "uuid",  "objectKey": "products/<product-id>/<image-id>.jpg",  "isPrimary": true,  "sortOrder": 1,  "altText": "Organic turmeric powder"}
+9.2 DELETE /admin/products/:id/images/:imageId
+Removes image metadata and coordinates S3 object cleanup according to the selected storage lifecycle strategy.
+10. Vendor / Supplier Reference API
+10.1 GET /admin/vendors
+Provides vendor/supplier records for the Add/Edit Product supplier selector.
+Example response{  "items": [    {      "id": "uuid",      "companyName": "ABC Spices Pvt Ltd",      "displayName": "ABC Spices",      "status": "ACTIVE",      "country": {        "id": "uuid",        "code": "IN",        "name": "India"      }    }  ]}
+Phase 1 treats Vendor as company/master data. Vendor registration/login is future scope. The data model may later associate users.vendor_id with a vendor when vendor accounts are introduced.
+11. Category and Country APIs
+Method
+Endpoint
+Behavior
+GET
+/categories
+Returns active categories for public filters and product forms.
+GET
+/countries
+Returns active countries for source/target country selectors and filters.
+
+12. Public Catalogue APIs
+12.1 GET /products
+Returns only PUBLISHED products. Draft exclusion must happen server-side.
+Example query/products?page=1&pageSize=24&search=turmeric&categoryId=<uuid>&sourceCountryId=<uuid>&minPrice=5&maxPrice=20&minMoq=50&maxMoq=500&sort=price_asc
+Parameter
+Purpose
+search
+Product keyword/name search.
+categoryId
+Category filter.
+sourceCountryId
+Source/shipping country filter.
+minPrice / maxPrice
+Base-price range.
+minMoq / maxMoq
+MOQ range.
+sort
+newest, price_asc, price_desc.
+page / pageSize
+Pagination.
+
+12.2 GET /products/:slug
+Returns one PUBLISHED product by slug with its public catalogue information.
+Example response{  "id": "uuid",  "slug": "organic-turmeric-powder",  "name": "Organic Turmeric Powder",  "status": "PUBLISHED",  "category": { "id": "uuid", "name": "Spices", "slug": "spices" },  "vendor": { "id": "uuid", "displayName": "ABC Spices" },  "price": 8.50,  "currencyCode": "USD",  "unit": "kg",  "moq": 100,  "hsCode": "0910.30",  "sourceCountry": { "code": "IN", "name": "India" },  "targetCountries": [    { "code": "US", "name": "United States" },    { "code": "AE", "name": "United Arab Emirates" }  ],  "exportEligibility": "ELIGIBLE",  "estimatedDeliveryText": "10-15 business days",  "images": [],  "priceTiers": []}
+If the slug belongs to a DRAFT product, the public API should respond as not found rather than expose the draft.
+13. Response and Error Format
+Success collection{  "items": [],  "pagination": {    "page": 1,    "pageSize": 20,    "totalItems": 0,    "totalPages": 0  }}Error{  "statusCode": 400,  "code": "VALIDATION_ERROR",  "message": "Request validation failed",  "errors": [    { "field": "moq", "message": "MOQ must be greater than 0" }  ],  "timestamp": "2026-10-06T06:00:00Z"}
+HTTP status
+Usage
+200
+Successful GET/PATCH/action.
+201
+Resource created.
+400
+Validation/malformed request.
+401
+Missing/invalid authentication.
+403
+Authenticated but permission denied.
+404
+Resource not found; also public lookup of a draft product.
+409
+Conflict such as duplicate slug or invalid state transition.
+422
+Optional choice for semantically invalid publish data; team should standardize 400 vs 422.
+500
+Unexpected server error without leaking internal details.
+
+14. Validation and Business Rules
+Only DRAFT and PUBLISHED are valid Phase 1 product statuses.
+Public APIs must always enforce status = PUBLISHED.
+Publish requires product.publish permission and all finalized mandatory publish fields.
+Unpublish requires product.unpublish permission.
+vendorId must reference an allowed/active vendor according to the final vendor-status rule.
+categoryId, sourceCountryId and targetCountryIds must reference valid active master records.
+MOQ and quantities must be positive when supplied.
+Prices and estimate values cannot be negative.
+Bulk price-tier ranges for a product must not overlap.
+Only one primary product image should exist per product when images are present.
+createdBy/updatedBy are derived from the authenticated user, not trusted from client input.
+Published product edits remain published in Phase 1 if the resulting record still passes publish validation.
+15. Security Requirements
+Hash passwords using an approved adaptive password-hashing algorithm; never store plaintext passwords.
+Use short-lived JWT access tokens and a defined refresh-token/session strategy.
+Apply authorization guards to every protected endpoint.
+Validate and sanitize DTO inputs using NestJS validation.
+Restrict product image type, size and upload behavior.
+Do not expose S3 credentials to the browser.
+Use HTTPS in deployed environments.
+Avoid returning password hashes, internal secrets or sensitive operational metadata.
+Apply rate limiting to authentication and other abuse-sensitive endpoints.
+Log security-relevant actions without logging secrets/tokens.
+16. Non-Functional API Requirements
+Use consistent JSON naming conventions across all endpoints.
+Use database transactions for product updates spanning products, target countries and price tiers where atomicity is required.
+Paginate list endpoints; do not return unbounded catalogue/admin lists.
+Add indexes aligned with status/category/vendor/source-country/public-slug queries.
+Return stable machine-readable error codes for frontend handling.
+Version breaking API changes under the /api/v1 contract.
+Keep controllers thin; place business rules in NestJS services/domain logic.
+17. Out of Scope for Phase 1 API
+Vendor registration/login/dashboard APIs.
+Buyer registration/login/dashboard APIs.
+RFQ and quotation APIs.
+Cart and checkout APIs.
+Order APIs.
+Payment/escrow/settlement APIs.
+Inventory APIs.
+Live carrier/shipping-rate APIs.
+Live customs/duties/tax calculation APIs.
+Advanced compliance and KYC workflows.
+Reviews/ratings and AI matching APIs.
+18. Open Decisions Before v1.0
+Decision
+Current v0.1 treatment
+Mandatory fields for Publish
+TBD from BRD/PRD/client review.
+Primary image mandatory?
+Recommended but not finalized.
+One vs multiple categories
+Current data model assumes one category per product.
+Country-specific pricing
+Not included; one base price/currency plus optional tiers.
+Exact exportEligibility values
+TBD.
+Vendor status/verification requirement
+Vendor selectable; verification/KYC workflow is not assumed.
+Image upload contract
+S3-backed; direct vs presigned flow to be finalized.
+Refresh token transport/storage
+Security implementation decision.
+Pagination maximum/default
+To be standardized.
+400 vs 422 for domain validation
+Team convention to be selected.
+Permanent product delete
+Not included; Draft/Publish/Unpublish is the current lifecycle.
+
+19. Phase 1 API Flow
+Platform Product ManagementLogin  |  vGET reference data (vendors / categories / countries)  |  vPOST /admin/products  |----------------------|  v                      vDRAFT                 PUBLISHED  |                      |  | publish              | unpublish  v                      vPUBLISHED <------------ DRAFT  |  vGET /productsGET /products/:slug(Public marketplace only sees PUBLISHED products)
+20. Next Step
+After API Specification v0.1 review, align the client-approved UI/UX with this contract and then prepare implementation tasks for the NestJS backend and Next.js frontend. Any client decision that changes product fields should first be reflected in the BRD/PRD and Data Model, then propagated into this API contract.

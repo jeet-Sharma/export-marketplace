@@ -9,7 +9,6 @@ import {
   Query,
 } from '@nestjs/common';
 import { S3Service } from './s3.service.js';
-import { SqsService } from './sqs.service.js';
 
 interface UploadBody {
   key: string;
@@ -17,12 +16,8 @@ interface UploadBody {
   contentType?: string;
 }
 
-interface SendMessageBody {
-  [key: string]: unknown;
-}
-
 /**
- * Demo endpoints for manually exercising the S3 and SQS integration against
+ * Demo endpoints for manually exercising the S3 integration against
  * LocalStack. These are intended for local verification and should be removed
  * or secured before production.
  *
@@ -30,10 +25,7 @@ interface SendMessageBody {
  */
 @Controller('aws-demo')
 export class AwsDemoController {
-  constructor(
-    private readonly s3: S3Service,
-    private readonly sqs: SqsService,
-  ) {}
+  constructor(private readonly s3: S3Service) {}
 
   // ─── S3 ─────────────────────────────────────────────────────────────────────
 
@@ -75,33 +67,5 @@ export class AwsDemoController {
   async deleteObject(@Param('key') key: string) {
     await this.s3.delete(key);
     return { deleted: key };
-  }
-
-  // ─── SQS ────────────────────────────────────────────────────────────────────
-
-  /** Sends a JSON message to the queue. */
-  @Post('sqs/messages')
-  async sendMessage(@Body() body: SendMessageBody) {
-    return this.sqs.send(body);
-  }
-
-  /** Receives messages. Query: ?max=1..10&wait=0..20 (long-poll seconds). */
-  @Get('sqs/messages')
-  async receiveMessages(
-    @Query('max') max?: string,
-    @Query('wait') wait?: string,
-  ) {
-    const messages = await this.sqs.receive(
-      max ? Number(max) : 1,
-      wait ? Number(wait) : 1,
-    );
-    return { messages };
-  }
-
-  /** Deletes a processed message by its receipt handle. */
-  @Delete('sqs/messages/:receiptHandle')
-  async deleteMessage(@Param('receiptHandle') receiptHandle: string) {
-    await this.sqs.delete(decodeURIComponent(receiptHandle));
-    return { deleted: true };
   }
 }

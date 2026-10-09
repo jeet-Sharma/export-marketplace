@@ -3,6 +3,17 @@ import { registerAs } from '@nestjs/config';
 /**
  * Typed AWS configuration, loaded from environment variables.
  *
+ * This supersedes an earlier, simpler shape (flat region/endpoint/
+ * accessKeyId/secretAccessKey/s3Bucket strings with a `default` export)
+ * that existed before this file was merged with dev-version01's Docker
+ * work. Every value that shape read is still read here — region,
+ * endpoint, accessKeyId/secretAccessKey (now under `credentials`), and
+ * s3Bucket (now `s3.bucket`) — this version just adds the fields the
+ * Docker/LocalStack integration needs (`isLocal`, `s3.forcePathStyle`,
+ * `s3.publicEndpoint`) and exports via a named `awsConfig` (registerAs's
+ * own ConfigType pattern) instead of a default export, matching every
+ * other AWS-consuming file (AwsModule, S3Service, AwsBootstrapService).
+ *
  * When AWS_ENDPOINT is set (local development with LocalStack) the SDK is
  * pointed at that endpoint and path-style addressing is forced, which is what
  * LocalStack's S3 expects. In production AWS_ENDPOINT is left empty so the SDK
@@ -34,9 +45,6 @@ export interface AwsConfig {
      */
     publicEndpoint?: string;
   };
-  sqs: {
-    queueName: string;
-  };
 }
 
 export const awsConfig = registerAs('aws', (): AwsConfig => {
@@ -51,23 +59,28 @@ export const awsConfig = registerAs('aws', (): AwsConfig => {
     // them undefined so the default provider chain (IAM role, env, etc.) applies.
     credentials: isLocal
       ? {
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID ?? 'test',
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY ?? 'test',
-      }
+          accessKeyId: process.env.AWS_ACCESS_KEY_ID ?? 'test',
+          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY ?? 'test',
+        }
       : undefined,
     s3: {
       bucket: process.env.AWS_S3_BUCKET ?? 'export-marketplace-documents',
       forcePathStyle: isLocal,
-      // Only rewrite presigned URL hosts when AWS_S3_PUBLIC_ENDPOINT is set
-      // EXPLICITLY. There is deliberately no hardcoded fallback: guessing
-      // "http://localhost:4566" would produce links that are wrong whenever the
-      // published port differs or the stack runs on a remote host. When unset
-      // (production/real AWS, or a stack that doesn't expose LocalStack to the
-      // host), the SDK's signed URL is returned unchanged.
+      // Host-reachable base URL used to SIGN presigned URLs that go to an
+      // external client (browser), instead of signing against `endpoint`
+      // (e.g. http://localstack:4566, which only resolves inside Docker)
+      // and rewriting the host afterward. A post-signing host rewrite is
+      // NOT safe: AWS SigV4 includes the Host in the signed canonical
+      // request, so swapping the host string after signing invalidates the
+      // signature and the client's PUT/GET gets rejected with
+      // SignatureDoesNotMatch (see S3Service's presigned-URL client,
+      // which is constructed with THIS endpoint rather than `endpoint`).
+      //
+      // Sourced ONLY from AWS_S3_PUBLIC_ENDPOINT — there is no implicit
+      // default, so presigned URLs use the same client/endpoint as every
+      // other S3 call unless an operator explicitly opts in with a known
+      // host-reachable address.
       publicEndpoint: process.env.AWS_S3_PUBLIC_ENDPOINT?.trim() || undefined,
-    },
-    sqs: {
-      queueName: process.env.AWS_SQS_QUEUE_NAME ?? 'export-marketplace-events',
     },
   };
 });

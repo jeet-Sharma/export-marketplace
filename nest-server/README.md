@@ -1,157 +1,150 @@
 # Export Marketplace API
 
-The API is the NestJS backend for Export Marketplace, a planned B2B platform connecting international buyers with exporters, manufacturers, and suppliers.
-
-It will own business rules and transactional workflows for companies, products, RFQs, quotations, orders, payments, documents, compliance, and shipments. Messaging, notifications, activity history, and other flexible high-volume data may use MongoDB as the product evolves.
-
-The current API is the initial NestJS foundation. It contains the starter application module, a root controller and service, test coverage, and NestJS Observe instrumentation configuration. The marketplace domain modules and database integrations are planned, not yet implemented.
+The NestJS backend for Export Marketplace. REST API, versioned under `/api/v1`.
 
 ## Technology
 
-- Node.js
-- NestJS 12
-- TypeScript
-- REST API initially
-- WebSocket support planned for messaging and realtime notifications
-- Vitest for unit and end-to-end tests
-- Oxlint for source and test linting
+- Node.js 22, NestJS 12, TypeScript
+- PostgreSQL via TypeORM (migrations only — no `synchronize`)
+- JWT auth (access + refresh tokens, HTTP-only refresh cookie), RBAC via roles/permissions
+- AWS S3 (product image uploads via presigned URLs), backed by LocalStack locally
+- Swagger/OpenAPI docs
+- Vitest for unit and e2e tests, Oxlint for linting
 
-## Architecture Direction
-
-The application will begin as a **modular monolith**, not a microservices system. Business capabilities will be separated into NestJS modules so that individual modules can be extracted later if scale, ownership, or deployment needs justify it.
-
-Planned module boundaries include:
+## Implemented modules
 
 ```text
-auth/                 users/                companies/
-company-members/      marketplace/          rfq/
-quotations/           negotiation/          orders/
-payments/             invoices/             inventory/
-shipping/             logistics/            documents/
-compliance/           certifications/       reviews/
-disputes/             messaging/            notifications/
-search/               analytics/            admin/
+src/modules/
+├── auth/              # Login, JWT issuance/refresh, RBAC guards
+├── products/          # Admin product CRUD, images, price tiers
+├── public-products/   # Public (unauthenticated) product catalogue
+├── categories/
+├── countries/
+└── vendors/
 ```
 
-These directories are planned boundaries, not a claim that all modules currently exist.
+Plus `src/aws/` (S3Service, LocalStack bootstrap) and `src/database/` (TypeORM entities and migrations).
 
-## Data Architecture
+## Getting started with Docker (recommended)
 
-- **PostgreSQL** is planned as the primary transactional source of truth for users, companies, products, RFQs, quotations, orders, payments, invoices, shipments, documents, compliance, reviews, and disputes.
-- **MongoDB** is planned for conversations, messages, notifications, activity logs, audit events, flexible product drafts, and selected search or recommendation data.
-- Object storage such as S3-compatible storage is planned for document files. Database records should store document metadata and object references.
+Run this from the **repository root**, not from `nest-server/`:
 
-No PostgreSQL or MongoDB integration is present in the current codebase.
-
-## Current API
-
-The current root endpoint is:
-
-```text
-GET /
+```bash
+cp .env.docker.example .env
+docker compose -f docker-compose.dev.yml up --build
 ```
 
-It returns the starter response `Hello World!`. The API listens on port `3000` by default and can be configured with the `PORT` environment variable.
+This starts the API together with PostgreSQL and LocalStack, fully networked. The API will be at http://localhost:3005, with Swagger docs at http://localhost:3005/api/v1/docs. See the [root README](../README.md) for the full Docker workflow, environment variables, and service ports.
 
-## Project Structure
+Run migrations once the stack is up:
 
-```text
-nest-server/
-├── src/
-│   ├── app.controller.ts       # Current root controller
-│   ├── app.controller.spec.ts  # Unit test
-│   ├── app.module.ts            # Root module and Observe setup
-│   ├── app.service.ts           # Current root service
-│   └── main.ts                  # Application bootstrap
-├── test/
-│   └── app.e2e-spec.ts          # End-to-end test
-├── package.json
-├── package-lock.json
-├── tsconfig.json
-└── vitest.config*.ts
+```bash
+docker compose -f docker-compose.dev.yml exec api npm run migration:run
 ```
 
-## Getting Started
+## Getting started without Docker
 
-From the repository root:
+Requires a reachable PostgreSQL instance (and, for upload features, an S3-compatible endpoint like LocalStack).
 
 ```bash
 cd nest-server
 npm ci
+cp .env .env.local   # or edit .env directly — see variables below
 npm run start:dev
 ```
 
-The API is available at [http://localhost:3000](http://localhost:3000) by default.
+The API listens on `PORT` (defaults to `3000` if unset; the committed `.env` sets `3001`).
+
+### Environment variables
+
+Set these in `nest-server/.env` (already present with local-dev defaults):
+
+| Variable | Read by | Default if unset |
+| --- | --- | --- |
+| `PORT` | `main.ts` | `3000` |
+| `CORS_ORIGIN` | `main.ts` | `http://localhost:3000` |
+| `DB_HOST`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`, `DB_NAME` | `config/database.config.ts`, `database/data-source.ts` | `localhost:5432`, `postgres`/`postgres`/`export_marketplace` |
+| `JWT_ACCESS_SECRET`, `JWT_ACCESS_EXPIRES_IN`, `JWT_REFRESH_SECRET`, `JWT_REFRESH_EXPIRES_IN` | `config/jwt.config.ts` | insecure dev-only placeholders (logs a warning if unset — **never rely on the fallback outside local dev**) |
+| `AWS_REGION`, `AWS_ENDPOINT`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_S3_BUCKET` | `config/aws.config.ts` | `us-east-1`, unset endpoint (real AWS), `test`/`test` |
+| `AWS_S3_PUBLIC_ENDPOINT` | `config/aws.config.ts` | unset — presigned URLs returned unmodified |
+| `ENABLE_AWS_DEMO_ROUTES` | `aws/aws-demo.controller.ts` | `false` — unauthenticated demo routes, dev only |
+| `STORAGE_PROVIDER` | `storage/storage.module.ts` | `s3` — set to `cloudinary` to use Cloudinary instead (see below) |
+| `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | `config/cloudinary.config.ts` | unset — only required when `STORAGE_PROVIDER=cloudinary`; the app fails fast at startup if any are missing while Cloudinary is selected |
+
+### Switching the product-image storage provider
+
+Product image uploads go through a `StorageStrategy` abstraction
+(`src/storage/`) instead of talking to S3 directly, so the backing provider
+is a one-variable switch:
+
+- `STORAGE_PROVIDER=s3` (default) — presigned S3 PUT URLs via `S3Service`,
+  unchanged. Works against LocalStack locally and real AWS in production.
+- `STORAGE_PROVIDER=cloudinary` — Cloudinary signed uploads. Requires
+  `CLOUDINARY_CLOUD_NAME`/`CLOUDINARY_API_KEY`/`CLOUDINARY_API_SECRET` (free
+  plan is sufficient). No endpoint/API changes: `POST .../upload-url`,
+  `POST .../images`, and `DELETE .../images/:id` behave identically from the
+  client's point of view — only where the bytes end up differs.
+
+Note: existing `ProductImage` rows don't record which provider stored them
+(no schema change was made for this). If you switch `STORAGE_PROVIDER` after
+images already exist, new uploads go to the new provider, but deleting an
+old image will call the *currently active* strategy, which only works if it
+matches whichever provider actually stored that image. This is fine for the
+intended use (S3 in local/production, Cloudinary only in a dev environment
+that doesn't carry images across the switch) but would need a `provider`
+column added to `product_images` if provider ever needs to vary per-row in
+a long-lived environment.
+
+Database and JWT variable names matter: the API reads `DB_*`/`JWT_*` (not `POSTGRES_*`/`AUTH_*`) — the Docker Compose files inject the right names for you, but if you're setting these manually (e.g. in a hosting provider's dashboard), use the exact names above.
+
+## Database migrations
+
+Schema changes only ever happen through migrations — `synchronize` is always `false`.
+
+```bash
+npm run migration:run       # Apply pending migrations
+npm run migration:revert    # Roll back the last migration
+npm run migration:generate -- src/database/migrations/<Name>   # Diff entities against the current schema
+```
 
 ## Commands
 
 ```bash
-npm run start       # Start the API
-npm run start:dev   # Start with file watching
-npm run start:debug # Start with debugging and file watching
-npm run build       # Compile the API to dist/
-npm run start:prod  # Run the compiled API
+npm run start        # Start the API
+npm run start:dev    # Start with file watching
+npm run start:debug  # Start with debugging and file watching
+npm run build        # Compile to dist/
+npm run start:prod   # Run the compiled API (node dist/main.js)
+npm run lint         # Lint with Oxlint
+npm test             # Unit tests (Vitest)
+npm run test:e2e     # End-to-end tests
+npm run test:cov     # Tests with coverage
 ```
 
-## Tests and Linting
+## API docs
 
-```bash
-npm run lint        # Lint source and test files with Oxlint
-npm test            # Run unit tests with Vitest
-npm run test:e2e    # Run end-to-end tests
-npm run test:cov    # Run tests with coverage
-```
+Swagger/OpenAPI UI is served at `/api/v1/docs` in every environment.
 
-The current tests cover the starter controller and root HTTP response. New domain modules should add focused unit tests and end-to-end coverage for their public API behavior.
+## CORS
 
-## API Direction
+`main.ts` calls `app.enableCors()` with `credentials: true` (required for the HTTP-only refresh-token cookie) and an origin controlled by `CORS_ORIGIN` (comma-separated for multiple origins). Set this to wherever the web app is actually served — it defaults to `http://localhost:3000`.
 
-The API will be versioned under routes such as:
+## Security notes
 
-```text
-/api/v1/auth
-/api/v1/users
-/api/v1/companies
-/api/v1/products
-/api/v1/categories
-/api/v1/suppliers
-/api/v1/rfqs
-/api/v1/quotations
-/api/v1/orders
-/api/v1/payments
-/api/v1/shipments
-/api/v1/documents
-/api/v1/messages
-/api/v1/notifications
-```
-
-REST is the initial integration style. WebSockets may be added for messaging and notifications where realtime behavior is required.
-
-## Security Requirements
-
-Planned backend security practices include authentication, authorization, RBAC, explicit permission checks, DTO validation, rate limiting, secure password hashing, refresh-token or session security, security headers, CORS configuration, file upload validation, audit logging, managed secrets, and least-privilege database access.
-
-Business-sensitive values must always be validated server-side. The API must never trust IDs, roles, prices, payment states, or order states supplied by the frontend.
-
-## Observability
-
-The project currently includes `@nestjs/observe` instrumentation in the root module. Its `appKey` and `appSecret` are placeholders and must be supplied through secure configuration before production use. Credentials must never be committed to the repository.
+- `JWT_ACCESS_SECRET`/`JWT_REFRESH_SECRET` fall back to hardcoded insecure values if unset, logging a warning on boot. Set real random secrets (`openssl rand -hex 32`) in any shared or production environment.
+- `synchronize` is intentionally always `false` — schema changes go through migrations only.
+- The production Docker Compose stack (`docker-compose.yml`, repo root) refuses to start unless `POSTGRES_PASSWORD`, `JWT_ACCESS_SECRET`, and `JWT_REFRESH_SECRET` are explicitly set.
 
 ## CI
 
-The repository workflow runs API linting, unit tests, end-to-end tests, and the production build on pushes and pull requests.
-
-Run the same checks locally before opening a pull request:
+See [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) — runs lint, unit tests, e2e tests, and build on every push/PR. Run the same locally before opening a PR:
 
 ```bash
-npm run lint
-npm test
-npm run test:e2e
-npm run build
+npm run lint && npm test && npm run test:e2e && npm run build
 ```
 
-See the repository root [README](../README.md) for the complete product vision, frontend overview, roadmap, branch strategy, and contribution workflow.
+See the [repository root README](../README.md) for the full product overview and Docker setup shared with the web app.
 
 ## License
 
-This package is currently marked as `UNLICENSED`. Refer to the repository [LICENSE](../LICENSE) file before distributing the software.
+Marked `UNLICENSED`. See [LICENSE](../LICENSE).

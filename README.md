@@ -1,405 +1,159 @@
 # Export Marketplace
 
-> A production-oriented B2B platform for connecting international buyers with exporters, manufacturers, and suppliers.
+> A B2B platform for connecting international buyers with exporters, manufacturers, and suppliers.
 
-Export Marketplace is being designed to help businesses discover export-ready products and move from supplier discovery to quotation, negotiation, ordering, payment, documentation, compliance, shipment, and delivery in one workflow.
+Export Marketplace helps businesses discover export-ready products and move from supplier discovery to quotation, ordering, payment, documentation, and delivery.
 
-The repository currently contains the initial web and API foundations. Marketplace business modules, database integrations, authentication, and transactional workflows are planned and are not yet implemented.
-
-## Product Vision
-
-The platform will support three primary audiences:
-
-- **Buyers and importers** looking for products, suppliers, quotations, and shipment visibility.
-- **Sellers and exporters** managing company profiles, products, RFQs, quotations, orders, documents, and team members.
-- **Administrators** managing users, company verification, marketplace content, compliance, disputes, and operational analytics.
-
-Logistics providers are a future, optional role and are not part of the current MVP implementation.
-
-## Core Business Flow
-
-The planned marketplace workflow is:
-
-```text
-Search products
-	-> Find a supplier
-	-> Create an RFQ
-	-> Receive quotations
-	-> Negotiate terms
-	-> Accept a quotation
-	-> Create an order
-	-> Complete payment
-	-> Process and ship goods
-	-> Manage customs and documents
-	-> Deliver the order
-	-> Review the supplier
-```
-
-## Current Status
-
-### Implemented
-
-- Next.js web application foundation using the App Router, React, TypeScript, and Tailwind CSS.
-- NestJS API foundation using TypeScript.
-- Basic NestJS application module, controller, and service.
-- Root API response at `GET /` returning the starter response.
-- Unit and end-to-end test setup with Vitest for the API.
-- ESLint for the web application and Oxlint for the API.
-- Production build scripts for both applications.
-- GitHub Actions CI for API and web linting, tests, and builds.
-
-### Planned
-
-- Buyer, seller, and administrator authentication and role-based access control.
-- Company profiles, members, verification, and supplier discovery.
-- Product catalog, categories, variants, inventory, pricing, and export metadata.
-- RFQs, quotations, comparison, negotiation, and messaging.
-- Orders, invoices, payments, documents, compliance, and disputes.
-- Shipment tracking, notifications, analytics, and operational administration.
-- PostgreSQL and MongoDB persistence, object storage, background jobs, and production infrastructure.
-
-## Technology Stack
-
-### Web Application
-
-- Next.js 16
-- React 19
-- TypeScript
-- Next.js App Router
-- Tailwind CSS
-
-### API
-
-- Node.js
-- NestJS 12
-- TypeScript
-- REST API initially
-- WebSockets planned for messaging and realtime notifications
-
-### Planned Data Layer
-
-The intended data architecture is:
-
-- **PostgreSQL** as the primary transactional source of truth for users, companies, products, RFQs, quotations, orders, payments, invoices, shipments, compliance, and other business-critical records.
-- **MongoDB** for flexible and high-volume data such as conversations, messages, notifications, activity logs, audit events, flexible drafts, and selected search or recommendation data.
-
-Neither database is wired into the current application yet. MongoDB is not intended to replace PostgreSQL as the primary transactional database.
-
-## Architecture
-
-The initial system will use a **NestJS modular monolith**. This keeps business logic cohesive while leaving clear boundaries for extracting independently scalable services later if the product requires it. The project is not currently a microservices architecture.
-
-```text
-						 Next.js Web Application
-					Buyer | Seller | Admin Portals
-								  |
-						 REST / WebSocket API
-								  |
-					NestJS Modular Monolith API
-								  |
-				 PostgreSQL                MongoDB
-		  Transactional business data   Flexible activity data
-```
-
-## Planned Backend Modules
-
-The API is expected to grow around business modules such as:
-
-```text
-auth/                 users/                companies/
-company-members/      marketplace/          rfq/
-quotations/           negotiation/          orders/
-payments/             invoices/             inventory/
-shipping/             logistics/            documents/
-compliance/           certifications/       reviews/
-disputes/             messaging/            notifications/
-search/               analytics/            admin/
-```
-
-These are planned boundaries. They should be added as the related features are implemented rather than represented as empty modules.
-
-## Planned Marketplace Capabilities
-
-### Products and Suppliers
-
-Products are expected to support descriptions, categories, images, specifications, variants, pricing, minimum order quantities, packaging, country of origin, HS codes, certifications, export markets, payment terms, and Incoterms. Exact fields will be finalized with the domain model.
-
-### Requests for Quotation
-
-Buyers will be able to submit product requirements, quantities, destinations, delivery dates, packaging requirements, Incoterms, payment terms, and additional conditions to relevant suppliers.
-
-### Quotations and Negotiation
-
-Suppliers will be able to respond with unit prices, quantities, shipping and insurance costs, Incoterms, payment terms, delivery estimates, totals, and additional terms. Buyers will eventually be able to compare quotations and negotiate through messaging.
-
-### Orders and Payments
-
-The planned order lifecycle includes draft, payment, confirmation, processing, shipping, customs, delivery, completion, cancellation, and dispute states. Payment integrations will remain provider-independent and may support bank transfer, wire transfer, letters of credit, cards, escrow, and external providers. No payment provider is integrated today.
-
-### Documents and Compliance
-
-The platform will eventually manage metadata and references for commercial invoices, proforma invoices, packing lists, certificates of origin, bills of lading, airway bills, insurance certificates, inspection certificates, customs documents, purchase orders, and sales contracts. Actual files should be stored in S3-compatible object storage, with document metadata held in the application databases.
-
-Compliance capabilities may include company verification, KYC, business registration, tax information, export licenses, certifications, product compliance, HS codes, country restrictions, and document verification.
-
-### Logistics
-
-Future shipment support may include origin, destination, carrier, container, tracking number, documents, and status transitions such as booked, picked up, at port, loaded, in transit, arrived, customs, and delivered.
-
-## Repository Structure
-
-The repository currently uses separate application directories:
+This repository is a monorepo with two independently deployable apps:
 
 ```text
 export-marketplace/
-├── .github/
-│   └── workflows/
-│       └── ci.yml
-├── nest-server/              # NestJS API
-│   ├── src/
-│   ├── test/
-│   ├── package.json
-│   └── package-lock.json
-├── react-client/             # Next.js web application
-│   ├── public/
-│   ├── src/app/
-│   ├── package.json
-│   └── package-lock.json
-├── .gitignore
-├── LICENSE
-└── README.md
+├── nest-server/     # NestJS 12 REST API (TypeScript, PostgreSQL, AWS S3)
+├── react-client/    # Next.js 16 web application (TypeScript, Tailwind CSS)
+├── docker-compose.yml       # Production-style stack
+├── docker-compose.dev.yml   # Development stack with hot reload
+└── .env.docker.example      # Template for the root .env Compose reads
 ```
 
-The repository is not currently organized as a workspace with `apps/` and `packages/` directories. That structure remains a possible future evolution as shared UI, types, validation, and configuration packages become necessary.
+Each app has its own README with setup details specific to it:
 
-## Getting Started
+- [`nest-server/README.md`](nest-server/README.md) — API setup, environment variables, migrations, auth/AWS modules.
+- [`react-client/README.md`](react-client/README.md) — Web app setup, environment variables.
 
-### Prerequisites
+## Current status
 
-- Node.js 24 or a compatible current Node.js release.
-- npm.
+### Implemented
 
-### Run the API
+- NestJS API with:
+  - JWT-based authentication (access + refresh tokens, HTTP-only refresh cookie, RBAC via roles/permissions).
+  - PostgreSQL persistence via TypeORM, with migrations (no `synchronize`).
+  - Products, categories, countries, vendors, and public product catalogue modules.
+  - Product image upload flow via S3 presigned URLs, with LocalStack for local dev.
+  - Swagger/OpenAPI docs at `/api/v1/docs`.
+  - Global validation, consistent error envelope, CORS.
+- Next.js web application foundation (App Router, React 19, Tailwind CSS 4). Marketplace UI (buyer/seller/admin workflows) is not yet built out.
+- Docker Compose stacks (dev + production-style) for both apps plus PostgreSQL and LocalStack.
+- GitHub Actions CI for linting, tests, and builds.
 
-```bash
-cd nest-server
-npm ci
-npm run start:dev
-```
+### Planned
 
-The API starts on port `3000` by default. The current root endpoint is available at [http://localhost:3000](http://localhost:3000).
+- Buyer/seller/admin frontend workflows (RFQs, quotations, orders, payments, documents, messaging).
+- MongoDB for flexible/high-volume data (messaging, notifications, activity logs) — not wired in yet.
+- Production AWS deployment (real S3 instead of LocalStack).
+- SQS integration for async events (planned, not yet implemented).
 
-### Run the web application
+## Prerequisites
 
-Open a second terminal:
+- [Docker Engine](https://docs.docker.com/engine/install/) 24+ with the Compose v2 plugin (`docker compose`), **or**
+- Node.js 22+ and npm, if running each app natively without Docker.
 
-```bash
-cd react-client
-npm ci
-npm run dev
-```
+## Quickest start: Docker (recommended)
 
-The web application is available at [http://localhost:3000](http://localhost:3000) by default. If both applications run at the same time, assign one of them a different port.
-
-## Running with Docker
-
-The repository ships with a full Docker setup for both applications plus
-PostgreSQL and LocalStack (S3 + SQS) for local AWS emulation.
-
-### Prerequisites
-
-- Docker Engine 24+ with the Docker Compose v2 plugin (`docker compose`).
-
-### Configure environment
+This runs both apps plus PostgreSQL and LocalStack (S3 emulation) together, fully networked.
 
 ```bash
 cp .env.docker.example .env
-```
-
-Edit `.env` to change ports or secrets. Every value has a safe default, so the
-file is optional for a first run.
-
-### Development (hot reload)
-
-Source directories are bind-mounted so edits on the host reload inside the
-containers.
-
-```bash
 docker compose -f docker-compose.dev.yml up --build
 ```
 
-- Web: [http://localhost:3000](http://localhost:3000)
-- API: [http://localhost:3005](http://localhost:3005)
+- Web: http://localhost:3000
+- API: http://localhost:3005
+- API docs (Swagger): http://localhost:3005/api/v1/docs
 - PostgreSQL: `localhost:55432`
 - LocalStack: `localhost:4566`
 
-### Production-style build
+The `.env` file is optional for a first run — every variable has a safe development default. See [Environment variables](#environment-variables) below if you need to change ports, secrets, or AWS settings.
 
-Builds optimized images: a pruned NestJS runtime and a Next.js standalone image.
+First time only — run database migrations inside the running `api` container:
 
 ```bash
-docker compose up -d --build
+docker compose -f docker-compose.dev.yml exec api npm run migration:run
 ```
 
-### Common commands
+Stop the stack:
 
 ```bash
-docker compose logs -f api          # Tail API logs
-docker compose logs -f web          # Tail web logs
-docker compose ps                   # List running services
-docker compose down                 # Stop and remove containers
-docker compose down -v              # Also remove the database/localstack volumes
+docker compose -f docker-compose.dev.yml down
+# add -v to also delete the Postgres/LocalStack data volumes
+```
+
+### Production-style build
+
+Builds an optimized pruned NestJS image and a Next.js standalone image instead of running dev servers with hot reload.
+
+```bash
+cp .env.docker.example .env
+# Edit .env: POSTGRES_PASSWORD, JWT_ACCESS_SECRET, JWT_REFRESH_SECRET are
+# REQUIRED here and must be set to strong, unique values.
+docker compose up -d --build
+docker compose exec api npm run migration:run
 ```
 
 ### Service overview
 
-| Service      | Image / Build            | Container port | Host port (default) |
-| ------------ | ------------------------ | -------------- | ------------------- |
-| `web`        | `react-client/Dockerfile`| 3000           | 3000                |
-| `api`        | `nest-server/Dockerfile` | 3005           | 3005                |
-| `postgres`   | `postgres:16-alpine`     | 5432           | 55432               |
-| `localstack` | `localstack/localstack`  | 4566           | 4566                |
+| Service      | Image / build             | Container port | Host port (default) |
+| ------------ | -------------------------- | --------------- | -------------------- |
+| `web`        | `react-client/Dockerfile*` | 3000             | 3000                  |
+| `api`        | `nest-server/Dockerfile*`  | 3005             | 3005                  |
+| `postgres`   | `postgres:16-alpine`       | 5432             | 55432                 |
+| `localstack` | `localstack/localstack`    | 4566             | 4566                  |
 
-Inside the Docker network, the API reaches other services by name
-(`postgres:5432`, `http://localstack:4566`) rather than `localhost`. The
-browser reaches the API through the host port via `NEXT_PUBLIC_API_URL`.
+Inside the Docker network, the `api` container reaches other services by name (`postgres`, `http://localstack:4566`), never `localhost`. The browser reaches the API through the published host port via `NEXT_PUBLIC_API_URL`.
 
-## Development Commands
-
-### API
+### Common Docker commands
 
 ```bash
-cd nest-server
-npm run lint        # Lint source and test files
-npm test            # Run unit tests
-npm run test:e2e    # Run end-to-end tests
-npm run build       # Build the API
+docker compose -f docker-compose.dev.yml logs -f api   # Tail API logs
+docker compose -f docker-compose.dev.yml logs -f web   # Tail web logs
+docker compose -f docker-compose.dev.yml ps             # List running services
+docker compose -f docker-compose.dev.yml down           # Stop and remove containers
+docker compose -f docker-compose.dev.yml down -v        # Also remove data volumes
 ```
 
-### Web Application
+(Drop `-f docker-compose.dev.yml` to target the production-style stack instead.)
 
-```bash
-cd react-client
-npm run lint        # Lint the Next.js application
-npm run build       # Create a production build
-npm run start       # Serve a production build
-```
+## Environment variables
 
-## API Direction
+Copy `.env.docker.example` to `.env` at the repository root — Docker Compose loads it automatically. Key variables:
 
-The API will be versioned as the domain grows, using routes such as:
+| Variable | Used by | Notes |
+| --- | --- | --- |
+| `API_HOST_PORT`, `WEB_HOST_PORT`, `POSTGRES_HOST_PORT`, `LOCALSTACK_HOST_PORT` | Compose | Change if a port is already taken on your machine. |
+| `NEXT_PUBLIC_API_URL` | `web` | Browser-facing API base URL. Baked into the Next.js build at build time in production. |
+| `CORS_ORIGIN` | `api` | Origin(s) allowed to make credentialed cross-origin requests (the web app's origin). Comma-separate multiple origins. |
+| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | `postgres`, `api` | **Required** in the production stack. |
+| `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `JWT_ACCESS_EXPIRES_IN`, `JWT_REFRESH_EXPIRES_IN` | `api` | **Required** in the production stack — must be strong random values (e.g. `openssl rand -hex 32`), different from each other. |
+| `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_S3_BUCKET` | `api` | AWS/LocalStack config. Defaults work out of the box with LocalStack. |
+| `AWS_S3_PUBLIC_ENDPOINT` | `api` | Signs presigned S3 URLs against this host-reachable endpoint instead of the internal LocalStack address, so a browser outside the Docker network can use them. Dev stack sets this automatically. |
+| `ENABLE_AWS_DEMO_ROUTES` | `api` | Enables unauthenticated `/aws-demo` helper routes. Dev stack only — never set in production. |
 
-```text
-/api/v1/auth
-/api/v1/users
-/api/v1/companies
-/api/v1/products
-/api/v1/suppliers
-/api/v1/rfqs
-/api/v1/quotations
-/api/v1/orders
-/api/v1/payments
-/api/v1/shipments
-/api/v1/documents
-/api/v1/messages
-/api/v1/notifications
-```
+See [`.env.docker.example`](.env.docker.example) for the full annotated list.
 
-REST is the initial integration style. WebSockets may be added for messaging and realtime notifications where they provide clear user value.
+## Running without Docker
 
-## Security Principles
+Each app can run natively against its own `.env` file. See the per-app READMEs:
 
-Security is a first-class product requirement. Planned and ongoing practices include:
+- [`nest-server/README.md`](nest-server/README.md#getting-started-without-docker)
+- [`react-client/README.md`](react-client/README.md#getting-started-without-docker)
 
-- Authentication, authorization, RBAC, and explicit permission checks.
-- DTO validation and consistent API error handling.
-- Secure password hashing and refresh-token or session security.
-- Rate limiting, security headers, CORS configuration, and API protection.
-- File upload validation and malware-scanning integration where required.
-- Audit logging and controlled access to sensitive business data.
-- Environment variables and managed secrets instead of committed credentials.
-- Server-side validation of IDs, roles, prices, payment states, and order states.
-- Database authorization and least-privilege access.
+You'll still need a PostgreSQL instance and, if testing file uploads, an S3-compatible service (LocalStack) reachable at the hosts configured in `nest-server/.env`.
 
-The current NestJS Observe configuration contains placeholder credentials and must be configured securely before production use.
+## CI
 
-## Development Principles
-
-1. Use TypeScript-first development.
-2. Keep frontend and backend responsibilities clearly separated.
-3. Keep controllers thin and business logic in services or use cases.
-4. Treat PostgreSQL as the source of truth for transactional business data.
-5. Use MongoDB for flexible or high-volume data, not primary transactions.
-6. Prefer modular monolith boundaries before considering microservices.
-7. Use automated tests and CI for every change.
-8. Use environment variables for configuration and secrets.
-9. Prefer asynchronous jobs for expensive or background operations.
-10. Maintain versioned APIs, structured logging, and consistent error handling.
-
-## Roadmap
-
-### Phase 1: Foundation
-
-- Establish the web and API applications.
-- Define domain boundaries and API conventions.
-- Add environment configuration and local development documentation.
-- Introduce database migrations and persistence foundations.
-
-### Phase 2: Identity and Companies
-
-- Add registration, login, sessions, RBAC, and permissions.
-- Add company profiles, members, addresses, and verification workflows.
-
-### Phase 3: Marketplace
-
-- Add categories, products, suppliers, product media, inventory, and search.
-- Add buyer and seller portal workflows.
-
-### Phase 4: RFQs and Commercial Workflow
-
-- Add RFQs, quotations, quotation comparison, negotiation, and messaging.
-- Add order creation, invoices, payment states, and audit events.
-
-### Phase 5: Trade Operations
-
-- Add export documents, compliance, certifications, shipment tracking, and notifications.
-- Add administrator operations, disputes, reviews, and analytics.
-
-### Phase 6: Production Readiness
-
-- Add object storage, background jobs, observability, backups, deployment automation, and performance testing.
-- Evaluate extraction of selected modules into services only when real scale or ownership boundaries justify it.
-
-## Branches and Delivery
-
-The repository currently maintains these branches for development and release coordination:
-
-- `main`: shared default branch and production-ready baseline.
-- `master`: compatibility release branch.
-- `develop`: integration branch for completed work.
-- `staging`: pre-release validation.
-- `preproduction`: pre-production validation environment.
-- `production`: production release branch.
-- `feature`: feature development branch.
-- `rajat` and `baba`: contributor or workstream branches.
-
-New work should normally be developed on a dedicated feature branch and merged through review into the appropriate integration or release branch.
-
-## Continuous Integration
-
-GitHub Actions is configured in `.github/workflows/ci.yml` and runs on pushes and pull requests. It currently checks:
+GitHub Actions (`.github/workflows/ci.yml`) runs on pushes and pull requests:
 
 - API linting, unit tests, end-to-end tests, and build.
 - Web application linting and production build.
 
+Run the same checks locally before opening a pull request — see each app's README for commands.
+
 ## Contributing
 
 1. Create or switch to the appropriate branch.
-2. Keep changes focused and document new domain decisions.
-3. Run the relevant lint, test, and build commands locally.
-4. Do not commit secrets, credentials, generated dependencies, or local environment files.
-5. Open a pull request with a clear summary, testing notes, and any migration or deployment considerations.
+2. Keep changes focused; run lint/test/build locally before opening a PR.
+3. Never commit secrets, `.env` files, or generated dependencies.
+4. Open a pull request with a clear summary and testing notes.
 
 ## License
 
-This project is currently marked as `UNLICENSED` in the API package configuration. Refer to [LICENSE](LICENSE) for the repository license file and confirm licensing terms before distributing the software.
+This project is marked `UNLICENSED` in the API package configuration. Refer to [LICENSE](LICENSE) before distributing the software.
