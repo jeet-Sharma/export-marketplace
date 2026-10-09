@@ -86,26 +86,30 @@ describe('CloudinaryStorageStrategy', () => {
     });
   });
 
-  describe('getPresignedUploadUrl', () => {
-    it('returns a signed Cloudinary upload URL carrying the signature and public_id', async () => {
+  describe('getPresignedUpload', () => {
+    it('returns a signed Cloudinary upload target carrying the signature and public_id as fields', async () => {
       const strategy = createStrategy();
       vi.mocked(cloudinary.utils.sign_request).mockReturnValue({
         signature: 'sig123',
         api_key: 'demo-key',
       });
 
-      const url = await strategy.getPresignedUploadUrl(
+      const result = await strategy.getPresignedUpload(
         'products/p1/abc-photo',
         900,
+        5 * 1024 * 1024,
         'image/jpeg',
       );
 
-      expect(url).toContain(
+      expect(result.url).toBe(
         'https://api.cloudinary.com/v1_1/demo-cloud/auto/upload',
       );
-      expect(url).toContain('public_id=products%2Fp1%2Fabc-photo');
-      expect(url).toContain('signature=sig123');
-      expect(url).toContain('api_key=demo-key');
+      expect(result.fields).toEqual({
+        public_id: 'products/p1/abc-photo',
+        timestamp: expect.any(String),
+        api_key: 'demo-key',
+        signature: 'sig123',
+      });
     });
 
     it('wraps signing failures in a ServiceUnavailableException', async () => {
@@ -115,7 +119,7 @@ describe('CloudinaryStorageStrategy', () => {
       });
 
       await expect(
-        strategy.getPresignedUploadUrl('products/p1/abc-photo', 900),
+        strategy.getPresignedUpload('products/p1/abc-photo', 900, 5242880),
       ).rejects.toThrow(ServiceUnavailableException);
     });
   });

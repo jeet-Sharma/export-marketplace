@@ -9,6 +9,7 @@ import type { ConfigType } from '@nestjs/config';
 import { v2 as cloudinary } from 'cloudinary';
 import { cloudinaryConfig } from '../config/cloudinary.config.js';
 import type {
+  PresignedUpload,
   StorageObjectMetadata,
   StorageStrategy,
 } from './storage-strategy.interface.js';
@@ -99,17 +100,29 @@ export class CloudinaryStorageStrategy implements StorageStrategy {
   }
 
   /**
-   * Returns a Cloudinary signed-upload URL: the official unsigned upload
-   * endpoint with a signature + timestamp + api_key + public_id query
-   * string the client echoes back as form fields on its POST. `contentType`
-   * is accepted for interface parity with S3StorageStrategy but is not used
-   * — Cloudinary infers resource type from the uploaded bytes.
+   * Returns a Cloudinary signed-upload POST target: the client submits a
+   * multipart/form-data POST to `url` carrying every entry in `fields`
+   * (public_id, timestamp, api_key, signature) plus the file itself.
+   *
+   * IMPORTANT size-enforcement limitation (unlike S3StorageStrategy):
+   * Cloudinary's raw signed-upload API has no server-enforced hard byte
+   * ceiling equivalent to S3 POST policy's `content-length-range` — Cloudinary
+   * only exposes a client-side `maxFileSize` option on its upload *widget*,
+   * which a malicious or buggy client can simply not apply. `maxSizeBytes` is
+   * therefore NOT enforced provider-side here; ProductsService.addImage's
+   * existing post-upload size check (delete-then-reject if oversized) is
+   * still the only real backstop for this strategy. Flagged rather than
+   * silently claimed-equivalent to S3's enforcement — if Cloudinary is used
+   * somewhere this gap matters, an eager async-moderation webhook or a
+   * stricter upload preset enforced on the Cloudinary account itself would
+   * be the next step, which is out of scope for this fix.
    */
-  async getPresignedUploadUrl(
+  async getPresignedUpload(
     key: string,
     _expiresInSeconds: number,
+    _maxSizeBytes: number,
     _contentType?: string,
-  ): Promise<string> {
+  ): Promise<PresignedUpload> {
     this.ensureConfigured();
     const timestamp = Math.floor(Date.now() / 1000);
     const paramsToSign = { public_id: key, timestamp };
@@ -129,14 +142,16 @@ export class CloudinaryStorageStrategy implements StorageStrategy {
       );
     }
 
-    const uploadEndpoint = `https://api.cloudinary.com/v1_1/${this.config.cloudName}/auto/upload`;
-    const query = new URLSearchParams({
-      public_id: key,
-      timestamp: String(timestamp),
-      api_key: signed.api_key,
-      signature: signed.signature,
-    });
-    return `${uploadEndpoint}?${query.toString()}`;
+    const url = `https://api.cloudinary.com/v1_1/${this.config.cloudName}/auto/upload`;
+    return {
+      url,
+      fields: {
+        public_id: key,
+        timestamp: String(timestamp),
+        api_key: signed.api_key,
+        signature: signed.signature,
+      },
+    };
   }
 
   /**

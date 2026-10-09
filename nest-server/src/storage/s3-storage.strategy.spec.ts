@@ -11,7 +11,7 @@ describe('S3StorageStrategy', () => {
     return {
       buildProductImageKey: vi.fn(),
       keyBelongsToProduct: vi.fn(),
-      getPresignedUploadUrl: vi.fn(),
+      getPresignedUploadPost: vi.fn(),
       getObjectMetadata: vi.fn(),
       delete: vi.fn(),
     } as unknown as S3Service;
@@ -47,25 +47,31 @@ describe('S3StorageStrategy', () => {
     expect(result).toBe(true);
   });
 
-  it('delegates getPresignedUploadUrl to S3Service with the same arguments', async () => {
+  it('delegates getPresignedUpload to S3Service.getPresignedUploadPost with the same arguments', async () => {
     const s3Service = createMockS3Service();
-    vi.mocked(s3Service.getPresignedUploadUrl).mockResolvedValue(
-      'https://signed.example/upload',
-    );
+    vi.mocked(s3Service.getPresignedUploadPost).mockResolvedValue({
+      url: 'https://signed.example/upload',
+      fields: { key: 'products/p1/x.jpg' },
+    });
     const strategy = new S3StorageStrategy(s3Service);
 
-    const result = await strategy.getPresignedUploadUrl(
+    const result = await strategy.getPresignedUpload(
       'products/p1/x.jpg',
       900,
+      5 * 1024 * 1024,
       'image/jpeg',
     );
 
-    expect(s3Service.getPresignedUploadUrl).toHaveBeenCalledWith(
+    expect(s3Service.getPresignedUploadPost).toHaveBeenCalledWith(
       'products/p1/x.jpg',
       900,
+      5 * 1024 * 1024,
       'image/jpeg',
     );
-    expect(result).toBe('https://signed.example/upload');
+    expect(result).toEqual({
+      url: 'https://signed.example/upload',
+      fields: { key: 'products/p1/x.jpg' },
+    });
   });
 
   it('delegates getObjectMetadata to S3Service', async () => {

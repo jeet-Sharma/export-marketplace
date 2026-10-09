@@ -124,7 +124,7 @@ Copy `.env.docker.example` to `.env` at the repository root — Docker Compose l
 | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | `postgres`, `api` | **Required** in the production stack. |
 | `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `JWT_ACCESS_EXPIRES_IN`, `JWT_REFRESH_EXPIRES_IN` | `api` | **Required** in the production stack — must be strong random values (e.g. `openssl rand -hex 32`), different from each other. |
 | `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_S3_BUCKET` | `api` | AWS/LocalStack config. Defaults work out of the box with LocalStack. |
-| `AWS_S3_PUBLIC_ENDPOINT` | `api` | Rewrites presigned S3 URL hosts so a browser outside the Docker network can open them. Dev stack sets this automatically. |
+| `AWS_S3_PUBLIC_ENDPOINT` | `api` | Signs presigned S3 URLs against this host-reachable endpoint instead of the internal LocalStack address, so a browser outside the Docker network can use them. Dev stack sets this automatically. |
 | `ENABLE_AWS_DEMO_ROUTES` | `api` | Enables unauthenticated `/aws-demo` helper routes. Dev stack only — never set in production. |
 
 See [`.env.docker.example`](.env.docker.example) for the full annotated list.

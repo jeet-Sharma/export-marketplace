@@ -22,6 +22,12 @@ import { Product } from './product.entity.js';
   unique: true,
   where: '"is_primary" = true',
 })
+// Enforces "a storage object key belongs to at most one image row" at the
+// DB level — see migration 1759752000000-AddProductImageObjectKeyUniqueIndex.
+// Without this, two rows could reference the same s3_object_key; deleting
+// either row then deletes the shared storage object out from under the
+// other.
+@Index('UQ_product_images_s3_object_key', ['s3ObjectKey'], { unique: true })
 export class ProductImage {
   @PrimaryGeneratedColumn('uuid')
   id!: string;

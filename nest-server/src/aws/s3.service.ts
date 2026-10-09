@@ -11,8 +11,9 @@ import {
   type PutObjectCommandInput,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { createPresignedPost } from '@aws-sdk/s3-presigned-post';
 import { awsConfig } from '../config/aws.config.js';
-import { S3_CLIENT } from './aws.constants.js';
+import { S3_CLIENT, S3_PRESIGNING_CLIENT } from './aws.constants.js';
 
 export interface UploadObjectInput {
   key: string;
@@ -38,6 +39,7 @@ export class S3Service {
 
   constructor(
     @Inject(S3_CLIENT) private readonly client: S3Client,
+    @Inject(S3_PRESIGNING_CLIENT) private readonly presigningClient: S3Client,
     @Inject(awsConfig.KEY)
     private readonly config: ConfigType<typeof awsConfig>,
   ) {
@@ -127,75 +129,67 @@ export class S3Service {
   /**
    * Generates a time-limited presigned URL for downloading an object.
    * @param expiresInSeconds URL lifetime in seconds (default 15 minutes).
+   *
+   * Signed with `presigningClient` (bound to s3.publicEndpoint when set),
+   * not `client` — see S3_PRESIGNING_CLIENT's doc comment in
+   * aws.constants.ts for why the signature must be generated against the
+   * host the external caller will actually use, rather than signed
+   * against the internal endpoint and the host swapped afterward.
    */
   async getPresignedDownloadUrl(
     key: string,
     expiresInSeconds = 900,
   ): Promise<string> {
     const command = new GetObjectCommand({ Bucket: this.bucket, Key: key });
-    const url = await getSignedUrl(this.client, command, {
+    return getSignedUrl(this.presigningClient, command, {
       expiresIn: expiresInSeconds,
     });
-    return this.toPublicUrl(url);
   }
 
   /**
-   * Generates a time-limited presigned URL for uploading an object directly.
+   * Generates a time-limited, provider-enforced presigned POST for
+   * uploading an object directly, with the maximum size enforced by S3
+   * itself via the POST policy's `content-length-range` condition.
    *
-   * Size limit note: this deliberately does NOT set ContentLength on the
-   * PutObjectCommand to cap upload size. A presigned PUT's ContentLength,
-   * if set, must match the uploaded body EXACTLY — it's not a ceiling, so
-   * setting it to a max byte count would reject every upload that isn't
-   * precisely that size, which is wrong. The real max-size enforcement
-   * happens after upload via getObjectMetadata()'s HeadObjectCommand
-   * check against the object as actually stored (see
-   * ProductsService.addImage). A true pre-upload hard ceiling would
-   * require createPresignedPost's content-length-range condition instead
-   * of a plain presigned PUT — not needed for Phase 1's two-step
-   * (declared size in the DTO + post-upload actual-size) check.
+   * This replaces an earlier plain presigned PUT, which deliberately could
+   * NOT set ContentLength to cap upload size: a presigned PUT's
+   * ContentLength, if set, must match the uploaded body EXACTLY — it's not
+   * a ceiling. That meant the only size enforcement was the post-upload
+   * HeadObjectCommand check in ProductsService.addImage, by which point an
+   * oversized file had already been fully uploaded to the bucket (wasting
+   * storage/bandwidth, and leaving a window where an abandoned/never-
+   * registered oversized object sits in the bucket until something notices
+   * and deletes it). `content-length-range` rejects the upload server-side,
+   * before the object is stored, if it falls outside [1, maxSizeBytes].
+   *
+   * Signed with `presigningClient`, not `client` — see
+   * getPresignedDownloadUrl's comment and S3_PRESIGNING_CLIENT in
+   * aws.constants.ts: the signature must be generated against the host the
+   * client will actually POST to.
    */
-  async getPresignedUploadUrl(
+  async getPresignedUploadPost(
     key: string,
-    expiresInSeconds = 900,
+    expiresInSeconds: number,
+    maxSizeBytes: number,
     contentType?: string,
-  ): Promise<string> {
-    const command = new PutObjectCommand({
+  ): Promise<{ url: string; fields: Record<string, string> }> {
+    const { url, fields } = await createPresignedPost(this.presigningClient, {
       Bucket: this.bucket,
       Key: key,
-      ContentType: contentType,
+      Expires: expiresInSeconds,
+      // content-length-range is the actual enforcement: S3 rejects the
+      // POST before storing anything if the body falls outside [1, max].
+      // The Content-Type condition (when provided) matches the Fields
+      // entry below, so the policy and the submitted field agree —
+      // required because S3 validates every field against a matching
+      // condition.
+      Conditions: [
+        ['content-length-range', 1, maxSizeBytes],
+        ...(contentType ? [{ 'Content-Type': contentType }] : []),
+      ],
+      Fields: contentType ? { 'Content-Type': contentType } : undefined,
     });
-    const url = await getSignedUrl(this.client, command, {
-      expiresIn: expiresInSeconds,
-    });
-    return this.toPublicUrl(url);
-  }
-
-  /**
-   * Rewrites the host of a presigned URL to the configured public endpoint so
-   * clients outside the Docker network can reach it. For path-style URLs the
-   * SigV4 signature does not cover the host, so swapping only the authority
-   * (scheme + host + port) leaves the signature valid. When no public endpoint
-   * is configured (production/real AWS), the URL is returned unchanged.
-   */
-  private toPublicUrl(signedUrl: string): string {
-    const publicEndpoint = this.config.s3.publicEndpoint;
-    if (!publicEndpoint) {
-      return signedUrl;
-    }
-    try {
-      const signed = new URL(signedUrl);
-      const target = new URL(publicEndpoint);
-      signed.protocol = target.protocol;
-      signed.host = target.host; // host includes port
-      return signed.toString();
-    } catch (error) {
-      this.logger.warn(
-        `Failed to rewrite presigned URL host to "${publicEndpoint}": ${
-          (error as Error).message
-        }. Returning the original URL.`,
-      );
-      return signedUrl;
-    }
+    return { url, fields };
   }
 
   /**

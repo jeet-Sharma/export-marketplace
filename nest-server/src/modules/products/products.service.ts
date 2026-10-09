@@ -3,6 +3,7 @@ import {
   ConflictException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -67,6 +68,8 @@ const PUBLISH_REQUIRED_FIELDS: Array<keyof Product> = ['name', 'vendorId'];
 
 @Injectable()
 export class ProductsService {
+  private readonly logger = new Logger(ProductsService.name);
+
   constructor(
     @InjectRepository(Product)
     private readonly productRepository: Repository<Product>,
@@ -299,8 +302,24 @@ export class ProductsService {
   // handling — both are "two concurrent writers hit the same unique
   // constraint" cases, just on different constraints.
   private isUniqueViolation(error: unknown): boolean {
+    return this.getUniqueViolationConstraint(error) !== undefined;
+  }
+
+  // Same SQLSTATE 23505 check as isUniqueViolation, but also returns which
+  // constraint was violated — needed in addImage() to tell apart "two
+  // concurrent requests both tried to set isPrimary=true"
+  // (UQ_product_images_product_id_primary) from "two concurrent requests
+  // tried to register the same storage object key"
+  // (UQ_product_images_s3_object_key); each needs a different error
+  // message/field in the response. Returns the constraint name if one is
+  // reported, or the literal string 'unknown' if Postgres raised 23505
+  // without a constraint name (defensive fallback, same spirit as
+  // getForeignKeyViolationField's 'unknown' default) — never `undefined`
+  // for an actual 23505, so callers can rely on "undefined means not a
+  // unique violation at all".
+  private getUniqueViolationConstraint(error: unknown): string | undefined {
     if (!(error instanceof QueryFailedError)) {
-      return false;
+      return undefined;
     }
     const driverError = (
       error as QueryFailedError & {
@@ -308,7 +327,10 @@ export class ProductsService {
       }
     ).driverError;
     const code = driverError?.code ?? (error as { code?: string }).code;
-    return code === '23505';
+    if (code !== '23505') {
+      return undefined;
+    }
+    return driverError?.constraint ?? 'unknown';
   }
 
   // Postgres foreign-key-violation is SQLSTATE 23503 — raised when
@@ -370,15 +392,34 @@ export class ProductsService {
     dto: UpdateProductDto,
     updatedByUserId: string,
   ): Promise<Product> {
-    const product = await this.productRepository.findOne({ where: { id } });
-    if (!product) {
-      throw new NotFoundException('Product not found');
-    }
-
     this.assertPriceTiersDoNotOverlap(dto.priceTiers);
 
     try {
       return await this.dataSource.transaction(async (manager) => {
+        // Loaded (and locked) INSIDE the transaction, not before it — a
+        // prior version loaded the product before the transaction opened,
+        // then saved that same (possibly stale) in-memory entity at the
+        // end. Two concurrent PATCH requests for the same product could
+        // both load the pre-update row, each apply their own fields, and
+        // whichever committed last would silently overwrite the other's
+        // changes (last-write-wins), with no error and no indication to
+        // either caller. `pessimistic_write` issues `SELECT ... FOR
+        // UPDATE`, which blocks a second concurrent transaction from
+        // reading this row until the first commits — so the second
+        // request's load reflects the first request's committed changes,
+        // and genuinely concurrent edits are serialized rather than
+        // silently lost. This project has no `version` column on Product
+        // (optimistic locking would need a schema migration + a client
+        // contract change to send back a version/etag); row locking
+        // achieves the same correctness guarantee without either.
+        const product = await manager.findOne(Product, {
+          where: { id },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (!product) {
+          throw new NotFoundException('Product not found');
+        }
+
         // Only fields actually present in the PATCH body are touched —
         // `undefined` means "leave as-is", `null`/a real value both mean
         // "set it" (via toNullable/toNullableNumericString). This is why
@@ -452,37 +493,60 @@ export class ProductsService {
     }
   }
 
-  async publish(id: string): Promise<Product> {
+  // userId is the acting admin's id, always derived from the authenticated
+  // request (@CurrentUser()) at the controller — never client-supplied.
+  // Previously this method didn't record who performed the publish, so
+  // Product.updatedBy kept whatever value the last field-level PATCH (or
+  // the original create()) left behind, meaning the audit trail couldn't
+  // show who actually published the product. Publishing is itself a
+  // business-meaningful change to the row, so it gets the same updatedBy
+  // treatment as update() — see the API spec section 14 audit expectations.
+  async publish(id: string, userId: string): Promise<Product> {
     const product = await this.productRepository.findOne({ where: { id } });
     if (!product) {
       throw new NotFoundException('Product not found');
     }
     if (product.status === 'PUBLISHED') {
-      return product;
+      product.updatedBy = userId;
+      return this.productRepository.save(product);
     }
 
     this.assertPublishable(product);
 
     product.status = 'PUBLISHED';
     product.publishedAt = new Date();
+    product.updatedBy = userId;
     return this.productRepository.save(product);
   }
 
-  async unpublish(id: string): Promise<Product> {
+  // See publish()'s comment — same audit-trail reasoning applies to
+  // unpublishing.
+  async unpublish(id: string, userId: string): Promise<Product> {
     const product = await this.productRepository.findOne({ where: { id } });
     if (!product) {
       throw new NotFoundException('Product not found');
     }
 
     product.status = 'DRAFT';
+    product.updatedBy = userId;
     return this.productRepository.save(product);
   }
 
-  // Requests a presigned S3 upload URL for a new product image. The
+  // Requests a presigned upload (POST) for a new product image. The
   // object key is generated server-side (never client-supplied) via
-  // S3Service.buildProductImageKey, which sanitizes the filename and
+  // storageStrategy.buildProductImageKey, which sanitizes the filename and
   // prefixes a randomUUID() to prevent path traversal/collisions — see
   // security-rules.md.
+  //
+  // The max upload size is always capped at MAX_IMAGE_UPLOAD_BYTES — never
+  // at the client-declared contentLengthBytes — so a client cannot widen
+  // its own ceiling by declaring a larger size than it intends to enforce
+  // against itself; contentLengthBytes (validated against the same max by
+  // RequestUploadUrlDto) is purely informational at this stage. See
+  // storageStrategy.getPresignedUpload's comment for why this is a signed
+  // POST rather than a plain PUT: only a POST policy lets the provider
+  // reject an oversized upload before it's stored, instead of only after
+  // (addImage's post-upload check, which still runs as a backstop).
   async requestImageUploadUrl(
     productId: string,
     filename: string,
@@ -493,13 +557,15 @@ export class ProductsService {
       productId,
       filename,
     );
-    const uploadUrl = await this.storageStrategy.getPresignedUploadUrl(
+    const { url, fields } = await this.storageStrategy.getPresignedUpload(
       key,
       PRESIGNED_UPLOAD_URL_TTL_SECONDS,
+      MAX_IMAGE_UPLOAD_BYTES,
       contentType,
     );
     return {
-      uploadUrl,
+      uploadUrl: url,
+      fields,
       key,
       expiresInSeconds: PRESIGNED_UPLOAD_URL_TTL_SECONDS,
     };
@@ -529,6 +595,31 @@ export class ProductsService {
           {
             field: 'objectKey',
             message: 'objectKey must be a key issued for this product',
+          },
+        ],
+      });
+    }
+
+    // Fast-path rejection for the common case: the same objectKey already
+    // registered against some image row (any product — the key itself is
+    // globally unique in storage, see UQ_product_images_s3_object_key).
+    // This is only a best-effort first pass, same caveat as
+    // generateUniqueSlug's pre-check: it runs before the transaction
+    // opens, so two concurrent addImage calls for the same objectKey can
+    // both pass it before either commits. The actual guarantee is the DB
+    // unique index; the catch block below converts that violation into
+    // the same 409 if this check is lost to the race.
+    const existingImageWithKey = await this.productImageRepository.exists({
+      where: { s3ObjectKey: dto.objectKey },
+    });
+    if (existingImageWithKey) {
+      throw new ConflictException({
+        code: 'CONFLICT',
+        message: 'This storage object is already registered to an image',
+        errors: [
+          {
+            field: 'objectKey',
+            message: 'objectKey is already attached to a product image',
           },
         ],
       });
@@ -600,7 +691,29 @@ export class ProductsService {
       });
       return toProductImageResponseDto(saved);
     } catch (error) {
-      if (this.isUniqueViolation(error)) {
+      const constraint = this.getUniqueViolationConstraint(error);
+      if (constraint === 'UQ_product_images_s3_object_key') {
+        // Lost the race the pre-check above couldn't fully close — same
+        // user-facing error either way, so the caller can't distinguish
+        // "pre-check caught it" from "DB constraint caught it".
+        throw new ConflictException({
+          code: 'CONFLICT',
+          message: 'This storage object is already registered to an image',
+          errors: [
+            {
+              field: 'objectKey',
+              message: 'objectKey is already attached to a product image',
+            },
+          ],
+        });
+      }
+      if (constraint) {
+        // Any other unique violation here is the primary-image race
+        // (UQ_product_images_product_id_primary) — see the demote-then-
+        // insert comment above. Falls back to this message for an
+        // unrecognized constraint name too, which is the safer default:
+        // surfacing a 409 instead of letting an unexpected unique
+        // violation reach the client as a raw 500.
         throw new ConflictException({
           code: 'CONFLICT',
           message:
@@ -612,10 +725,18 @@ export class ProductsService {
     }
   }
 
-  // Removes image metadata and the underlying S3 object (section 9.2).
-  // The DB row is removed first, inside a transaction; the S3 delete is
-  // best-effort after commit — an orphaned S3 object is a cheaper failure
-  // mode than a DB row pointing at nothing.
+  // Removes image metadata and the underlying storage object (section 9.2).
+  // The DB row is removed first; the storage delete afterward is
+  // best-effort and MUST NOT fail the request if it errors — the DB
+  // delete already succeeded by that point, so the client's view (image
+  // gone from the product) is already correct, and surfacing a storage
+  // error here would make the API report failure for an operation that
+  // actually succeeded from the caller's perspective. A storage object
+  // left behind after its metadata row is gone is an orphan to clean up
+  // later (e.g. a periodic reconciliation job), which is a cheaper
+  // failure mode than a DB row pointing at nothing — but the error must
+  // still be logged (with the key and the error) so that cleanup is
+  // actually possible, rather than silently losing track of the orphan.
   async removeImage(productId: string, imageId: string): Promise<void> {
     const image = await this.productImageRepository.findOne({
       where: { id: imageId, productId },
@@ -625,7 +746,18 @@ export class ProductsService {
     }
 
     await this.productImageRepository.delete({ id: imageId });
-    await this.storageStrategy.delete(image.s3ObjectKey);
+
+    try {
+      await this.storageStrategy.delete(image.s3ObjectKey);
+    } catch (error) {
+      this.logger.error(
+        `Failed to delete storage object "${image.s3ObjectKey}" for ` +
+          `product image ${imageId} (product ${productId}) after its DB ` +
+          `row was removed; the object may be orphaned in storage: ` +
+          `${(error as Error).message}`,
+        (error as Error).stack,
+      );
+    }
   }
 
   private async assertProductExists(productId: string): Promise<void> {
@@ -671,7 +803,15 @@ export class ProductsService {
       const next = sorted[i + 1];
       const currentMax = current.maxQuantity ?? Infinity;
       if (currentMax >= next.minQuantity) {
-        throw new ConflictException({
+        // Overlapping tiers are invalid REQUEST DATA, not a resource-state
+        // conflict (ConflictException/409 implies the request would be
+        // valid against a different server state, e.g. a duplicate slug —
+        // that's not the case here: no retry or server-side state change
+        // would ever make this same payload valid). BadRequestException
+        // keeps this a 400, consistent with every other DTO-shape-level
+        // validation failure (assertPublishable, rethrowAsValidationError)
+        // and with HttpExceptionFilter's VALIDATION_ERROR code mapping.
+        throw new BadRequestException({
           code: 'VALIDATION_ERROR',
           message: 'Price tier ranges must not overlap',
           errors: [

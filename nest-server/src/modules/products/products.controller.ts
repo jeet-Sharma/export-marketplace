@@ -116,8 +116,13 @@ export class ProductsController {
   @Post(':id/publish')
   @RequirePermissions('product.publish')
   @HttpCode(HttpStatus.OK)
-  publish(@Param('id', ParseUUIDPipe) id: string): Promise<Product> {
-    return this.productsService.publish(id);
+  publish(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AccessTokenPayload,
+  ): Promise<Product> {
+    // updated_by is always derived from the authenticated user, never a
+    // client-supplied value — same rule as create()/update() above.
+    return this.productsService.publish(id, user.sub);
   }
 
   @ApiOperation({
@@ -128,8 +133,11 @@ export class ProductsController {
   @Post(':id/unpublish')
   @RequirePermissions('product.unpublish')
   @HttpCode(HttpStatus.OK)
-  unpublish(@Param('id', ParseUUIDPipe) id: string): Promise<Product> {
-    return this.productsService.unpublish(id);
+  unpublish(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AccessTokenPayload,
+  ): Promise<Product> {
+    return this.productsService.unpublish(id, user.sub);
   }
 
   // See CreateProductImageDto/RequestUploadUrlDto for why this exists as

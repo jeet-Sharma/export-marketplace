@@ -11,6 +11,23 @@ export type StorageObjectMetadata =
   | { exists: true; sizeBytes: number }
   | { exists: false };
 
+/**
+ * A provider-signed upload the client submits directly (never through this
+ * backend). `fields` carries whatever the provider's signed-POST policy
+ * requires (e.g. S3's policy/signature/key fields) in addition to the file
+ * itself — the client sends a multipart/form-data POST to `url` with every
+ * entry in `fields` plus a `file` field, in that order (the file field must
+ * come last per S3's POST policy rules). This replaces a plain presigned PUT
+ * URL specifically so the provider can enforce `maxSizeBytes` itself (via
+ * S3's `content-length-range` policy condition / Cloudinary's upload preset
+ * equivalent) rather than relying only on this API's post-upload check,
+ * which can't stop bytes that already landed in storage.
+ */
+export interface PresignedUpload {
+  url: string;
+  fields: Record<string, string>;
+}
+
 export interface StorageStrategy {
   /**
    * Builds a stable, collision-resistant object key/identifier scoped to a
@@ -28,15 +45,20 @@ export interface StorageStrategy {
   keyBelongsToProduct(key: string, productId: string): boolean;
 
   /**
-   * Generates a time-limited URL (or signed upload payload serialized as a
-   * URL — see CloudinaryStorageStrategy) the client uses to upload the file
-   * directly to the provider. The backend never receives the file bytes.
+   * Generates a time-limited, provider-signed upload (see PresignedUpload)
+   * the client submits directly to the provider. The backend never
+   * receives the file bytes. `maxSizeBytes` is enforced by the provider
+   * itself at upload time — the request is rejected before the object is
+   * ever stored if the uploaded body exceeds it, closing the gap a plain
+   * presigned PUT (whose ContentLength must match exactly, so it can't act
+   * as a ceiling) leaves open.
    */
-  getPresignedUploadUrl(
+  getPresignedUpload(
     key: string,
     expiresInSeconds: number,
+    maxSizeBytes: number,
     contentType?: string,
-  ): Promise<string>;
+  ): Promise<PresignedUpload>;
 
   /**
    * Confirms the object actually exists at the provider and returns its

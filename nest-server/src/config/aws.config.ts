@@ -66,12 +66,20 @@ export const awsConfig = registerAs('aws', (): AwsConfig => {
     s3: {
       bucket: process.env.AWS_S3_BUCKET ?? 'export-marketplace-documents',
       forcePathStyle: isLocal,
-      // Only rewrite presigned URL hosts when AWS_S3_PUBLIC_ENDPOINT is set
-      // EXPLICITLY. There is deliberately no hardcoded fallback: guessing
-      // "http://localhost:4566" would produce links that are wrong whenever the
-      // published port differs or the stack runs on a remote host. When unset
-      // (production/real AWS, or a stack that doesn't expose LocalStack to the
-      // host), the SDK's signed URL is returned unchanged.
+      // Host-reachable base URL used to SIGN presigned URLs that go to an
+      // external client (browser), instead of signing against `endpoint`
+      // (e.g. http://localstack:4566, which only resolves inside Docker)
+      // and rewriting the host afterward. A post-signing host rewrite is
+      // NOT safe: AWS SigV4 includes the Host in the signed canonical
+      // request, so swapping the host string after signing invalidates the
+      // signature and the client's PUT/GET gets rejected with
+      // SignatureDoesNotMatch (see S3Service's presigned-URL client,
+      // which is constructed with THIS endpoint rather than `endpoint`).
+      //
+      // Sourced ONLY from AWS_S3_PUBLIC_ENDPOINT — there is no implicit
+      // default, so presigned URLs use the same client/endpoint as every
+      // other S3 call unless an operator explicitly opts in with a known
+      // host-reachable address.
       publicEndpoint: process.env.AWS_S3_PUBLIC_ENDPOINT?.trim() || undefined,
     },
   };

@@ -15,7 +15,7 @@ describe('ProductsService storage integration', () => {
     return {
       buildProductImageKey: vi.fn(),
       keyBelongsToProduct: vi.fn(),
-      getPresignedUploadUrl: vi.fn(),
+      getPresignedUpload: vi.fn(),
       getObjectMetadata: vi.fn(),
       delete: vi.fn(),
     };
@@ -23,7 +23,11 @@ describe('ProductsService storage integration', () => {
 
   function createService(storageStrategy: StorageStrategy) {
     const productRepository = { exists: vi.fn() };
-    const productImageRepository = { findOne: vi.fn(), delete: vi.fn() };
+    const productImageRepository = {
+      findOne: vi.fn(),
+      delete: vi.fn(),
+      exists: vi.fn().mockResolvedValue(false),
+    };
     const dataSource = { transaction: vi.fn() };
 
     const service = new ProductsService(
@@ -39,14 +43,15 @@ describe('ProductsService storage integration', () => {
   }
 
   describe('requestImageUploadUrl', () => {
-    it('builds the key and presigned URL through the injected strategy', async () => {
+    it('builds the key and presigned upload through the injected strategy, capping size at MAX_IMAGE_UPLOAD_BYTES', async () => {
       const storageStrategy = createStorageStrategyMock();
       vi.mocked(storageStrategy.buildProductImageKey).mockReturnValue(
         'products/p1/uuid-photo.jpg',
       );
-      vi.mocked(storageStrategy.getPresignedUploadUrl).mockResolvedValue(
-        'https://upload.example/signed',
-      );
+      vi.mocked(storageStrategy.getPresignedUpload).mockResolvedValue({
+        url: 'https://upload.example/signed',
+        fields: { key: 'products/p1/uuid-photo.jpg' },
+      });
       const { service, productRepository } = createService(storageStrategy);
       productRepository.exists.mockResolvedValue(true);
 
@@ -60,13 +65,15 @@ describe('ProductsService storage integration', () => {
         'p1',
         'photo.jpg',
       );
-      expect(storageStrategy.getPresignedUploadUrl).toHaveBeenCalledWith(
+      expect(storageStrategy.getPresignedUpload).toHaveBeenCalledWith(
         'products/p1/uuid-photo.jpg',
         900,
+        5 * 1024 * 1024,
         'image/jpeg',
       );
       expect(result).toEqual({
         uploadUrl: 'https://upload.example/signed',
+        fields: { key: 'products/p1/uuid-photo.jpg' },
         key: 'products/p1/uuid-photo.jpg',
         expiresInSeconds: 900,
       });
@@ -94,6 +101,21 @@ describe('ProductsService storage integration', () => {
       await expect(
         service.addImage('p1', { objectKey: 'products/other/x.jpg' }),
       ).rejects.toThrow(BadRequestException);
+      expect(storageStrategy.getObjectMetadata).not.toHaveBeenCalled();
+    });
+
+    it('rejects an objectKey that is already attached to another image (409)', async () => {
+      const storageStrategy = createStorageStrategyMock();
+      vi.mocked(storageStrategy.keyBelongsToProduct).mockReturnValue(true);
+      const { service, productRepository, productImageRepository } =
+        createService(storageStrategy);
+      productRepository.exists.mockResolvedValue(true);
+      productImageRepository.exists.mockResolvedValue(true);
+
+      await expect(
+        service.addImage('p1', { objectKey: 'products/p1/dup.jpg' }),
+      ).rejects.toMatchObject({ status: 409 });
+      // Short-circuits before even checking storage for the object.
       expect(storageStrategy.getObjectMetadata).not.toHaveBeenCalled();
     });
 
@@ -170,6 +192,46 @@ describe('ProductsService storage integration', () => {
         sortOrder: 0,
       });
     });
+
+    it('converts a lost race on UQ_product_images_s3_object_key into a 409 naming objectKey', async () => {
+      const storageStrategy = createStorageStrategyMock();
+      vi.mocked(storageStrategy.keyBelongsToProduct).mockReturnValue(true);
+      vi.mocked(storageStrategy.getObjectMetadata).mockResolvedValue({
+        exists: true,
+        sizeBytes: 1024,
+      });
+      const { service, productRepository, dataSource } =
+        createService(storageStrategy);
+      productRepository.exists.mockResolvedValue(true);
+
+      const queryFailedError = Object.assign(
+        new Error('duplicate key value violates unique constraint'),
+        {
+          name: 'QueryFailedError',
+          driverError: {
+            code: '23505',
+            constraint: 'UQ_product_images_s3_object_key',
+          },
+        },
+      );
+      // Make it pass instanceof QueryFailedError checks used by the
+      // service without importing typeorm's class directly here.
+      const { QueryFailedError } = await import('typeorm');
+      Object.setPrototypeOf(queryFailedError, QueryFailedError.prototype);
+
+      dataSource.transaction.mockRejectedValue(queryFailedError);
+
+      await expect(
+        service.addImage('p1', { objectKey: 'products/p1/race.jpg' }),
+      ).rejects.toMatchObject({
+        status: 409,
+        response: expect.objectContaining({
+          errors: [
+            expect.objectContaining({ field: 'objectKey' }),
+          ],
+        }),
+      });
+    });
   });
 
   describe('removeImage', () => {
@@ -203,6 +265,28 @@ describe('ProductsService storage integration', () => {
         NotFoundException,
       );
       expect(storageStrategy.delete).not.toHaveBeenCalled();
+    });
+
+    it('does not throw when the storage delete fails after the DB row is already removed', async () => {
+      const storageStrategy = createStorageStrategyMock();
+      const { service, productImageRepository } =
+        createService(storageStrategy);
+      productImageRepository.findOne.mockResolvedValue({
+        id: 'img1',
+        productId: 'p1',
+        s3ObjectKey: 'products/p1/x.jpg',
+      });
+      vi.mocked(storageStrategy.delete).mockRejectedValue(
+        new Error('storage provider unavailable'),
+      );
+
+      // The DB delete must still have happened, and the method must
+      // resolve successfully — a storage-layer failure after the DB row
+      // is gone must not turn into an API error.
+      await expect(service.removeImage('p1', 'img1')).resolves.toBeUndefined();
+      expect(productImageRepository.delete).toHaveBeenCalledWith({
+        id: 'img1',
+      });
     });
   });
 });

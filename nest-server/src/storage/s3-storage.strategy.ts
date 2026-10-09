@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { S3Service } from '../aws/s3.service.js';
 import type {
+  PresignedUpload,
   StorageObjectMetadata,
   StorageStrategy,
 } from './storage-strategy.interface.js';
@@ -24,14 +25,16 @@ export class S3StorageStrategy implements StorageStrategy {
     return this.s3Service.keyBelongsToProduct(key, productId);
   }
 
-  async getPresignedUploadUrl(
+  async getPresignedUpload(
     key: string,
     expiresInSeconds: number,
+    maxSizeBytes: number,
     contentType?: string,
-  ): Promise<string> {
-    return this.s3Service.getPresignedUploadUrl(
+  ): Promise<PresignedUpload> {
+    return this.s3Service.getPresignedUploadPost(
       key,
       expiresInSeconds,
+      maxSizeBytes,
       contentType,
     );
   }
