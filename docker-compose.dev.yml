@@ -33,7 +33,7 @@ services:
     image: localstack/localstack:4.4.0
     restart: unless-stopped
     environment:
-      SERVICES: s3,sqs
+      SERVICES: s3
       DEFAULT_REGION: ${AWS_REGION:-us-east-1}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-test}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-test}
@@ -47,7 +47,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      # Give LocalStack time to initialize s3/sqs before the first check counts.
+      # Give LocalStack time to initialize s3 before the first check counts.
       start_period: 20s
     networks:
       - app-net
@@ -59,17 +59,27 @@ services:
     environment:
       NODE_ENV: development
       PORT: 3005
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      POSTGRES_DB: ${POSTGRES_DB:-export_marketplace}
+      # NOTE: these map to the DB_* names actually read by
+      # src/config/database.config.ts and src/database/data-source.ts.
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: ${POSTGRES_USER:-postgres}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      DB_NAME: ${POSTGRES_DB:-export_marketplace}
+      # NOTE: these map to the JWT_* names actually read by
+      # src/config/jwt.config.ts. Safe insecure defaults for local dev only.
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev-only-insecure-access-secret}
+      JWT_ACCESS_EXPIRES_IN: ${JWT_ACCESS_EXPIRES_IN:-15m}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev-only-insecure-refresh-secret}
+      JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
+      # Host-reachable origin allowed to make credentialed cross-origin
+      # requests — see main.ts CORS setup.
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
       AWS_REGION: ${AWS_REGION:-us-east-1}
       AWS_ENDPOINT: http://localstack:4566
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-test}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-test}
       AWS_S3_BUCKET: ${AWS_S3_BUCKET:-export-marketplace-documents}
-      AWS_SQS_QUEUE_NAME: ${AWS_SQS_QUEUE_NAME:-export-marketplace-events}
       # Host-reachable endpoint so presigned S3 URLs open in a host browser.
       AWS_S3_PUBLIC_ENDPOINT: ${AWS_S3_PUBLIC_ENDPOINT:-http://localhost:${LOCALSTACK_HOST_PORT:-4566}}
       # Enables the unauthenticated /aws-demo helper routes. Dev stack only —
