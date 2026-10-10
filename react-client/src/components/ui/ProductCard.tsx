@@ -1,7 +1,16 @@
 import Image from "next/image";
+import Link from "next/link";
 import type { Product } from "@/types/product";
+import { routes } from "@/config/routes";
 
-type ProductCardProps = Product;
+interface ProductCardProps extends Product {
+  /**
+   * Shows a secondary "RFQ" (request for quote) action next to "View" —
+   * used on the catalogue/listing screen. Defaults to false so the compact
+   * homepage trending grid (which has no RFQ action in Figma) is unaffected.
+   */
+  showRfqAction?: boolean;
+}
 
 /** Displays a single trending product with image, details, pricing and MOQ line. */
 export function ProductCard({
@@ -13,6 +22,7 @@ export function ProductCard({
   price,
   oldPrice,
   delivery,
+  showRfqAction = false,
 }: ProductCardProps) {
   return (
     <article className="flex flex-col overflow-hidden rounded-[10px] border border-black/[0.09] bg-white shadow-[0px_5px_18px_-2px_rgba(17,24,39,0.09)] transition-shadow hover:shadow-[0px_8px_24px_-4px_rgba(17,24,39,0.14)]">
@@ -54,6 +64,23 @@ export function ProductCard({
 
         {/* MOQ line matching Figma */}
         <p className="text-[11px] text-ink/50">MOQ &amp; wholesale price: enquire</p>
+
+        {showRfqAction ? (
+          <div className="flex gap-2 pt-1">
+            <Link
+              href={routes.product(name)}
+              className="flex h-8 flex-1 items-center justify-center rounded-[8px] bg-pink text-[13px] font-bold text-white transition-colors hover:bg-pink/90"
+            >
+              View
+            </Link>
+            <Link
+              href={routes.requestQuote(name)}
+              className="flex h-8 flex-1 items-center justify-center rounded-[8px] border border-pink text-[13px] font-bold text-pink transition-colors hover:bg-pink/5"
+            >
+              RFQ
+            </Link>
+          </div>
+        ) : null}
       </div>
     </article>
   );

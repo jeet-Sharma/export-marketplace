@@ -16,9 +16,12 @@ export const routes = {
 
   // Catalogue
   products: "/products",
+  product: (name: string) => `/products/${toCategorySlug(name)}`,
   categories: "/categories",
   category: (slug: string) => `/categories/${slug}`,
   search: (query: string) => `/products?search=${encodeURIComponent(query)}`,
+  requestQuote: (productName: string) =>
+    `/products/${toCategorySlug(productName)}/rfq`,
 
   // Account
   signIn: "/sign-in",
