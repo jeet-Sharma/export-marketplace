@@ -31,9 +31,11 @@ export function ProductCard({
         <div className="relative h-[140px] w-full">
           <Image src={image} alt={name} fill className="object-contain p-3" />
         </div>
-        <span className="absolute left-[10px] top-[10px] rounded-full bg-pink px-2 py-[5px] text-[10px] font-bold text-white">
-          {badge}
-        </span>
+        {badge ? (
+          <span className="absolute left-[10px] top-[10px] rounded-full bg-pink px-2 py-[5px] text-[10px] font-bold text-white">
+            {badge}
+          </span>
+        ) : null}
       </div>
 
       {/* Details */}
@@ -46,9 +48,11 @@ export function ProductCard({
         </h3>
 
         {/* Rating with star count */}
-        <p className="text-xs text-star">
-          {rating.replace("·", "/")} reviews
-        </p>
+        {rating ? (
+          <p className="text-xs text-star">
+            {rating.replace("·", "/")} reviews
+          </p>
+        ) : null}
 
         {/* Pricing */}
         <p className="text-[17px] font-semibold text-ink">
@@ -60,7 +64,9 @@ export function ProductCard({
           ) : null}
         </p>
 
-        <p className="text-[11px] font-bold text-delivery">{delivery}</p>
+        {delivery ? (
+          <p className="text-[11px] font-bold text-delivery">{delivery}</p>
+        ) : null}
 
         {/* MOQ line matching Figma */}
         <p className="text-[11px] text-ink/50">MOQ &amp; wholesale price: enquire</p>
