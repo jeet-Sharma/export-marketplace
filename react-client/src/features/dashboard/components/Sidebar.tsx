@@ -1,4 +1,4 @@
-import type { NavSection, RoleConfig } from "../config/navConfig";
+import type { DashboardRole, NavSection, RoleConfig } from "../config/navConfig";
 import { SidebarBrand } from "./SidebarBrand";
 import { SidebarNavItem } from "./SidebarNavItem";
 import { SidebarProfile } from "./SidebarProfile";
@@ -7,14 +7,18 @@ type SidebarProps = {
   config: RoleConfig;
   /** key of the currently active nav item */
   activeKey: string;
+  /** active role, so nav links can preserve ?role= */
+  role: DashboardRole;
 };
 
 function NavGroup({
   section,
   activeKey,
+  role,
 }: {
   section: NavSection;
   activeKey: string;
+  role: DashboardRole;
 }) {
   return (
     <div className="flex w-full flex-col gap-1">
@@ -27,6 +31,7 @@ function NavGroup({
             key={item.key}
             item={item}
             active={item.key === activeKey}
+            role={role}
           />
         ))}
       </div>
@@ -34,7 +39,7 @@ function NavGroup({
   );
 }
 
-export function Sidebar({ config, activeKey }: SidebarProps) {
+export function Sidebar({ config, activeKey, role }: SidebarProps) {
   return (
     <aside className="relative flex min-h-full w-[252px] shrink-0 flex-col overflow-hidden bg-bloom-sidebar px-4 pb-[18px] pt-[22px]">
       {/* Botanical glow */}
@@ -46,11 +51,19 @@ export function Sidebar({ config, activeKey }: SidebarProps) {
       <div className="relative flex min-h-full flex-col">
         <SidebarBrand workspaceLabel={config.workspaceLabel} />
 
-        <NavGroup section={config.primaryNav} activeKey={activeKey} />
+        <NavGroup
+          section={config.primaryNav}
+          activeKey={activeKey}
+          role={role}
+        />
 
         <div className="my-5 h-px w-full bg-white/[0.09]" />
 
-        <NavGroup section={config.secondaryNav} activeKey={activeKey} />
+        <NavGroup
+          section={config.secondaryNav}
+          activeKey={activeKey}
+          role={role}
+        />
 
         <div className="min-h-[80px] flex-1" />
 

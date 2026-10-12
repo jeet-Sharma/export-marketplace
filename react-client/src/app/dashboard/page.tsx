@@ -1,3 +1,5 @@
+import { Suspense } from "react";
+import { BuyerWorkspace } from "@/features/dashboard/buyer/BuyerWorkspace";
 import { DashboardLayout } from "@/features/dashboard/components/DashboardLayout";
 import { resolveRole } from "@/features/dashboard/config/resolveRole";
 import { ProductsWorkspace } from "@/features/dashboard/products/ProductsWorkspace";
@@ -19,14 +21,24 @@ export default async function DashboardPage({
 }: DashboardPageProps) {
   const { role: roleParam } = await searchParams;
   const role = resolveRole(roleParam);
+  const isBuyer = role === "user";
 
   return (
     <DashboardLayout
       role={role}
       activeKey={ACTIVE_KEY[role]}
-      section="Products"
+      section={isBuyer ? "Browse market" : "Products"}
     >
-      <ProductsWorkspace />
+      {isBuyer ? (
+        <BuyerWorkspace />
+      ) : (
+        // ProductsWorkspace reads the list filters from the URL
+        // (useSearchParams), which Next requires to sit under a Suspense
+        // boundary.
+        <Suspense fallback={null}>
+          <ProductsWorkspace role={role} />
+        </Suspense>
+      )}
     </DashboardLayout>
   );
 }

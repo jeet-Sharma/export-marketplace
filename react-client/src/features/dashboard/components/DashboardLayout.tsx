@@ -23,7 +23,7 @@ export function DashboardLayout({
 
   return (
     <div className="flex min-h-full items-stretch bg-bloom-cream font-sans text-bloom-ink">
-      <Sidebar config={config} activeKey={activeKey} />
+      <Sidebar config={config} activeKey={activeKey} role={role} />
 
       <div className="flex min-h-full min-w-0 flex-1 flex-col overflow-hidden bg-bloom-cream">
         {/* Brand accent */}

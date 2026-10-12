@@ -1,15 +1,20 @@
 import Image from "next/image";
+import Link from "next/link";
 import { PRODUCT_COLUMNS } from "./productColumns";
 import type { ProductRow } from "./productData";
 import { PublicationBadge, VerificationBadge } from "./StatusBadges";
 
 type ProductTableRowProps = {
   product: ProductRow;
+  /** Destination for the View/Edit actions (built by the parent so the
+      active ?role= param is preserved). */
+  detailHref: string;
   highlighted?: boolean;
 };
 
 export function ProductTableRow({
   product,
+  detailHref,
   highlighted = false,
 }: ProductTableRowProps) {
   return (
@@ -88,8 +93,8 @@ export function ProductTableRow({
 
       {/* Row actions */}
       <div className={`flex gap-1.5 ${PRODUCT_COLUMNS.actions}`}>
-        <button
-          type="button"
+        <Link
+          href={detailHref}
           className={
             highlighted
               ? "flex h-[30px] flex-1 items-center justify-center rounded-[6px] border border-bloom-pink bg-bloom-pink text-[11px] font-bold text-white"
@@ -97,13 +102,13 @@ export function ProductTableRow({
           }
         >
           View
-        </button>
-        <button
-          type="button"
+        </Link>
+        <Link
+          href={detailHref}
           className="flex h-[30px] flex-1 items-center justify-center rounded-[6px] border border-bloom-border bg-white text-[11px] font-semibold text-bloom-ink"
         >
           Edit
-        </button>
+        </Link>
       </div>
     </div>
   );
