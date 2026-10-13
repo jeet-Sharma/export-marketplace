@@ -4,6 +4,28 @@
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
 
   /* Market Bloom palette */
+  --color-bloom-cream: #fcf8f3;
+  --color-bloom-card: #fffdf9;
+  --color-bloom-pink: #d94272;
+  --color-bloom-plum: #57172f;
+  --color-bloom-plum-deep: #35101f;
+  --color-bloom-amber: #f4a340;
+  --color-bloom-ink: #1b2030;
+  --color-bloom-muted: #6f7079;
+  --color-bloom-border: #e3ded9;
+  --color-bloom-green: #147d55;
+  --color-bloom-green-surface: #e8f5ef;
+
+  /* Dashboard-specific */
+  --color-bloom-sidebar: #35101f;
+  --color-bloom-sidebar-active: #6a2941;
+  --color-bloom-sidebar-text: #f7eaf0;
+  --color-bloom-sidebar-muted: #cbafba;
+  --color-bloom-surface: #fffdf9;
+  --color-bloom-amber-surface: #fff4df;
+  --color-bloom-amber-text: #a96516;
+
+  /* Shorthand aliases */
   --color-cream: #fcf8f3;
   --color-ink: #1b2030;
   --color-pink: #d94272;
@@ -13,7 +35,8 @@
   --color-amber: #f4a340;
   --color-star: #f5a623;
   --color-delivery: #147d55;
-  /* Semantic status colors used by form controls (checkbox/input validation) — see the Figma "Form Inputs" design system doc. */
+
+  /* Semantic status colors — see Figma "Form Inputs" design system doc */
   --color-error: #b42336;
   --color-success: #146b49;
   --color-border: #ddd7d5;
