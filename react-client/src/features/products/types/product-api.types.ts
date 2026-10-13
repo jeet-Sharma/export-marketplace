@@ -18,6 +18,11 @@ export interface ApiVendor {
   id: string;
   companyName: string;
   displayName: string | null;
+  email: string | null;
+  phone: string | null;
+  /** Vendor's home/registered country ID — not expanded to a nested object by GET /products or /products/:slug, only the raw UUID is present. */
+  countryId: string | null;
+  status: "ACTIVE" | "INACTIVE";
 }
 
 export interface ApiCountry {
@@ -44,6 +49,56 @@ export interface ApiProductListItem {
   estimatedDeliveryText: string | null;
   primaryImageUrl: string | null;
   createdAt: string;
+}
+
+/** A single product image — see ProductImageResponseDto on the backend. */
+export interface ApiProductImage {
+  id: string;
+  productId: string;
+  objectKey: string;
+  url: string;
+  altText: string | null;
+  isPrimary: boolean;
+  sortOrder: number;
+}
+
+/**
+ * A bulk price tier — see ProductPriceTier entity on the backend. All
+ * numeric columns (minQuantity/maxQuantity/price/shippingEstimate/
+ * dutiesEstimate/taxesEstimate) are returned as strings, same reasoning as
+ * `price` on ApiProductListItem — never cast to Number for display math.
+ */
+export interface ApiProductPriceTier {
+  id: string;
+  productId: string;
+  minQuantity: string;
+  maxQuantity: string | null;
+  price: string;
+  /** Per-tier shipping estimate. Always render with an "estimate" label — never implied as a quoted/final figure. */
+  shippingEstimate: string | null;
+  /** Per-tier duties estimate. Always render with an "estimate" label. */
+  dutiesEstimate: string | null;
+  /** Per-tier taxes estimate. Always render with an "estimate" label. */
+  taxesEstimate: string | null;
+  currencyCode: string;
+}
+
+/**
+ * GET /products/:slug response — see ProductDetailDto on the backend.
+ * Extends the list item's fields (minus category/vendor/sourceCountry,
+ * which the detail endpoint returns the same nested shape for) with the
+ * full image gallery, bulk price tiers and target countries.
+ */
+export interface ApiProductDetail
+  extends Omit<ApiProductListItem, "primaryImageUrl"> {
+  images: ApiProductImage[];
+  priceTiers: ApiProductPriceTier[];
+  targetCountries: ApiCountry[];
+  hsCode: string | null;
+  exportEligibility: string | null;
+  countryRestrictions: string | null;
+  dutiesTaxesNote: string | null;
+  publishedAt: string | null;
 }
 
 /** Shared pagination envelope — see PaginatedResponseDto on the backend. */

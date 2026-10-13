@@ -4,16 +4,27 @@ import type { Product } from "@/types/product";
 import { routes } from "@/config/routes";
 
 interface ProductCardProps extends Product {
+  /** Real product slug (ApiProductListItem.slug) — the card's entire body links to /products/{slug}. */
+  slug: string;
   /**
-   * Shows a secondary "RFQ" (request for quote) action next to "View" —
-   * used on the catalogue/listing screen. Defaults to false so the compact
-   * homepage trending grid (which has no RFQ action in Figma) is unaffected.
+   * Shows an explicit "View details" action beneath the price — used on the
+   * catalogue/listing screen. Defaults to false so the compact homepage
+   * trending grid (which has no explicit action button in Figma) is
+   * unaffected; the whole card is always a link regardless of this prop.
    */
-  showRfqAction?: boolean;
+  showViewAction?: boolean;
 }
 
-/** Displays a single trending product with image, details, pricing and MOQ line. */
+/**
+ * Displays a single product with image, details and pricing. The entire
+ * card is a single `next/link` `<Link>` to the product's detail page — no
+ * nested interactive elements inside it, so there's no risk of a nested
+ * `<a>`/click-handler stealing or duplicating navigation (see marketplace
+ * routing requirements: "nested interactive elements must not cause
+ * accidental navigation").
+ */
 export function ProductCard({
+  slug,
   image,
   badge,
   origin,
@@ -22,10 +33,13 @@ export function ProductCard({
   price,
   oldPrice,
   delivery,
-  showRfqAction = false,
+  showViewAction = false,
 }: ProductCardProps) {
   return (
-    <article className="flex flex-col overflow-hidden rounded-[10px] border border-black/[0.09] bg-white shadow-[0px_5px_18px_-2px_rgba(17,24,39,0.09)] transition-shadow hover:shadow-[0px_8px_24px_-4px_rgba(17,24,39,0.14)]">
+    <Link
+      href={routes.product(slug)}
+      className="flex flex-col overflow-hidden rounded-[10px] border border-black/[0.09] bg-white shadow-[0px_5px_18px_-2px_rgba(17,24,39,0.09)] transition-shadow hover:shadow-[0px_8px_24px_-4px_rgba(17,24,39,0.14)]"
+    >
       {/* Media */}
       <div className="relative flex h-[160px] items-center justify-center bg-cream">
         <div className="relative h-[140px] w-full">
@@ -68,26 +82,12 @@ export function ProductCard({
           <p className="text-[11px] font-bold text-delivery">{delivery}</p>
         ) : null}
 
-        {/* MOQ line matching Figma */}
-        <p className="text-[11px] text-ink/50">MOQ &amp; wholesale price: enquire</p>
-
-        {showRfqAction ? (
-          <div className="flex gap-2 pt-1">
-            <Link
-              href={routes.product(name)}
-              className="flex h-8 flex-1 items-center justify-center rounded-[8px] bg-pink text-[13px] font-bold text-white transition-colors hover:bg-pink/90"
-            >
-              View
-            </Link>
-            <Link
-              href={routes.requestQuote(name)}
-              className="flex h-8 flex-1 items-center justify-center rounded-[8px] border border-pink text-[13px] font-bold text-pink transition-colors hover:bg-pink/5"
-            >
-              RFQ
-            </Link>
-          </div>
+        {showViewAction ? (
+          <span className="mt-1 flex h-8 w-full items-center justify-center rounded-[8px] bg-pink text-[13px] font-bold text-white transition-colors group-hover:bg-pink/90">
+            View details
+          </span>
         ) : null}
       </div>
-    </article>
+    </Link>
   );
 }

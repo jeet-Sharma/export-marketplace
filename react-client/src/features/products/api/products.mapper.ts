@@ -4,7 +4,8 @@ import type { ApiProductListItem } from "../types/product-api.types";
 /** Fallback image shown when a product has no primaryImageUrl yet. */
 const PLACEHOLDER_IMAGE = "/marketplace/product-1.png";
 
-function formatPrice(price: string | null, currencyCode: string | null): string {
+/** Formats a numeric-as-string money value with its currency symbol/code — shared by the card mapper and the product detail page. */
+export function formatPrice(price: string | null, currencyCode: string | null): string {
   if (!price) {
     return "Price on request";
   }
@@ -24,8 +25,11 @@ function formatOrigin(item: ApiProductListItem): string {
  * delivery-copy fields the backend has no concept of yet are intentionally
  * left unset rather than fabricated (see Product's updated optional fields).
  */
-export function toProductCardProps(item: ApiProductListItem): Product {
+export function toProductCardProps(
+  item: ApiProductListItem,
+): Product & { slug: string } {
   return {
+    slug: item.slug,
     image: item.primaryImageUrl ?? PLACEHOLDER_IMAGE,
     origin: formatOrigin(item),
     name: item.name,

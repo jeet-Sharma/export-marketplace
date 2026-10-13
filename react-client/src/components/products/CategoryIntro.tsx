@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { routes, toCategorySlug } from "@/config/routes";
-import { SUBCATEGORY_TABS } from "@/data/product-filters";
+import { routes } from "@/config/routes";
 
 interface CategoryIntroProps {
   categoryName: string;
+  /** Real category slug from the API — used for the "All {category}" tab link. `null` when showing all products (no category selected). */
+  categorySlug: string | null;
   description: string;
 }
 
@@ -15,8 +16,8 @@ function Breadcrumb({ categoryName }: { categoryName: string }) {
         Home
       </Link>
       {"  /  "}
-      <Link href={routes.categories} className="hover:text-ink">
-        All categories
+      <Link href={routes.products} className="hover:text-ink">
+        All products
       </Link>
       {"  /  "}
       <span className="text-ink">{categoryName}</span>
@@ -25,7 +26,10 @@ function Breadcrumb({ categoryName }: { categoryName: string }) {
 }
 
 /** Category heading, description and trust cues, matching the Figma design. */
-function CategoryHeading({ categoryName, description }: CategoryIntroProps) {
+function CategoryHeading({
+  categoryName,
+  description,
+}: Pick<CategoryIntroProps, "categoryName" | "description">) {
   return (
     <div className="flex flex-col items-start gap-4 lg:flex-row lg:items-center lg:justify-between lg:gap-6">
       <div className="flex flex-col gap-2 lg:max-w-[720px]">
@@ -42,37 +46,42 @@ function CategoryHeading({ categoryName, description }: CategoryIntroProps) {
   );
 }
 
-/** Subcategory pill navigation beneath the heading. */
-function SubcategoryTabs({ activeTab }: { activeTab: string }) {
+/**
+ * Single "All {category}" tab for the active category, linking back to this
+ * same filtered listing via the category's real slug. The backend's
+ * category model is currently flat (no subcategory hierarchy), so there is
+ * no real data for a subcategory-tab row yet — this renders only the one
+ * tab the API can actually back, rather than a row of fabricated
+ * subcategory names.
+ */
+function CategoryTab({
+  categoryName,
+  categorySlug,
+}: {
+  categoryName: string;
+  categorySlug: string;
+}) {
   return (
     <div className="flex w-full flex-wrap gap-[10px]">
-      {SUBCATEGORY_TABS.map((tab) => {
-        const isActive = tab === activeTab;
-        return (
-          <Link
-            key={tab}
-            href={routes.category(toCategorySlug(tab))}
-            className={`flex h-11 flex-1 items-center justify-center whitespace-nowrap rounded-[10px] border border-pink px-4 text-[13px] transition-colors ${
-              isActive
-                ? "bg-pink font-bold text-white"
-                : "bg-white text-ink hover:bg-pink/5"
-            }`}
-          >
-            {tab}
-          </Link>
-        );
-      })}
+      <Link
+        href={routes.category(categorySlug)}
+        className="flex h-11 flex-1 items-center justify-center whitespace-nowrap rounded-[10px] border border-pink bg-pink px-4 text-[13px] font-bold text-white"
+      >
+        All {categoryName}
+      </Link>
     </div>
   );
 }
 
-/** Category introduction: breadcrumb, heading and subcategory tabs. */
-export function CategoryIntro({ categoryName, description }: CategoryIntroProps) {
+/** Category introduction: breadcrumb, heading and category tab (omitted entirely when no category is selected). */
+export function CategoryIntro({ categoryName, categorySlug, description }: CategoryIntroProps) {
   return (
     <div className="flex w-full flex-col gap-[18px]">
       <Breadcrumb categoryName={categoryName} />
       <CategoryHeading categoryName={categoryName} description={description} />
-      <SubcategoryTabs activeTab={`All ${categoryName}`} />
+      {categorySlug ? (
+        <CategoryTab categoryName={categoryName} categorySlug={categorySlug} />
+      ) : null}
     </div>
   );
 }

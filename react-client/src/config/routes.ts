@@ -16,12 +16,23 @@ export const routes = {
 
   // Catalogue
   products: "/products",
-  product: (name: string) => `/products/${toCategorySlug(name)}`,
-  categories: "/categories",
-  category: (slug: string) => `/categories/${slug}`,
+  /** `slug` must be the product's real API slug (ApiProductListItem.slug) — never a value re-derived from its display name. */
+  product: (slug: string) => `/products/${slug}`,
+  /**
+   * Category-filtered listing. Uses the existing `/products` page with a
+   * `category` query param (no separate `/categories/[slug]` route exists
+   * or is planned for Phase 1 — see marketplace listing requirements).
+   * `slug` must be the category's real API slug (ApiCategory.slug).
+   */
+  category: (slug: string) => `/products?category=${encodeURIComponent(slug)}`,
+  /**
+   * No standalone category-browse page exists (or is in Phase 1 scope);
+   * "view all categories" resolves to the unfiltered product listing,
+   * which is the real, existing destination rather than a dead route.
+   */
+  categories: "/products",
   search: (query: string) => `/products?search=${encodeURIComponent(query)}`,
-  requestQuote: (productName: string) =>
-    `/products/${toCategorySlug(productName)}/rfq`,
+  newArrivals: "/products?sort=newest",
 
   // Account
   signIn: "/sign-in",

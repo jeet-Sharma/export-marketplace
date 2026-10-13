@@ -1,29 +1,26 @@
 "use client";
 
 import Link from "next/link";
+import { Button } from "@/components/ui/Button";
 import { ProductCard } from "@/components/ui/ProductCard";
 import { routes } from "@/config/routes";
-import { useProductsQuery } from "@/features/products/api/products.queries";
+import { useProductsInfiniteQuery } from "@/features/products/api/products.queries";
 import { toProductCardProps } from "@/features/products/api/products.mapper";
 
 const TRENDING_PAGE_SIZE = 12;
 
-/** Sort and filter control bar matching the Figma design. */
-function SortFilterBar({ visibleCount }: { visibleCount: number }) {
+/** Result count row shown above the trending product grid. */
+function ResultsSummary({
+  visibleCount,
+  totalCount,
+}: {
+  visibleCount: number;
+  totalCount: number;
+}) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <div className="flex items-center gap-2">
-        {/* Active sort pill */}
-        <button className="flex h-[34px] items-center rounded-full bg-ink px-[14px] text-[12px] font-bold text-white">
-          Sort: Trending
-        </button>
-        {/* Filter outline pill */}
-        <button className="flex h-[34px] items-center rounded-full border border-ink/25 bg-white px-[14px] text-[12px] font-semibold text-ink hover:border-ink/50 transition-colors">
-          Filter: Verified suppliers
-        </button>
-      </div>
+    <div className="flex items-center justify-end">
       <p className="text-[12px] text-ink/50">
-        Showing {visibleCount} of {visibleCount} visible products
+        Showing {visibleCount} of {totalCount} visible products
       </p>
     </div>
   );
@@ -44,14 +41,25 @@ function ProductGridSkeleton() {
   );
 }
 
-/** "Trending across Looma" section — fetches the live catalogue (GET /products) and renders it as a grid with sort/filter bar. */
+/** "Trending across Looma" section — fetches the live catalogue (GET /products) and renders it as a grid with sort/filter bar and "Load more" pagination. */
 export function TrendingProducts() {
-  const { data, isLoading, isError, refetch } = useProductsQuery({
+  const {
+    data,
+    isLoading,
+    isError,
+    refetch,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useProductsInfiniteQuery({
     pageSize: TRENDING_PAGE_SIZE,
     sort: "newest",
   });
 
-  const products = data?.items.map(toProductCardProps) ?? [];
+  const products =
+    data?.pages.flatMap((page) =>
+      page.items.map((item) => ({ id: item.id, ...toProductCardProps(item) })),
+    ) ?? [];
 
   return (
     <section className="flex flex-col gap-[14px]">
@@ -67,8 +75,10 @@ export function TrendingProducts() {
         </Link>
       </div>
 
-      {/* Sort & filter bar */}
-      <SortFilterBar visibleCount={products.length} />
+      <ResultsSummary
+        visibleCount={products.length}
+        totalCount={data?.pages[0]?.pagination.totalItems ?? products.length}
+      />
 
       {isLoading ? (
         <ProductGridSkeleton />
@@ -77,13 +87,9 @@ export function TrendingProducts() {
           <p className="text-[13px] text-ink/60">
             Couldn&apos;t load trending products right now.
           </p>
-          <button
-            type="button"
-            onClick={() => refetch()}
-            className="rounded-full border border-pink px-4 py-2 text-[13px] font-bold text-pink transition-colors hover:bg-pink/5"
-          >
+          <Button variant="secondary" onClick={() => refetch()}>
             Try again
-          </button>
+          </Button>
         </div>
       ) : products.length === 0 ? (
         <p className="py-10 text-center text-[13px] text-ink/60">
@@ -92,18 +98,24 @@ export function TrendingProducts() {
       ) : (
         /* Responsive grid: 1 col on phones, scaling up to 4 on wide screens */
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {products.map((product) => (
-            <ProductCard key={product.name} {...product} />
+          {products.map(({ id, ...product }) => (
+            <ProductCard key={id} {...product} />
           ))}
         </div>
       )}
 
-      {/* Load more button */}
-      <div className="flex justify-center pt-2">
-        <button className="flex h-[42px] items-center rounded-full border-2 border-pink bg-white px-[28px] text-[13px] font-bold text-pink hover:bg-pink hover:text-white transition-colors">
-          Load more products
-        </button>
-      </div>
+      {/* Load more button — hidden once every product has been loaded (hasNextPage is false). */}
+      {hasNextPage ? (
+        <div className="flex justify-center pt-2">
+          <Button
+            variant="secondary"
+            onClick={() => fetchNextPage()}
+            loading={isFetchingNextPage}
+          >
+            Load more products
+          </Button>
+        </div>
+      ) : null}
     </section>
   );
 }
