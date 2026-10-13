@@ -55,7 +55,7 @@ import { ProductsService } from './products.service.js';
 @Controller('admin/products')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class ProductsController {
-  constructor(private readonly productsService: ProductsService) {}
+  constructor(private readonly productsService: ProductsService) { }
 
   @ApiOperation({ summary: 'List drafts and published products (section 6.1)' })
   @ApiOkResponse({
@@ -81,6 +81,7 @@ export class ProductsController {
     return this.productsService.findOneForAdmin(id);
   }
 
+
   @ApiOperation({
     summary: 'Create a product (section 6.3)',
     description: 'May be saved as DRAFT or request immediate PUBLISHED status.',
@@ -96,6 +97,7 @@ export class ProductsController {
     // client-supplied value — see API spec section 6.3 and security-rules.md.
     return this.productsService.create(dto, user.sub);
   }
+
 
   @ApiOperation({ summary: 'Partially update a product (section 6.4)' })
   @ApiParam({ name: 'id', format: 'uuid' })

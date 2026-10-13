@@ -41,6 +41,7 @@ import type { PriceTierDto } from './dto/price-tier.dto.js';
 import type { QueryAdminProductsDto } from './dto/query-admin-products.dto.js';
 import { UploadUrlResponseDto } from './dto/upload-url-response.dto.js';
 import type { UpdateProductDto } from './dto/update-product.dto.js';
+import { randomUUID } from 'node:crypto';
 
 const PRESIGNED_UPLOAD_URL_TTL_SECONDS = 900;
 
@@ -205,47 +206,72 @@ export class ProductsService {
   ): Promise<Product> {
     this.assertPriceTiersDoNotOverlap(dto.priceTiers);
 
-    for (
-      let attempt = 1;
-      attempt <= ProductsService.MAX_SLUG_RETRIES;
-      attempt++
-    ) {
-      const slug = await this.generateUniqueSlug(
-        dto.name,
-        attempt > 1 ? attempt : undefined,
-      );
+    const productId = randomUUID();
 
-      try {
-        return await this.dataSource.transaction((manager) =>
-          this.createWithSlug(manager, dto, slug, createdByUserId),
-        );
-      } catch (error) {
-        if (
-          this.isUniqueViolation(error) &&
-          attempt < ProductsService.MAX_SLUG_RETRIES
-        ) {
-          continue;
-        }
-        if (this.isUniqueViolation(error)) {
-          throw new ConflictException({
-            code: 'CONFLICT',
-            message:
-              'Could not allocate a unique product slug, please try again',
-            errors: [
-              {
-                field: 'name',
-                message: 'A product with a conflicting slug already exists',
-              },
-            ],
-          });
-        }
-        this.rethrowAsValidationError(error);
-      }
+    const uploadedImages = (dto.images ?? []).map((image, index) => ({
+      s3ObjectKey: image.objectKey,
+      altText: image.altText ?? null,
+      sortOrder: index,
+      isPrimary: index === 0,
+    }));
+
+    for (const image of uploadedImages) {
+      await this.assertValidUploadedImage(image.s3ObjectKey);
     }
 
-    // Unreachable — the loop above always returns or throws — but
-    // satisfies the compiler's control-flow analysis.
-    throw new ConflictException('Could not allocate a unique product slug');
+    try {
+      for (
+        let attempt = 1;
+        attempt <= ProductsService.MAX_SLUG_RETRIES;
+        attempt++
+      ) {
+        const slug = await this.generateUniqueSlug(
+          dto.name,
+          attempt > 1 ? attempt : undefined,
+        );
+
+        try {
+          return await this.dataSource.transaction((manager) =>
+            this.createWithSlug(
+              manager,
+              dto,
+              slug,
+              createdByUserId,
+              productId,
+              uploadedImages,
+            ),
+          );
+        } catch (error) {
+          if (
+            this.isUniqueViolation(error) &&
+            attempt < ProductsService.MAX_SLUG_RETRIES
+          ) {
+            continue;
+          }
+          if (this.isUniqueViolation(error)) {
+            throw new ConflictException({
+              code: 'CONFLICT',
+              message:
+                'Could not allocate a unique product slug, please try again',
+              errors: [
+                {
+                  field: 'name',
+                  message: 'A product with a conflicting slug already exists',
+                },
+              ],
+            });
+          }
+          this.rethrowAsValidationError(error);
+        }
+      }
+
+      throw new ConflictException('Could not allocate a unique product slug');
+    } catch (dbError: unknown) {
+      if (dbError instanceof Error) {
+        this.logger.error('Failed to create product', dbError.stack);
+      }
+      throw dbError;
+    }
   }
 
   private async createWithSlug(
@@ -253,8 +279,16 @@ export class ProductsService {
     dto: CreateProductDto,
     slug: string,
     createdByUserId: string,
+    productId: string,
+    uploadedImages: {
+      s3ObjectKey: string;
+      altText: string | null;
+      sortOrder: number;
+      isPrimary: boolean;
+    }[] = [],
   ): Promise<Product> {
     const product = manager.create(Product, {
+      id: productId,
       slug,
       name: dto.name,
       description: toNullable(dto.description),
@@ -296,6 +330,21 @@ export class ProductsService {
           productId: saved.id,
           countryId,
         })),
+      );
+    }
+
+    if (uploadedImages.length > 0) {
+      await manager.save(
+        ProductImage,
+        uploadedImages.map((image) =>
+          manager.create(ProductImage, {
+            productId: saved.id,
+            s3ObjectKey: image.s3ObjectKey,
+            altText: image.altText,
+            sortOrder: image.sortOrder,
+            isPrimary: image.isPrimary,
+          }),
+        ),
       );
     }
 
@@ -602,111 +651,7 @@ export class ProductsService {
     dto: CreateProductImageDto,
   ): Promise<ProductImageResponseDto> {
     await this.assertProductExists(productId);
-
-    if (!this.storageStrategy.keyBelongsToProduct(dto.objectKey, productId)) {
-      throw new BadRequestException({
-        code: 'VALIDATION_ERROR',
-        message: 'Image object key does not belong to this product',
-        errors: [
-          {
-            field: 'objectKey',
-            message: 'objectKey must be a key issued for this product',
-          },
-        ],
-      });
-    }
-
-    // Fast-path rejection for the common case: the same objectKey already
-    // registered against some image row (any product — the key itself is
-    // globally unique in storage, see UQ_product_images_s3_object_key).
-    // This is only a best-effort first pass, same caveat as
-    // generateUniqueSlug's pre-check: it runs before the transaction
-    // opens, so two concurrent addImage calls for the same objectKey can
-    // both pass it before either commits. The actual guarantee is the DB
-    // unique index; the catch block below converts that violation into
-    // the same 409 if this check is lost to the race.
-    const existingImageWithKey = await this.productImageRepository.exists({
-      where: { s3ObjectKey: dto.objectKey },
-    });
-    if (existingImageWithKey) {
-      throw new ConflictException({
-        code: 'CONFLICT',
-        message: 'This storage object is already registered to an image',
-        errors: [
-          {
-            field: 'objectKey',
-            message: 'objectKey is already attached to a product image',
-          },
-        ],
-      });
-    }
-
-    const metadata = await this.storageStrategy.getObjectMetadata(
-      dto.objectKey,
-    );
-    if (!metadata.exists) {
-      throw new BadRequestException({
-        code: 'VALIDATION_ERROR',
-        message: 'Image object was not found in storage',
-        errors: [
-          {
-            field: 'objectKey',
-            message: 'Upload the file before persisting its metadata',
-          },
-        ],
-      });
-    }
-
-    // Authoritative size check (API spec section 15: "Restrict product
-    // image type, size and upload behavior") — a presigned PUT URL alone
-    // can't enforce a hard max (see S3Service.getPresignedUploadUrl's
-    // comment), so this is the real enforcement point, checked against
-    // what was actually uploaded rather than trusting the client's
-    // declared contentLengthBytes from the upload-url request. An
-    // oversized object is deleted immediately rather than left orphaned
-    // in the bucket.
-    if (metadata.sizeBytes > MAX_IMAGE_UPLOAD_BYTES) {
-      await this.storageStrategy.delete(dto.objectKey);
-      throw new BadRequestException({
-        code: 'VALIDATION_ERROR',
-        message: 'Image exceeds the maximum allowed size',
-        errors: [
-          {
-            field: 'objectKey',
-            message: `Uploaded file is ${metadata.sizeBytes} bytes, which exceeds the ${MAX_IMAGE_UPLOAD_BYTES} byte limit`,
-          },
-        ],
-      });
-    }
-
-    // Authoritative file-TYPE check, based on the uploaded object's actual
-    // content (see StorageStrategy.getObjectMetadata's detectedContentType),
-    // never the client-declared Content-Type header used to request the
-    // upload URL — a malicious or buggy client can set that header to
-    // anything regardless of what bytes it actually sends. An object whose
-    // real content doesn't match one of ALLOWED_IMAGE_CONTENT_TYPES (e.g.
-    // an HTML/script/executable file renamed with a .jpg-looking key) is
-    // rejected and deleted immediately, the same treatment as an oversized
-    // upload above — it must not be left in storage, and must never be
-    // persisted as product image metadata.
-    if (
-      !metadata.detectedContentType ||
-      !ALLOWED_IMAGE_CONTENT_TYPES.includes(
-        metadata.detectedContentType as AllowedImageContentType,
-      )
-    ) {
-      await this.storageStrategy.delete(dto.objectKey);
-      throw new BadRequestException({
-        code: 'VALIDATION_ERROR',
-        message: 'Uploaded file is not a supported image format',
-        errors: [
-          {
-            field: 'objectKey',
-            message: `The uploaded file's content does not match an allowed image format (${ALLOWED_IMAGE_CONTENT_TYPES.join(', ')})`,
-          },
-        ],
-      });
-    }
+    await this.assertValidUploadedImage(dto.objectKey, productId);
 
     try {
       const saved = await this.dataSource.transaction(async (manager) => {
@@ -797,11 +742,95 @@ export class ProductsService {
     } catch (error) {
       this.logger.error(
         `Failed to delete storage object "${image.s3ObjectKey}" for ` +
-          `product image ${imageId} (product ${productId}) after its DB ` +
-          `row was removed; the object may be orphaned in storage: ` +
-          `${(error as Error).message}`,
+        `product image ${imageId} (product ${productId}) after its DB ` +
+        `row was removed; the object may be orphaned in storage: ` +
+        `${(error as Error).message}`,
         (error as Error).stack,
       );
+    }
+  }
+
+  private async assertValidUploadedImage(
+    objectKey: string,
+    productId?: string,
+  ): Promise<void> {
+    if (
+      productId &&
+      !this.storageStrategy.keyBelongsToProduct(objectKey, productId)
+    ) {
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: 'Image object key does not belong to this product',
+        errors: [
+          {
+            field: 'objectKey',
+            message: 'objectKey must be a key issued for this product',
+          },
+        ],
+      });
+    }
+
+    const existingImageWithKey = await this.productImageRepository.exists({
+      where: { s3ObjectKey: objectKey },
+    });
+    if (existingImageWithKey) {
+      throw new ConflictException({
+        code: 'CONFLICT',
+        message: 'This storage object is already registered to an image',
+        errors: [
+          {
+            field: 'objectKey',
+            message: 'objectKey is already attached to a product image',
+          },
+        ],
+      });
+    }
+
+    const metadata = await this.storageStrategy.getObjectMetadata(objectKey);
+    if (!metadata.exists) {
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: 'Image object was not found in storage',
+        errors: [
+          {
+            field: 'objectKey',
+            message: 'Upload the file before persisting its metadata',
+          },
+        ],
+      });
+    }
+
+    if (metadata.sizeBytes > MAX_IMAGE_UPLOAD_BYTES) {
+      await this.storageStrategy.delete(objectKey);
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: 'Image exceeds the maximum allowed size',
+        errors: [
+          {
+            field: 'objectKey',
+            message: `Uploaded file is ${metadata.sizeBytes} bytes, which exceeds the ${MAX_IMAGE_UPLOAD_BYTES} byte limit`,
+          },
+        ],
+      });
+    }
+
+    if (
+      !metadata.detectedContentType ||
+      !ALLOWED_IMAGE_CONTENT_TYPES.includes(
+        metadata.detectedContentType as AllowedImageContentType,
+      )
+    ) {
+      await this.storageStrategy.delete(objectKey);
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: 'Uploaded file is not a supported image format',
+        errors: [
+          {
+            field: 'objectKey',
+            message: `The uploaded file's content does not match an allowed image format (${ALLOWED_IMAGE_CONTENT_TYPES.join(', ')})`,
+          },
+        ],
+      });
     }
   }
 
