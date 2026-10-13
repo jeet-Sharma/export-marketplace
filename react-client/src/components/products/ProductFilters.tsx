@@ -162,6 +162,7 @@ export function ProductFilters({
       </div>
       <CategoryFilterGroup categoryName={categoryName} />
       <MoqFilterGroup
+        key={`${value.minMoq ?? ""}-${value.maxMoq ?? ""}`}
         minMoq={value.minMoq}
         maxMoq={value.maxMoq}
         onApply={(minMoq, maxMoq) => onChange({ ...value, minMoq, maxMoq })}

@@ -1,32 +1,44 @@
-// One-off script: uploads the images in Product_images/ to Cloudinary and
-// registers them in the product_images table, matched to existing products
-// by normalized filename <-> product name.
+// One-off script: uploads the images in Product_images/ to the target
+// deployment's active storage provider and registers them in the
+// product_images table, matched to existing products by normalized
+// filename <-> product name.
 //
 // Mirrors the app's own conventions so these rows are indistinguishable from
 // ones created through the real API:
 //   - storage key format: products/<productId>/<uuid>-<sanitized-filename>
-//     (see CloudinaryStorageStrategy.buildProductImageKey)
-//   - uploaded via the Cloudinary Admin SDK (equivalent end state to the
-//     signed-upload flow the app uses for browser clients — this is a
-//     trusted server-side script, so there's no need for a signed POST)
+//     (see StorageStrategy.buildProductImageKey — identical for both providers)
 //   - one row per image, is_primary = true, sort_order = 0 (each product
 //     gets exactly one image here)
+//
+// The storage provider is selected by STORAGE_PROVIDER (same env var the
+// app reads). Supported values:
+//
+//   s3         — uploads to AWS S3 / LocalStack via PutObjectCommand.
+//                Requires: AWS_REGION, AWS_S3_BUCKET (and optionally
+//                AWS_ENDPOINT for LocalStack / AWS_ACCESS_KEY_ID /
+//                AWS_SECRET_ACCESS_KEY).
+//
+//   cloudinary — uploads to Cloudinary via the Admin SDK.
+//                Requires: CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY,
+//                CLOUDINARY_API_SECRET.
+//
+// The script fails fast if the required credentials for the selected
+// provider are absent, or if STORAGE_PROVIDER names an unsupported value.
 //
 // Usage:
 //   node scripts/seed-product-images.mjs            (dry run, no writes)
 //   node scripts/seed-product-images.mjs --apply     (uploads + inserts)
 //
-// Reads Cloudinary credentials from the same env vars as the app
-// (CLOUDINARY_CLOUD_NAME/API_KEY/API_SECRET in .env) and the Postgres
-// connection from DATABASE_URL (set it in the shell before running against
-// a remote DB — never hardcode a connection string with credentials here).
+// Reads credentials from the same env vars as the app (nest-server/.env)
+// and the Postgres connection from DATABASE_URL (set it in the shell before
+// running against a remote DB — never hardcode a connection string with
+// credentials here).
 
 import { randomUUID } from 'node:crypto';
-import { readdirSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config as loadEnv } from 'dotenv';
-import { v2 as cloudinary } from 'cloudinary';
 import pg from 'pg';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -34,6 +46,14 @@ loadEnv({ path: path.join(__dirname, '..', '.env') });
 
 const IMAGES_DIR = path.join(__dirname, '..', '..', 'Product_images');
 const APPLY = process.argv.includes('--apply');
+
+// Supported storage providers — must match the app's STORAGE_PROVIDERS constant
+// (nest-server/src/storage/storage-strategy.interface.ts).
+const SUPPORTED_PROVIDERS = ['s3', 'cloudinary'];
+
+// Read STORAGE_PROVIDER with the same default the app uses (storage.module.ts
+// line 21: `process.env.STORAGE_PROVIDER?.trim() || 's3'`).
+const STORAGE_PROVIDER = (process.env.STORAGE_PROVIDER?.trim() || 's3');
 
 // Explicit filename -> product-slug overrides for cases the automatic
 // word-matching below cannot resolve safely (apostrophe normalization
@@ -63,21 +83,140 @@ function buildProductImageKey(productId, originalFilename) {
   return `products/${productId}/${randomUUID()}-${sanitizeFilename(originalFilename)}`;
 }
 
-async function main() {
+// ─── Provider-specific upload functions ──────────────────────────────────────
+
+/**
+ * Validates that all required Cloudinary credentials are present and
+ * configures the SDK. Throws early with a clear message if any are missing,
+ * matching the app's own "fail fast" approach in CloudinaryStorageStrategy.
+ */
+async function setupCloudinary() {
   const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
   const apiKey = process.env.CLOUDINARY_API_KEY;
   const apiSecret = process.env.CLOUDINARY_API_SECRET;
   if (!cloudName || !apiKey || !apiSecret) {
     throw new Error(
-      'CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET must be set (nest-server/.env).',
+      'STORAGE_PROVIDER=cloudinary requires CLOUDINARY_CLOUD_NAME, ' +
+      'CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET to be set (nest-server/.env).',
     );
   }
+  // Dynamic import keeps the Cloudinary SDK out of the require graph when
+  // STORAGE_PROVIDER=s3 — avoids a missing-module error for users who run
+  // the script against an S3 deployment that never installed cloudinary.
+  const { v2: cloudinary } = await import('cloudinary');
   cloudinary.config({
     cloud_name: cloudName,
     api_key: apiKey,
     api_secret: apiSecret,
     secure: true,
   });
+  return cloudinary;
+}
+
+/**
+ * Validates that all required AWS / S3 credentials are present and creates
+ * an S3Client. Throws early with a clear message if the bucket is not
+ * configured — AWS credentials fall back to the SDK's standard credential
+ * chain (env vars, ~/.aws/credentials, IMDS) so they are optional here.
+ */
+async function setupS3() {
+  const bucket = process.env.AWS_S3_BUCKET;
+  if (!bucket) {
+    throw new Error(
+      'STORAGE_PROVIDER=s3 requires AWS_S3_BUCKET to be set (nest-server/.env).',
+    );
+  }
+  const region = process.env.AWS_REGION || 'us-east-1';
+  const endpoint = process.env.AWS_ENDPOINT?.trim() || undefined;
+
+  // Dynamic import — avoids requiring @aws-sdk/client-s3 when STORAGE_PROVIDER=cloudinary.
+  const { S3Client, PutObjectCommand } = await import('@aws-sdk/client-s3');
+
+  const client = new S3Client({
+    region,
+    // endpoint is only set for LocalStack / non-AWS S3-compatible stores.
+    ...(endpoint ? { endpoint, forcePathStyle: true } : {}),
+    // Explicit credentials override the SDK's credential chain when set —
+    // matches the app's AwsModule configuration in aws.module.ts.
+    ...(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY
+      ? {
+          credentials: {
+            accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+            secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+          },
+        }
+      : {}),
+  });
+
+  return { client, bucket, PutObjectCommand };
+}
+
+/**
+ * Uploads a local file to Cloudinary using its public_id as the storage key.
+ * Equivalent end-state to the signed-upload flow the app uses for browser
+ * clients — this is a trusted server-side script so a direct Admin SDK
+ * upload is appropriate.
+ */
+async function uploadToCloudinary(cloudinary, filePath, key) {
+  await cloudinary.uploader.upload(filePath, {
+    public_id: key,
+    resource_type: 'image',
+    overwrite: false,
+  });
+}
+
+/**
+ * Uploads a local file to S3 using PutObjectCommand. This is the server-side
+ * equivalent of the browser client uploading directly to S3 via a presigned
+ * POST URL — the end state in the bucket is identical.
+ */
+async function uploadToS3({ client, bucket, PutObjectCommand }, filePath, key) {
+  const body = readFileSync(filePath);
+  // Derive a basic Content-Type from the extension so S3 stores it correctly.
+  const ext = path.extname(filePath).toLowerCase();
+  const contentType =
+    ext === '.jpg' || ext === '.jpeg'
+      ? 'image/jpeg'
+      : ext === '.png'
+        ? 'image/png'
+        : ext === '.webp'
+          ? 'image/webp'
+          : 'application/octet-stream';
+
+  await client.send(
+    new PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      Body: body,
+      ContentType: contentType,
+    }),
+  );
+}
+
+// ─── Main ─────────────────────────────────────────────────────────────────────
+
+async function main() {
+  // Fail fast on an unrecognised provider before touching the DB or any
+  // remote service — mirrors storage.module.ts's own validation.
+  if (!SUPPORTED_PROVIDERS.includes(STORAGE_PROVIDER)) {
+    throw new Error(
+      `Unsupported STORAGE_PROVIDER "${STORAGE_PROVIDER}". ` +
+      `Supported values: ${SUPPORTED_PROVIDERS.join(', ')}.`,
+    );
+  }
+
+  console.log(`Storage provider: ${STORAGE_PROVIDER}`);
+
+  // Set up the chosen provider eagerly (before any DB work) so credential
+  // problems surface immediately rather than after the matching step.
+  let cloudinary = null;
+  let s3Context = null;
+
+  if (STORAGE_PROVIDER === 'cloudinary') {
+    cloudinary = await setupCloudinary();
+  } else {
+    s3Context = await setupS3();
+  }
 
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
@@ -183,12 +322,13 @@ async function main() {
       const key = buildProductImageKey(product.id, file);
       const filePath = path.join(IMAGES_DIR, file);
 
-      console.log(`Uploading ${file} -> ${key} ...`);
-      await cloudinary.uploader.upload(filePath, {
-        public_id: key,
-        resource_type: 'image',
-        overwrite: false,
-      });
+      console.log(`Uploading ${file} -> ${key} (${STORAGE_PROVIDER}) ...`);
+
+      if (STORAGE_PROVIDER === 'cloudinary') {
+        await uploadToCloudinary(cloudinary, filePath, key);
+      } else {
+        await uploadToS3(s3Context, filePath, key);
+      }
 
       await client.query(
         `INSERT INTO product_images (id, product_id, s3_object_key, alt_text, is_primary, sort_order, created_at)

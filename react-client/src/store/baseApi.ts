@@ -2,8 +2,26 @@ import { createApi, fetchBaseQuery } from "@reduxjs/toolkit/query/react";
 import { selectAccessToken } from "@/features/auth/authSelectors";
 import type { RootState } from "./store";
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3005/api/v1";
+/**
+ * Resolve the API base URL for RTK Query's fetchBaseQuery.
+ *
+ * On the server (SSR / generateMetadata), prefer the Docker-internal URL
+ * (http://api:3005) so server-to-server fetches don't bounce through the
+ * host's published port. Falls back to the public NEXT_PUBLIC_API_URL for
+ * local non-Docker dev where API_INTERNAL_URL is not set.
+ *
+ * In the browser, always use the public host-reachable URL.
+ *
+ * The /api/v1 prefix is appended (idempotently) so the var can be set with
+ * or without it — see client.ts for the same normalisation rationale.
+ */
+const isServer = typeof window === "undefined";
+
+const rawURL = isServer
+  ? (process.env.API_INTERNAL_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "")
+  : (process.env.NEXT_PUBLIC_API_URL ?? "");
+
+const API_BASE_URL = rawURL.replace(/\/api\/v1\/?$/, "") + "/api/v1";
 
 /**
  * Single shared RTK Query API (frontend-rules #11). Every feature API is
@@ -25,6 +43,6 @@ export const baseApi = createApi({
       return headers;
     },
   }),
-  tagTypes: ["Product", "ProductList"],
+  tagTypes: ["Product", "ProductList", "Category", "Country"],
   endpoints: () => ({}),
 });

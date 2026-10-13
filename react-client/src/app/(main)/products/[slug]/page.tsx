@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { isAxiosError } from "axios";
 import { ProductDetailView } from "@/components/products/ProductDetailView";
 import { getProductBySlug, getProducts } from "@/features/products/api/products.api";
 import { formatPrice } from "@/features/products/api/products.mapper";
@@ -38,17 +39,33 @@ interface ProductPageProps {
 }
 
 /**
- * Fetches the product server-side for both the page render and its
- * metadata. Returns `null` on any failure — the backend returns a plain
- * 404 for a nonexistent slug AND for a DRAFT/unpublished product (by
- * design, so draft existence is never leaked publicly) — both cases are
- * handled identically here via `notFound()`.
+ * Fetches the product server-side for both the page render and its metadata.
+ *
+ * Returns `null` ONLY on a genuine 404 — the backend returns 404 for both
+ * a nonexistent slug and a DRAFT/unpublished product (by design, so draft
+ * existence is never leaked publicly) and both are handled via `notFound()`.
+ *
+ * Any other error (connection failure, 5xx, timeout, etc.) is logged and
+ * rethrown so Next.js follows its error-boundary path rather than silently
+ * serving a "not found" page for a product that actually exists.
  */
 async function fetchProduct(slug: string): Promise<ApiProductDetail | null> {
   try {
     return await getProductBySlug(slug);
-  } catch {
-    return null;
+  } catch (err) {
+    if (isAxiosError(err) && err.response?.status === 404) {
+      // Genuine "not found" (nonexistent slug or unpublished product) —
+      // callers render notFound(), not an error page.
+      return null;
+    }
+    // Transient / server error — log it so it's visible in server logs,
+    // then rethrow so Next.js hits the nearest error boundary instead of
+    // showing a misleading "product not found" page.
+    console.error(
+      `[fetchProduct] Unexpected error fetching product "${slug}":`,
+      err,
+    );
+    throw err;
   }
 }
 

@@ -1,14 +1,27 @@
-import { useQuery } from "@tanstack/react-query";
-import { getCountries } from "./countries.api";
+import { baseApi } from "@/store/baseApi";
+import type { ApiCountry } from "../types/country-api.types";
 
-export const countriesQueryKeys = {
-  all: ["countries"] as const,
-};
+/**
+ * Countries endpoint injected into the shared baseApi (frontend-rules #11).
+ * Replaces the previous TanStack Query wrapper so all server-state lives in
+ * one RTK Query cache. Hook name is unchanged so all call-sites compile
+ * without modification.
+ */
+const countriesApi = baseApi.injectEndpoints({
+  endpoints: (builder) => ({
+    /** GET /api/v1/countries — active countries for shipping/origin filters (public). */
+    getCountries: builder.query<ApiCountry[], void>({
+      query: () => "/countries",
+      providesTags: [{ type: "Country", id: "LIST" }],
+    }),
+  }),
+});
 
-/** Fetches the active country list (GET /countries) via TanStack Query. */
+const { useGetCountriesQuery } = countriesApi;
+
+/** Fetches the active country list (GET /countries) via RTK Query. */
 export function useCountriesQuery() {
-  return useQuery({
-    queryKey: countriesQueryKeys.all,
-    queryFn: getCountries,
-  });
+  return useGetCountriesQuery();
 }
+
+export { useGetCountriesQuery };

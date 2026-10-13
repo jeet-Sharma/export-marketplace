@@ -106,6 +106,10 @@ services:
       NODE_ENV: development
       PORT: 3000
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3005}
+      # Public (browser-reachable) LocalStack endpoint for presigned S3 image
+      # URLs. next.config.ts uses this to allow-list the host in next/image
+      # remotePatterns so product images load in Docker dev.
+      NEXT_PUBLIC_S3_PUBLIC_URL: ${NEXT_PUBLIC_S3_PUBLIC_URL:-http://localhost:${LOCALSTACK_HOST_PORT:-4566}}
       # Helps file-watching reliability for bind mounts (esp. on Windows/WSL).
       WATCHPACK_POLLING: "true"
     ports:

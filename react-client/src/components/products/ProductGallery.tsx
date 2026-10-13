@@ -43,6 +43,12 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
                 alt={image.altText ?? `${productName} thumbnail ${index + 1}`}
                 fill
                 className="object-cover"
+                // Presigned S3/LocalStack URLs contain a short-lived signature
+                // in the query string. The next/image optimizer would cache the
+                // full URL (including the expiring params), turning it into a
+                // 403 once the signature expires. Bypass the optimizer so every
+                // request fetches a fresh signed URL from S3.
+                unoptimized
               />
             </button>
           ))}
@@ -56,6 +62,9 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
           fill
           className="object-cover"
           priority
+          // See thumbnail comment above: unoptimized prevents the image
+          // optimizer from caching an already-expired presigned S3 signature.
+          unoptimized
         />
         {sorted.length > 1 ? (
           <span className="absolute bottom-4 right-4 rounded-full bg-ink/80 px-[10px] py-[7px] text-[12px] font-bold text-white">
