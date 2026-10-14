@@ -1,5 +1,8 @@
 import 'dotenv/config';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { DataSource } from 'typeorm';
+import { resolveDbConfig } from '../config/db-env.js';
 import {
   Category,
   Country,
@@ -19,16 +22,21 @@ import {
 // running migrations (npm run migration:*), and for `migration:generate`
 // to diff these entities against the current schema. AppModule wires up its
 // own connection via TypeOrmModule.forRootAsync (see app.module.ts), reading
-// the same DB_* env vars through database.config.ts — kept as a separate
-// DataSource here only because the TypeORM CLI needs one outside of Nest's
-// DI container, not because the app itself skips TypeOrmModule.
+// the same env vars through database.config.ts — kept as a separate DataSource
+// only because the TypeORM CLI needs one outside of Nest's DI container.
+//
+// Both this file and database.config.ts call resolveDbConfig() (db-env.ts) so
+// the migration runner and the application ALWAYS resolve the same host/port/
+// credentials with the same precedence (DB_* → POSTGRES_* → defaults),
+// eliminating the risk of running migrations against a different database.
+const { host, port, username, password, database } = resolveDbConfig();
 const dataSource = new DataSource({
   type: 'postgres',
-  host: process.env.DB_HOST ?? process.env.POSTGRES_HOST ?? 'localhost',
-  port: Number(process.env.DB_PORT ?? process.env.POSTGRES_PORT ?? 5432),
-  username: process.env.DB_USERNAME ?? process.env.POSTGRES_USER ?? 'postgres',
-  password: process.env.DB_PASSWORD ?? process.env.POSTGRES_PASSWORD ?? 'postgres',
-  database: process.env.DB_NAME ?? process.env.POSTGRES_DB ?? 'export_marketplace',
+  host,
+  port,
+  username,
+  password,
+  database,
   entities: [
     Country,
     Vendor,
@@ -43,7 +51,28 @@ const dataSource = new DataSource({
     ProductPriceTier,
     ProductCountry,
   ],
-  migrations: ['src/database/migrations/*.ts'],
+  // Single __dirname-relative glob so TypeORM never loads both the .ts
+  // sources and the compiled .js output at the same time.
+  //
+  // When the TypeORM CLI runs this file via tsx (dev / migration:generate),
+  // import.meta.url resolves to src/database/data-source.ts, so __dirname
+  // becomes src/database/ and the pattern matches only the .ts sources.
+  //
+  // When the compiled dist/database/data-source.js runs (migration:run in
+  // the production image), __dirname becomes dist/database/ and the pattern
+  // matches only the .js output — never both at once.
+  //
+  // `(?<!\.)d\.ts` is excluded via the negative-lookahead in the js/ts
+  // alternation: *.{ts,js} with `declaration:true` in tsconfig would
+  // otherwise also match *.d.ts declaration files. TypeORM's glob engine
+  // supports the brace-expansion syntax used here.
+  migrations: [
+    path.join(
+      path.dirname(fileURLToPath(import.meta.url)),
+      'migrations',
+      '*.{ts,js}',
+    ),
+  ],
   migrationsTableName: 'migrations',
   // Schema must only ever change via migrations, never auto-sync.
   synchronize: false,

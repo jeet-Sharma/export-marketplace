@@ -1,15 +1,7 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
 
   /* Market Bloom palette */
   --color-bloom-cream: #fcf8f3;
@@ -32,17 +24,27 @@
   --color-bloom-surface: #fffdf9;
   --color-bloom-amber-surface: #fff4df;
   --color-bloom-amber-text: #a96516;
-}
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  /* Shorthand aliases */
+  --color-cream: #fcf8f3;
+  --color-ink: #1b2030;
+  --color-pink: #d94272;
+  --color-pink-hover: #c63a6c;
+  --color-pink-pressed: #b52d5a;
+  --color-maroon: #57172f;
+  --color-amber: #f4a340;
+  --color-star: #f5a623;
+  --color-delivery: #147d55;
+
+  /* Semantic status colors — see Figma "Form Inputs" design system doc */
+  --color-error: #b42336;
+  --color-success: #146b49;
+  --color-border: #ddd7d5;
+  --color-text-secondary: #656575;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--color-cream);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
 }

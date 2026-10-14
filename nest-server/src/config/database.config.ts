@@ -1,13 +1,20 @@
 import { registerAs } from '@nestjs/config';
+import { resolveDbConfig } from './db-env.js';
 
 // Namespaced config factory for Postgres connection settings, loaded into
-// ConfigModule.forRoot({ load: [...] }) in app.module.ts. Defaults mirror
-// src/database/data-source.ts (the standalone CLI DataSource) so local dev
-// without a .env file still resolves to the same local Postgres target.
-export default registerAs('database', () => ({
-  host: process.env.DB_HOST ?? process.env.POSTGRES_HOST ?? 'localhost',
-  port: Number(process.env.DB_PORT ?? process.env.POSTGRES_PORT ?? 5432),
-  username: process.env.DB_USERNAME ?? process.env.POSTGRES_USER ?? 'postgres',
-  password: process.env.DB_PASSWORD ?? process.env.POSTGRES_PASSWORD ?? 'postgres',
-  name: process.env.DB_NAME ?? process.env.POSTGRES_DB ?? 'export_marketplace',
-}));
+// ConfigModule.forRoot({ load: [...] }) in app.module.ts.
+//
+// Uses resolveDbConfig() — the single canonical env-var resolution shared
+// with data-source.ts (the TypeORM CLI DataSource) — so the application and
+// migration runner always connect to the same database with the same
+// precedence (DB_* → POSTGRES_* → defaults). See db-env.ts for details.
+export default registerAs('database', () => {
+  const db = resolveDbConfig();
+  return {
+    host: db.host,
+    port: db.port,
+    username: db.username,
+    password: db.password,
+    name: db.database,
+  };
+});

@@ -51,8 +51,28 @@ Each app has its own README with setup details specific to it:
 
 This runs both apps plus PostgreSQL and LocalStack (S3 emulation) together, fully networked.
 
+The repository tracks `.env.docker.example` listing every variable you can
+override. Copy it to `.env` in the repository root (Compose loads `.env`
+automatically):
+
 ```bash
-cp .env.docker.example .env
+cp .env.docker.example .env        # macOS/Linux
+# Windows PowerShell:
+# Copy-Item .env.docker.example .env
+```
+
+Edit `.env` to change ports or secrets. For the development stack
+(`docker-compose.dev.yml`) every value has a safe default, so the file is
+optional for a first run. The production-style stack (`docker-compose.yml`)
+**requires** `POSTGRES_USER`, `POSTGRES_PASSWORD`, `JWT_ACCESS_SECRET`, and
+`JWT_REFRESH_SECRET` to be set and will refuse to start otherwise.
+
+### Development (hot reload)
+
+Source directories are bind-mounted so edits on the host reload inside the
+containers.
+
+```bash
 docker compose -f docker-compose.dev.yml up --build
 ```
 

@@ -22,7 +22,8 @@
     "test:e2e": "vitest run --config ./vitest.config.e2e.ts",
     "migration:run": "tsx node_modules/typeorm/cli.js migration:run -d src/database/data-source.ts",
     "migration:revert": "tsx node_modules/typeorm/cli.js migration:revert -d src/database/data-source.ts",
-    "migration:generate": "tsx node_modules/typeorm/cli.js migration:generate -d src/database/data-source.ts"
+    "migration:generate": "tsx node_modules/typeorm/cli.js migration:generate -d src/database/data-source.ts",
+    "migration:run:prod": "node node_modules/typeorm/cli.js migration:run -d dist/database/data-source.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1146.0",
