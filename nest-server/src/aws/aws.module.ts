@@ -6,6 +6,7 @@ import { S3_CLIENT, S3_PRESIGNING_CLIENT } from './aws.constants.js';
 import { S3Service } from './s3.service.js';
 import { AwsBootstrapService } from './aws-bootstrap.service.js';
 import { AwsDemoController } from './aws-demo.controller.js';
+import { AwsDemoGuard } from './aws-demo.guard.js';
 
 /**
  * Builds the common client options shared by every AWS SDK client.
@@ -82,12 +83,13 @@ const demoControllers = demoRoutesEnabled ? [AwsDemoController] : [];
 @Global()
 @Module({
   imports: [ConfigModule.forFeature(awsConfig)],
-  controllers: [...demoControllers],
+  controllers: demoControllers,
   providers: [
     s3ClientProvider,
     s3PresigningClientProvider,
     S3Service,
     AwsBootstrapService,
+    AwsDemoGuard,
   ],
   exports: [S3Service, S3_CLIENT, S3_PRESIGNING_CLIENT],
 })

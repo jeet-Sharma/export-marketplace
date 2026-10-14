@@ -13,6 +13,7 @@ import {
   MinLength,
   ValidateNested,
 } from 'class-validator';
+import { IsCalendarDate } from '../../../common/validation/is-calendar-date.decorator.js';
 import { IsNumericPrecision } from '../../../common/validation/is-numeric-precision.decorator.js';
 import { PriceTierDto } from './price-tier.dto.js';
 import { CreateProductImageDto } from './create-product-image.dto.js';
@@ -156,6 +157,14 @@ export class CreateProductDto {
   @IsOptional()
   @IsString()
   dutiesTaxesNote?: string;
+
+  @ApiPropertyOptional({
+    example: '2027-12-31',
+    description: 'Product expiration date in YYYY-MM-DD format.',
+  })
+  @IsOptional()
+  @IsCalendarDate()
+  expiryDate?: string;
 
   @ApiPropertyOptional({
     type: [PriceTierDto],

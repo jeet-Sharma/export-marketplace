@@ -3,7 +3,26 @@ inclusion: fileMatch
 fileMatchPattern: 'react-client/**'
 ---
 
-# FRONTEND STATE MANAGEMENT & REDUX RULES
+# Frontend Rules — react-client (Next.js)
+
+Confirmed stack (from `package.json`): Next.js 16.3.5, React 19.2.8,
+TypeScript ^5, Tailwind CSS v4, ESLint 9 + `eslint-config-next`.
+
+**IMPORTANT — status of the state/data libraries below.** The Redux Toolkit /
+React Redux / RTK Query / React Hook Form / Zod rules in this file are the
+**adopted forward standard**, but **none of these libraries are installed in
+`react-client` yet** (dependencies are only `next`, `react`, `react-dom`).
+Treat the Redux sections as the required shape for *when* that tooling is
+introduced — a deliberate, approved change that also installs the packages and
+updates this stack line. Until then:
+
+- Existing screens use plain `useState` + props and server-side data; that is
+  valid and should not be rewritten to Redux speculatively.
+- Do not add `@reduxjs/toolkit`, `react-redux`, `react-hook-form`, or `zod`
+  (or any other global-state/form lib) just to satisfy a small task — install
+  them only as part of intentionally standing up the store/API layer.
+- The design-system, area-separation, data-access, and JSX rules at the END of
+  this file apply RIGHT NOW to all current work.
 
 ## 1. STATE MANAGEMENT STANDARD
 
@@ -318,7 +337,12 @@ baseApi
 
 configured with:
 
-NEXT_PUBLIC_API_BASE_URL
+NEXT_PUBLIC_API_URL
+
+(This is the exact env var name used across the repo — the Docker Compose
+files, the client Dockerfile build arg, and `.env.docker.example` all use
+`NEXT_PUBLIC_API_URL`. Do not invent a differently-named variable such as
+`NEXT_PUBLIC_API_BASE_URL`; it would not be provided by the deployment.)
 
 Do not repeat API base URLs throughout the application.
 
@@ -981,3 +1005,96 @@ Global state     → Redux Toolkit
 Form state       → React Hook Form
 URL state        → searchParams
 Local UI state   → useState
+
+---
+
+# Rules that apply to ALL current frontend work (not Redux-gated)
+
+The sections below describe conventions that are in force **today**, with the
+code and libraries actually present. They were part of the original frontend
+rules and remain authoritative regardless of the Redux adoption above.
+
+## Design system — must match on every screen
+
+- Use the project's Tailwind color tokens / utility classes rather than
+  hardcoding hex values in a component. New status displays should reuse the
+  existing status-token mapping instead of inventing an ad-hoc tone.
+- Keep the established corner radius and the two project fonts
+  (`font-heading` for headings, `font-body` for everything else). Don't add
+  another font.
+- Reuse the existing UI primitives in `src/components/ui/` (e.g. `Button`,
+  `Badge`, `Input`, `Panel`, `Table`, `ProductCard`) instead of writing new
+  styled elements. If a screen needs a pattern none of them cover, extend the
+  primitive (add a variant/prop) rather than building a parallel one-off.
+
+## Three distinct areas — keep them separate
+
+- **Public site**: `src/app/page.tsx` and components under
+  `src/components/home/` and `src/components/layout/` (shared header/footer).
+- **Vendor portal** (when present): its own route segment, its own
+  `components/<area>/` folder, its own data/type files.
+- **Sell-with-us wizard**: public-facing vendor signup with its own
+  state/types/data — don't merge it into public marketplace data or vendor
+  portal internal data.
+- A future buyer portal follows the same pattern: its own route segment, its
+  own `components/` folder, its own data/types. Don't retrofit buyer concerns
+  into vendor/public areas.
+- **Never mix seed data across areas.** Public-facing seed data and
+  vendor-internal workflow data model different things — don't reuse one for
+  the other.
+
+## Routing and data-access patterns
+
+- **Central route constants live in `src/config/routes.ts`.** Never use
+  `href="#"` placeholder links — they navigate nowhere and were a real bug in
+  this app. Link to a `routes.*` entry (or a `routes.*(param)` helper) with
+  `next/link`'s `Link`, even if the target page isn't built yet (Next renders
+  404 for a missing page, which is still correct and shareable, unlike `#`).
+- Don't index a hardcoded seed object directly from a page/route component.
+  Go through a small function in `src/lib/` that returns `T | undefined`, with
+  an explicit type, so the page stays agnostic to whether the data is seeded
+  today or a real API call later.
+- Path alias `@/*` maps to `./src/*` — use it for cross-folder imports rather
+  than relative `../../..` paths.
+
+## Responsive layout — avoid mobile horizontal overflow
+
+Don't pin desktop-only fixed dimensions (large fixed widths, big fixed side
+paddings, fixed multi-column grids, fixed section heights) without a
+responsive fallback. Default to a mobile-friendly layout (stacked / full
+width / fewer columns) and apply the desktop sizing at a breakpoint
+(`lg:` etc.). Fixed `w-[NNNpx]`, `pr-[NNNpx]`, `grid-cols-4`, and `h-[NNNpx]`
+applied unconditionally are the exact shapes that caused horizontal overflow
+and clipped content on phones — gate them behind a breakpoint.
+
+## JSX / unicode escapes — a real bug that's happened here
+
+`\uXXXX` / `\u{XXXXX}` escapes are only interpreted inside a real JS string
+(inside `{...}` or a template literal), NOT as bare JSX text or a plain
+(non-expression) JSX attribute value — React renders the literal backslash-u
+text instead.
+
+```tsx
+// WRONG — renders the literal text "\u00B7"
+<p>{a} \u00B7 {b}</p>
+// RIGHT — wrapped in a JS expression
+<p>{a} {"\u00B7"} {b}</p>
+```
+
+When in doubt, paste the actual unicode character into the source.
+
+## Next.js specifics
+
+- App Router only (`src/app/`). Server Components by default; add
+  `"use client"` only where interactivity requires it (forms with `useState`,
+  event handlers, `useRouter`, etc. — e.g. the search form in `PrimaryNav`).
+- Pages/route files are `.tsx`; shared data/config/type files are `.ts`.
+  Reusable domain types live under `src/types/` (one file per concept),
+  re-exported through the barrel, rather than ad-hoc inline types.
+
+## Accessibility and images
+
+Use semantic elements and `aria-label`/`aria-hidden` appropriately (e.g. a
+`role="search"` form, labelled search input, decorative images marked
+`aria-hidden` with empty `alt`). Keep doing this for new interactive elements
+and icon-only buttons.

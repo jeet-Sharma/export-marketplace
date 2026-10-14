@@ -40,6 +40,11 @@ export interface StoredObject {
 export class S3Service {
   private readonly logger = new Logger(S3Service.name);
   private readonly bucket: string;
+  /**
+   * Separate client used only for presigning, bound to the public endpoint
+   * when one is configured. Built lazily and cached. See getSigningClient().
+   */
+  private signingClient?: S3Client;
 
   constructor(
     @Inject(S3_CLIENT) private readonly client: S3Client,

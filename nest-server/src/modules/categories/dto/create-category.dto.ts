@@ -39,4 +39,13 @@ export class CreateCategoryDto {
   @IsInt()
   @Min(0)
   sortOrder?: number;
+
+  @ApiPropertyOptional({
+    example: 'https://images.unsplash.com/photo-1596040033229-a9821ebd058d',
+    maxLength: 500,
+  })
+  @IsOptional()
+  @IsString()
+  @Length(1, 500)
+  image?: string;
 }

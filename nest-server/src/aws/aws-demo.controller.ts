@@ -7,8 +7,10 @@ import {
   Param,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import { S3Service } from './s3.service.js';
+import { AwsDemoGuard } from './aws-demo.guard.js';
 
 interface UploadBody {
   key: string;
@@ -23,6 +25,7 @@ interface UploadBody {
  *
  * Routes are mounted under /aws-demo.
  */
+@UseGuards(AwsDemoGuard)
 @Controller('aws-demo')
 export class AwsDemoController {
   constructor(private readonly s3: S3Service) {}

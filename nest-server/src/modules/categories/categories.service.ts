@@ -56,6 +56,7 @@ export class CategoriesService {
         description: dto.description ?? null,
         isActive: dto.isActive ?? true,
         sortOrder: dto.sortOrder ?? null,
+        image: dto.image ?? null,
       });
 
       try {
