@@ -45,19 +45,43 @@ export class ProductPriceTier {
   minQuantity!: string;
 
   // Null means no upper bound (open-ended highest tier).
-  @Column({ type: 'numeric', precision: 18, scale: 4, name: 'max_quantity', nullable: true })
+  @Column({
+    type: 'numeric',
+    precision: 18,
+    scale: 4,
+    name: 'max_quantity',
+    nullable: true,
+  })
   maxQuantity!: string | null;
 
   @Column({ type: 'numeric', precision: 18, scale: 4 })
   price!: string;
 
-  @Column({ type: 'numeric', precision: 18, scale: 4, name: 'shipping_estimate', nullable: true })
+  @Column({
+    type: 'numeric',
+    precision: 18,
+    scale: 4,
+    name: 'shipping_estimate',
+    nullable: true,
+  })
   shippingEstimate!: string | null;
 
-  @Column({ type: 'numeric', precision: 18, scale: 4, name: 'duties_estimate', nullable: true })
+  @Column({
+    type: 'numeric',
+    precision: 18,
+    scale: 4,
+    name: 'duties_estimate',
+    nullable: true,
+  })
   dutiesEstimate!: string | null;
 
-  @Column({ type: 'numeric', precision: 18, scale: 4, name: 'taxes_estimate', nullable: true })
+  @Column({
+    type: 'numeric',
+    precision: 18,
+    scale: 4,
+    name: 'taxes_estimate',
+    nullable: true,
+  })
   taxesEstimate!: string | null;
 
   // Currency used by price and cost estimates, e.g. USD.
