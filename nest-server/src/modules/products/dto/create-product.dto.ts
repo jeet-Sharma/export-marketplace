@@ -3,7 +3,6 @@ import { Type } from 'class-transformer';
 import {
   ArrayUnique,
   IsArray,
-  IsDateString,
   IsIn,
   IsNumber,
   IsOptional,
@@ -14,6 +13,7 @@ import {
   MinLength,
   ValidateNested,
 } from 'class-validator';
+import { IsCalendarDate } from '../../../common/validation/is-calendar-date.decorator.js';
 import { IsNumericPrecision } from '../../../common/validation/is-numeric-precision.decorator.js';
 import { PriceTierDto } from './price-tier.dto.js';
 
@@ -162,7 +162,7 @@ export class CreateProductDto {
     description: 'Product expiration date in YYYY-MM-DD format.',
   })
   @IsOptional()
-  @IsDateString()
+  @IsCalendarDate()
   expiryDate?: string;
 
   @ApiPropertyOptional({
