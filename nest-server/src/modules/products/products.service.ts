@@ -271,6 +271,7 @@ export class ProductsService {
       countryRestrictions: toNullable(dto.countryRestrictions),
       estimatedDeliveryText: toNullable(dto.estimatedDeliveryText),
       dutiesTaxesNote: toNullable(dto.dutiesTaxesNote),
+      expiryDate: toNullable(dto.expiryDate),
       createdBy: createdByUserId,
       updatedBy: createdByUserId,
       publishedAt: dto.status === 'PUBLISHED' ? new Date() : null,
@@ -461,6 +462,8 @@ export class ProductsService {
         }
         if (dto.dutiesTaxesNote !== undefined)
           product.dutiesTaxesNote = toNullable(dto.dutiesTaxesNote);
+        if (dto.expiryDate !== undefined)
+          product.expiryDate = toNullable(dto.expiryDate);
         product.updatedBy = updatedByUserId;
 
         // Published product edits remain published only if the resulting

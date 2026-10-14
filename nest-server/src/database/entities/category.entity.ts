@@ -27,6 +27,9 @@ export class Category {
   @Column({ type: 'int', name: 'sort_order', nullable: true })
   sortOrder!: number | null;
 
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  image!: string | null;
+
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt!: Date;
 

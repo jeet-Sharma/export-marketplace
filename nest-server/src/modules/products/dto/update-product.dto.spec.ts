@@ -57,4 +57,24 @@ describe('UpdateProductDto', () => {
     const nameError = errors.find((e) => e.property === 'name');
     expect(nameError).toBeDefined();
   });
+
+  it('accepts a valid calendar date for expiryDate', async () => {
+    const dto = plainToInstance(UpdateProductDto, {
+      expiryDate: '2027-12-31',
+    });
+
+    const errors = await validate(dto);
+    expect(errors).toHaveLength(0);
+  });
+
+  it('rejects nonexistent calendar dates such as 2027-02-30 for expiryDate', async () => {
+    const dto = plainToInstance(UpdateProductDto, {
+      expiryDate: '2027-02-30',
+    });
+
+    const errors = await validate(dto);
+    const expiryError = errors.find((e) => e.property === 'expiryDate');
+    expect(expiryError).toBeDefined();
+    expect(expiryError?.constraints).toHaveProperty('isCalendarDate');
+  });
 });

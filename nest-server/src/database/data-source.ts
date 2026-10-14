@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { DataSource } from 'typeorm';
 import {
   Category,
@@ -23,11 +24,11 @@ import {
 // DI container, not because the app itself skips TypeOrmModule.
 const dataSource = new DataSource({
   type: 'postgres',
-  host: process.env.DB_HOST ?? 'localhost',
-  port: Number(process.env.DB_PORT ?? 5432),
-  username: process.env.DB_USERNAME ?? 'postgres',
-  password: process.env.DB_PASSWORD ?? 'postgres',
-  database: process.env.DB_NAME ?? 'export_marketplace',
+  host: process.env.DB_HOST ?? process.env.POSTGRES_HOST ?? 'localhost',
+  port: Number(process.env.DB_PORT ?? process.env.POSTGRES_PORT ?? 5432),
+  username: process.env.DB_USERNAME ?? process.env.POSTGRES_USER ?? 'postgres',
+  password: process.env.DB_PASSWORD ?? process.env.POSTGRES_PASSWORD ?? 'postgres',
+  database: process.env.DB_NAME ?? process.env.POSTGRES_DB ?? 'export_marketplace',
   entities: [
     Country,
     Vendor,
