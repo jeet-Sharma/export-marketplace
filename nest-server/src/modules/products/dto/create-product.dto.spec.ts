@@ -37,6 +37,36 @@ describe('CreateProductDto numeric precision (Bug #10)', () => {
     expect(moqError).toBeDefined();
     expect(moqError?.constraints).toHaveProperty('isNumericPrecision');
   });
+
+  it('accepts a valid calendar date in YYYY-MM-DD format for expiryDate', async () => {
+    const dto = baseProduct({ expiryDate: '2027-12-31' });
+    const errors = await validate(dto);
+    expect(errors).toHaveLength(0);
+  });
+
+  it('accepts a leap-year date 2024-02-29 for expiryDate', async () => {
+    const dto = baseProduct({ expiryDate: '2024-02-29' });
+    const errors = await validate(dto);
+    expect(errors).toHaveLength(0);
+  });
+
+  it('rejects nonexistent calendar dates such as 2027-02-30 for expiryDate', async () => {
+    const dto = baseProduct({ expiryDate: '2027-02-30' });
+    const errors = await validate(dto);
+    const expiryError = errors.find((e) => e.property === 'expiryDate');
+    expect(expiryError).toBeDefined();
+    expect(expiryError?.constraints).toHaveProperty('isCalendarDate');
+  });
+
+  it('rejects invalid date shapes such as ISO timestamps or non-calendar dates for expiryDate', async () => {
+    const dto1 = baseProduct({ expiryDate: '2027-02-30T00:00:00Z' });
+    const errors1 = await validate(dto1);
+    expect(errors1.find((e) => e.property === 'expiryDate')).toBeDefined();
+
+    const dto2 = baseProduct({ expiryDate: '2027-04-31' });
+    const errors2 = await validate(dto2);
+    expect(errors2.find((e) => e.property === 'expiryDate')).toBeDefined();
+  });
 });
 
 describe('PriceTierDto numeric precision (Bug #10)', () => {

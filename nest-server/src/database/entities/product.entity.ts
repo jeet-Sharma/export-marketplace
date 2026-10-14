@@ -127,6 +127,9 @@ export class Product {
   @Column({ type: 'text', name: 'duties_taxes_note', nullable: true })
   dutiesTaxesNote!: string | null;
 
+  @Column({ type: 'date', name: 'expiry_date', nullable: true })
+  expiryDate!: string | null;
+
   @ManyToOne(() => User, { onDelete: 'RESTRICT', onUpdate: 'RESTRICT' })
   @JoinColumn({ name: 'created_by' })
   createdByUser!: User;

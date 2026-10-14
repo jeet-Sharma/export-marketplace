@@ -73,6 +73,10 @@ export function ProductDetail({ productId, backHref }: ProductDetailProps) {
               label="Export eligibility"
               value={data.exportEligibility ?? ""}
             />
+            <Field
+              label="Expiry date"
+              value={data.expiryDate ? data.expiryDate.split("T")[0] : ""}
+            />
           </div>
           {data.description ? (
             <div className="flex flex-col gap-1">
