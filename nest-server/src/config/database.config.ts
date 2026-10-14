@@ -5,9 +5,9 @@ import { registerAs } from '@nestjs/config';
 // src/database/data-source.ts (the standalone CLI DataSource) so local dev
 // without a .env file still resolves to the same local Postgres target.
 export default registerAs('database', () => ({
-  host: process.env.DB_HOST ?? 'localhost',
-  port: Number(process.env.DB_PORT ?? 5432),
-  username: process.env.DB_USERNAME ?? 'postgres',
-  password: process.env.DB_PASSWORD ?? 'postgres',
-  name: process.env.DB_NAME ?? 'export_marketplace',
+  host: process.env.DB_HOST ?? process.env.POSTGRES_HOST ?? 'localhost',
+  port: Number(process.env.DB_PORT ?? process.env.POSTGRES_PORT ?? 5432),
+  username: process.env.DB_USERNAME ?? process.env.POSTGRES_USER ?? 'postgres',
+  password: process.env.DB_PASSWORD ?? process.env.POSTGRES_PASSWORD ?? 'postgres',
+  name: process.env.DB_NAME ?? process.env.POSTGRES_DB ?? 'export_marketplace',
 }));

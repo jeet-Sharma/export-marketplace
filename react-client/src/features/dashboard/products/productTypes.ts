@@ -19,6 +19,7 @@ export type ApiProduct = {
   categoryId: string | null;
   vendorId: string;
   sourceCountryId: string | null;
+  expiryDate?: string | null;
   createdAt: string;
   updatedAt: string;
 };

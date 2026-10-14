@@ -3,6 +3,7 @@ import { Type } from 'class-transformer';
 import {
   ArrayUnique,
   IsArray,
+  IsDateString,
   IsIn,
   IsNumber,
   IsOptional,
@@ -155,6 +156,14 @@ export class CreateProductDto {
   @IsOptional()
   @IsString()
   dutiesTaxesNote?: string;
+
+  @ApiPropertyOptional({
+    example: '2027-12-31',
+    description: 'Product expiration date in YYYY-MM-DD format.',
+  })
+  @IsOptional()
+  @IsDateString()
+  expiryDate?: string;
 
   @ApiPropertyOptional({
     type: [PriceTierDto],
