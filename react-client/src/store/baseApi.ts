@@ -18,8 +18,13 @@ import type { RootState } from "./store";
 const isServer = typeof window === "undefined";
 
 const rawURL = isServer
-  ? (process.env.API_INTERNAL_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "")
-  : (process.env.NEXT_PUBLIC_API_URL ?? "");
+  ? (process.env.API_INTERNAL_URL ??
+      process.env.NEXT_PUBLIC_API_URL ??
+      process.env.NEXT_PUBLIC_API_BASE_URL ??
+      "http://localhost:3005")
+  : (process.env.NEXT_PUBLIC_API_URL ??
+      process.env.NEXT_PUBLIC_API_BASE_URL ??
+      "http://localhost:3005");
 
 const API_BASE_URL = rawURL.replace(/\/api\/v1\/?$/, "") + "/api/v1";
 

@@ -130,7 +130,7 @@ async function setupS3() {
   const endpoint = process.env.AWS_ENDPOINT?.trim() || undefined;
 
   // Dynamic import — avoids requiring @aws-sdk/client-s3 when STORAGE_PROVIDER=cloudinary.
-  const { S3Client, PutObjectCommand } = await import('@aws-sdk/client-s3');
+  const { S3Client, PutObjectCommand, DeleteObjectCommand } = await import('@aws-sdk/client-s3');
 
   const client = new S3Client({
     region,
@@ -148,7 +148,7 @@ async function setupS3() {
       : {}),
   });
 
-  return { client, bucket, PutObjectCommand };
+  return { client, bucket, PutObjectCommand, DeleteObjectCommand };
 }
 
 /**
@@ -193,6 +193,25 @@ async function uploadToS3({ client, bucket, PutObjectCommand }, filePath, key) {
   );
 }
 
+/**
+ * Deletes an uploaded image from Cloudinary if the database insert fails.
+ */
+async function deleteFromCloudinary(cloudinary, key) {
+  await cloudinary.uploader.destroy(key, { resource_type: 'image' });
+}
+
+/**
+ * Deletes an uploaded object from S3 if the database insert fails.
+ */
+async function deleteFromS3({ client, bucket, DeleteObjectCommand }, key) {
+  await client.send(
+    new DeleteObjectCommand({
+      Bucket: bucket,
+      Key: key,
+    }),
+  );
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -225,10 +244,18 @@ async function main() {
     );
   }
 
-  const client = new pg.Client({
+  const clientConfig = {
     connectionString: databaseUrl,
-    ssl: { rejectUnauthorized: false },
-  });
+  };
+
+  if (process.env.PGSSLROOTCERT) {
+    clientConfig.ssl = {
+      rejectUnauthorized: true,
+      ca: readFileSync(process.env.PGSSLROOTCERT, 'utf8'),
+    };
+  }
+
+  const client = new pg.Client(clientConfig);
   await client.connect();
 
   try {
@@ -330,12 +357,32 @@ async function main() {
         await uploadToS3(s3Context, filePath, key);
       }
 
-      await client.query(
-        `INSERT INTO product_images (id, product_id, s3_object_key, alt_text, is_primary, sort_order, created_at)
-         VALUES (gen_random_uuid(), $1, $2, $3, true, 0, now())`,
-        [product.id, key, product.name],
-      );
-      console.log(`  Inserted product_images row for ${product.name}.`);
+      try {
+        await client.query(
+          `INSERT INTO product_images (id, product_id, s3_object_key, alt_text, is_primary, sort_order, created_at)
+           VALUES (gen_random_uuid(), $1, $2, $3, true, 0, now())`,
+          [product.id, key, product.name],
+        );
+        console.log(`  Inserted product_images row for ${product.name}.`);
+      } catch (insertError) {
+        console.error(
+          `  Failed to insert product_images row for ${product.name}. Cleaning up uploaded object ${key}...`,
+        );
+        try {
+          if (STORAGE_PROVIDER === 'cloudinary') {
+            await deleteFromCloudinary(cloudinary, key);
+          } else {
+            await deleteFromS3(s3Context, key);
+          }
+          console.log(`  Cleaned up ${key} successfully.`);
+        } catch (cleanupError) {
+          console.error(
+            `  Cleanup failed for ${key} after DB insert error:`,
+            cleanupError,
+          );
+        }
+        throw insertError;
+      }
     }
 
     console.log('\nDone.');

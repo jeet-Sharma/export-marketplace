@@ -37,17 +37,14 @@ const rawURL = isServer
   ? // Prefer the internal Docker network URL on the server so SSR fetches
     // reach the `api` container directly. Falls back to the public URL for
     // local (non-Docker) development where API_INTERNAL_URL is not set.
-    (process.env.API_INTERNAL_URL ?? process.env.NEXT_PUBLIC_API_URL)
+    (process.env.API_INTERNAL_URL ??
+      process.env.NEXT_PUBLIC_API_URL ??
+      process.env.NEXT_PUBLIC_API_BASE_URL ??
+      "http://localhost:3005")
   : // In the browser, always use the public host-reachable URL.
-    process.env.NEXT_PUBLIC_API_URL;
-
-if (!rawURL) {
-  // Fails loudly at build/runtime rather than silently calling a relative
-  // path that would 404 against this Next.js app itself instead of the API.
-  throw new Error(
-    "NEXT_PUBLIC_API_URL is not set. Add it to react-client/.env.",
-  );
-}
+    (process.env.NEXT_PUBLIC_API_URL ??
+      process.env.NEXT_PUBLIC_API_BASE_URL ??
+      "http://localhost:3005");
 
 // Normalise: remove a trailing /api/v1 if the env var already includes it,
 // then always append /api/v1 so Docker defaults and local .env both resolve

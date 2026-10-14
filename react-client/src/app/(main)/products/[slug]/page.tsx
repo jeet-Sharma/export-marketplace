@@ -1,3 +1,4 @@
+import { cache } from "react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { isAxiosError } from "axios";
@@ -40,6 +41,8 @@ interface ProductPageProps {
 
 /**
  * Fetches the product server-side for both the page render and its metadata.
+ * Wrapped in React `cache` so generateMetadata and the page component share a
+ * single in-flight/resolved request per render pass instead of executing twice.
  *
  * Returns `null` ONLY on a genuine 404 — the backend returns 404 for both
  * a nonexistent slug and a DRAFT/unpublished product (by design, so draft
@@ -49,7 +52,7 @@ interface ProductPageProps {
  * rethrown so Next.js follows its error-boundary path rather than silently
  * serving a "not found" page for a product that actually exists.
  */
-async function fetchProduct(slug: string): Promise<ApiProductDetail | null> {
+const fetchProduct = cache(async (slug: string): Promise<ApiProductDetail | null> => {
   try {
     return await getProductBySlug(slug);
   } catch (err) {
@@ -67,7 +70,7 @@ async function fetchProduct(slug: string): Promise<ApiProductDetail | null> {
     );
     throw err;
   }
-}
+});
 
 export async function generateMetadata({ params }: ProductPageProps): Promise<Metadata> {
   const { slug } = await params;

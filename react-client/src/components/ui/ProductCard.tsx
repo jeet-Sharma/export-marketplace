@@ -35,6 +35,12 @@ export function ProductCard({
   delivery,
   showViewAction = false,
 }: ProductCardProps) {
+  const isPresignedUrl =
+    typeof image === "string" &&
+    (image.includes("X-Amz-") ||
+      image.includes("amazonaws.com") ||
+      image.includes("localhost:4566"));
+
   return (
     <Link
       href={routes.product(slug)}
@@ -43,7 +49,13 @@ export function ProductCard({
       {/* Media */}
       <div className="relative flex h-[160px] items-center justify-center bg-cream">
         <div className="relative h-[140px] w-full">
-          <Image src={image} alt={name} fill className="object-contain p-3" />
+          <Image
+            src={image}
+            alt={name}
+            fill
+            unoptimized={isPresignedUrl}
+            className="object-contain p-3"
+          />
         </div>
         {badge ? (
           <span className="absolute left-[10px] top-[10px] rounded-full bg-pink px-2 py-[5px] text-[10px] font-bold text-white">

@@ -112,6 +112,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3000
+      API_INTERNAL_URL: ${API_INTERNAL_URL:-http://api:3005}
     ports:
       - "${WEB_HOST_PORT:-3000}:3000"
     depends_on:

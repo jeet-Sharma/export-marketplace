@@ -93,44 +93,56 @@ export function useProductQuery(slug: string) {
 export function useProductsInfiniteQuery(
   baseParams: Omit<GetProductsParams, "page"> = {},
 ) {
-  // RTK Query does not have a stateful "current page" primitive for infinite
-  // lists, so we use useState here to track how many pages have been loaded.
-  // This is the standard pattern recommended by the RTK Query docs for
-  // "Load more" UIs when the built-in `merge` option is not used.
   const [currentPage, setCurrentPage] = useState(1);
+  const [pages, setPages] = useState<ApiPaginatedProducts[]>([]);
 
-  // Fetch pages 1..currentPage as individual queries. Only the last page
-  // (currentPage) is actually refetched on re-render; earlier pages come
-  // from cache.
-  const pageQueries = Array.from({ length: currentPage }, (_, i) => i + 1).map(
-    (page) =>
-      // eslint-disable-next-line react-hooks/rules-of-hooks -- safe: loop
-      // length is controlled by React state (always the same at a given render)
-      // so hook call count is stable between renders.
-      useGetProductsQuery({ ...baseParams, page }),
-  );
+  const paramsKey = JSON.stringify(baseParams);
+  const [prevParamsKey, setPrevParamsKey] = useState(paramsKey);
 
-  const lastQuery = pageQueries[pageQueries.length - 1];
+  if (paramsKey !== prevParamsKey) {
+    setPrevParamsKey(paramsKey);
+    setCurrentPage(1);
+    setPages([]);
+  }
 
-  const pages = pageQueries
-    .map((q) => q.data)
-    .filter((d): d is ApiPaginatedProducts => d !== undefined);
+  const queryResult = useGetProductsQuery({ ...baseParams, page: currentPage });
+  const [prevData, setPrevData] = useState<ApiPaginatedProducts | undefined>(undefined);
 
-  const totalPages = lastQuery.data?.pagination.totalPages ?? 1;
+  if (queryResult.data && queryResult.data !== prevData) {
+    setPrevData(queryResult.data);
+    const pageNum = queryResult.data.pagination.page;
+    if (pageNum === 1) {
+      setPages([queryResult.data]);
+    } else {
+      const next = [...pages];
+      next[pageNum - 1] = queryResult.data;
+      setPages(next.filter((p): p is ApiPaginatedProducts => p !== undefined));
+    }
+  }
+
+  const totalPages =
+    queryResult.data?.pagination.totalPages ??
+    pages[pages.length - 1]?.pagination.totalPages ??
+    1;
+
   const hasNextPage = currentPage < totalPages;
-  const isLoading = pageQueries[0].isLoading;
-  const isFetchingNextPage = lastQuery.isFetching && currentPage > 1;
-  const isError = pageQueries.some((q) => q.isError);
+  const isLoading = queryResult.isLoading && pages.length === 0;
+  const isFetchingNextPage = queryResult.isFetching && currentPage > 1;
+  const isError = queryResult.isError && pages.length === 0;
 
   function fetchNextPage() {
-    if (hasNextPage) {
+    if (hasNextPage && !queryResult.isFetching) {
       setCurrentPage((p) => p + 1);
     }
   }
 
   function refetch() {
-    setCurrentPage(1);
-    pageQueries[0].refetch();
+    if (currentPage === 1) {
+      queryResult.refetch();
+    } else {
+      setPages([]);
+      setCurrentPage(1);
+    }
   }
 
   return {

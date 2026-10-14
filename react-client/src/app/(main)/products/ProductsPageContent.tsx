@@ -69,6 +69,16 @@ export function ProductsPageContent() {
   const hasInvalidCategory =
     Boolean(urlState.categorySlug) && Boolean(categories) && !selectedCategory;
 
+  // A country ISO code was given in the URL but didn't match any real
+  // country once the list loaded — treat the same as "country not
+  // found" rather than silently falling back to "all countries".
+  const hasInvalidCountry =
+    Boolean(urlState.sourceCountryIso2) && Boolean(countries) && !selectedCountry;
+
+  const isProductsEnabled =
+    (!urlState.categorySlug || Boolean(categories)) &&
+    (!urlState.sourceCountryIso2 || Boolean(countries));
+
   const queryParams: GetProductsParams = {
     page: urlState.page,
     pageSize: urlState.pageSize,
@@ -88,7 +98,7 @@ export function ProductsPageContent() {
     isError: isProductsError,
     isFetching: isProductsFetching,
     refetch: refetchProducts,
-  } = useProductsQuery(queryParams);
+  } = useProductsQuery(queryParams, { enabled: isProductsEnabled });
 
   /** Updates the URL with the given param changes, preserving every other existing param. */
   function updateParams(updates: Record<string, string | undefined>, resetPage: boolean) {
@@ -165,6 +175,19 @@ export function ProductsPageContent() {
     );
   }
 
+  if (hasInvalidCountry) {
+    return (
+      <main className="flex flex-col items-center gap-3 px-7 py-16 text-center">
+        <p className="text-[13px] text-ink/60">
+          We couldn&apos;t find that country.
+        </p>
+        <Button variant="secondary" onClick={() => router.push(routes.products)}>
+          Browse all products
+        </Button>
+      </main>
+    );
+  }
+
   const categoryName = selectedCategory?.name ?? "All Products";
   const categoryDescription =
     selectedCategory?.description ??
@@ -206,7 +229,7 @@ export function ProductsPageContent() {
             />
           ) : null}
 
-          {isProductsLoading ? (
+          {isProductsLoading || !isProductsEnabled ? (
             <ProductGridSkeleton />
           ) : isProductsError ? (
             <div className="flex flex-col items-center gap-3 rounded-[10px] border border-black/[0.09] bg-white py-10 text-center">

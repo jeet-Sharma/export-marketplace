@@ -49,7 +49,7 @@ const nextConfig: NextConfig = {
       // style (<bucket>.s3.<region>.amazonaws.com/…) presigned URLs.
       {
         protocol: "https",
-        hostname: "*.amazonaws.com",
+        hostname: "**.amazonaws.com",
         pathname: "/**",
       },
 
