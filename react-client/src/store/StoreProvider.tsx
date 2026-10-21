@@ -1,6 +1,9 @@
 "use client";
 
+import { useEffect } from "react";
 import { Provider } from "react-redux";
+import { hydrateFromCookies } from "@/features/auth/authSlice";
+import { AuthExpiryWatcher } from "@/features/auth/components/AuthExpiryWatcher";
 import { store } from "./store";
 
 /**
@@ -10,5 +13,14 @@ import { store } from "./store";
  * for the browser's lifetime without needing a ref.
  */
 export function StoreProvider({ children }: { children: React.ReactNode }) {
-  return <Provider store={store}>{children}</Provider>;
+  useEffect(() => {
+    store.dispatch(hydrateFromCookies());
+  }, []);
+
+  return (
+    <Provider store={store}>
+      <AuthExpiryWatcher />
+      {children}
+    </Provider>
+  );
 }

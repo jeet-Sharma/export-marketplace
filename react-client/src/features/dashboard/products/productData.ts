@@ -15,6 +15,7 @@ export type ProductRow = {
   publication: PublicationStatus;
   exportEligibility: string;
   note?: string;
+  rawStatus?: "DRAFT" | "PUBLISHED";
 };
 
 export type ProductSummary = {

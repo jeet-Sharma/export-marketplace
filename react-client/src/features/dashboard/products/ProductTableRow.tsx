@@ -4,6 +4,11 @@ import { PRODUCT_COLUMNS } from "./productColumns";
 import type { ProductRow } from "./productData";
 import { PublicationBadge, VerificationBadge } from "./StatusBadges";
 
+import {
+  usePublishAdminProductMutation,
+  useUnpublishAdminProductMutation,
+} from "./productsApi";
+
 type ProductTableRowProps = {
   product: ProductRow;
   /** Destination for the View/Edit actions (built by the parent so the
@@ -17,6 +22,26 @@ export function ProductTableRow({
   detailHref,
   highlighted = false,
 }: ProductTableRowProps) {
+  const [publish, { isLoading: isPublishing }] = usePublishAdminProductMutation();
+  const [unpublish, { isLoading: isUnpublishing }] =
+    useUnpublishAdminProductMutation();
+
+  const isBusy = isPublishing || isUnpublishing;
+  const isPublished = product.rawStatus === "PUBLISHED";
+
+  const handleTogglePublish = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    try {
+      if (isPublished) {
+        await unpublish(product.id).unwrap();
+      } else {
+        await publish(product.id).unwrap();
+      }
+    } catch (err) {
+      console.error("Failed to update status:", err);
+    }
+  };
+
   return (
     <div
       className={
@@ -92,23 +117,26 @@ export function ProductTableRow({
       </div>
 
       {/* Row actions */}
-      <div className={`flex gap-1.5 ${PRODUCT_COLUMNS.actions}`}>
+      <div className={`flex items-center gap-1.5 ${PRODUCT_COLUMNS.actions}`}>
         <Link
           href={detailHref}
-          className={
-            highlighted
-              ? "flex h-[30px] flex-1 items-center justify-center rounded-[6px] border border-bloom-pink bg-bloom-pink text-[11px] font-bold text-white"
-              : "flex h-[30px] flex-1 items-center justify-center rounded-[6px] border border-bloom-pink bg-white text-[11px] font-bold text-bloom-pink"
-          }
+          className="flex h-[30px] flex-1 items-center justify-center rounded-[6px] border border-bloom-pink bg-white text-[11px] font-bold text-bloom-pink transition-colors hover:bg-bloom-pink hover:text-white"
         >
           View
         </Link>
-        <Link
-          href={detailHref}
-          className="flex h-[30px] flex-1 items-center justify-center rounded-[6px] border border-bloom-border bg-white text-[11px] font-semibold text-bloom-ink"
+        <button
+          type="button"
+          onClick={handleTogglePublish}
+          disabled={isBusy}
+          title={isPublished ? "Unpublish listing" : "Publish listing"}
+          className={`flex h-[30px] flex-1 items-center justify-center rounded-[6px] text-[11px] font-semibold transition-colors disabled:opacity-50 ${
+            isPublished
+              ? "border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100"
+              : "border border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
+          }`}
         >
-          Edit
-        </Link>
+          {isBusy ? "…" : isPublished ? "Unpublish" : "Publish"}
+        </button>
       </div>
     </div>
   );

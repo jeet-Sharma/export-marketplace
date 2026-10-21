@@ -17,6 +17,8 @@ export type ProductQueryState = {
   pageSize: number;
   search: string;
   sort: ProductSort;
+  status: "all" | "PUBLISHED" | "DRAFT";
+  categoryId?: string;
 };
 
 /**
@@ -34,6 +36,10 @@ export function useProductQueryParams() {
   const state: ProductQueryState = useMemo(() => {
     const rawSort = searchParams.get("sort");
     const rawPage = Number(searchParams.get("page"));
+    const rawStatus = searchParams.get("status");
+    const validStatus =
+      rawStatus === "PUBLISHED" || rawStatus === "DRAFT" ? rawStatus : "all";
+
     return {
       page: Number.isInteger(rawPage) && rawPage > 0 ? rawPage : 1,
       pageSize: PAGE_SIZE,
@@ -41,6 +47,8 @@ export function useProductQueryParams() {
       sort: VALID_SORTS.includes(rawSort as ProductSort)
         ? (rawSort as ProductSort)
         : "newest",
+      status: validStatus,
+      categoryId: searchParams.get("categoryId") ?? undefined,
     };
   }, [searchParams]);
 
@@ -51,7 +59,7 @@ export function useProductQueryParams() {
         params.delete("page");
       }
       for (const [key, value] of Object.entries(updates)) {
-        if (value === null || value === "") {
+        if (value === null || value === "" || value === "all") {
           params.delete(key);
         } else {
           params.set(key, String(value));
@@ -77,6 +85,14 @@ export function useProductQueryParams() {
     (value: number) => patch({ page: value }, false),
     [patch],
   );
+  const setStatus = useCallback(
+    (value: "all" | "PUBLISHED" | "DRAFT") => patch({ status: value }),
+    [patch],
+  );
+  const setCategoryId = useCallback(
+    (value: string | null) => patch({ categoryId: value }),
+    [patch],
+  );
 
-  return { state, setSearch, setSort, setPage };
+  return { state, setSearch, setSort, setPage, setStatus, setCategoryId };
 }

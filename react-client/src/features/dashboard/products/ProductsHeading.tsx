@@ -1,6 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { DownloadIcon, PlusIcon } from "../components/icons";
+import { CreateProductModal } from "./CreateProductModal";
 import type { ProductRow } from "./productData";
 
 type ProductsHeadingProps = {
@@ -20,6 +22,8 @@ function rowsToCsv(rows: ProductRow[]): string {
 }
 
 export function ProductsHeading({ rows }: ProductsHeadingProps) {
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
   const handleExport = () => {
     const csv = rowsToCsv(rows);
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -32,37 +36,43 @@ export function ProductsHeading({ rows }: ProductsHeadingProps) {
   };
 
   return (
-    <div className="flex w-full items-end justify-between">
-      <div className="flex flex-col gap-1.5">
-        <p className="text-[10px] font-extrabold uppercase text-bloom-pink">
-          Catalog operations
-        </p>
-        <h1 className="text-[30px] font-semibold text-bloom-ink">Products</h1>
-        <p className="text-[13px] text-bloom-muted">
-          Review listings, trade readiness, supplier verification, and
-          publication status.
-        </p>
+    <>
+      <div className="flex w-full items-end justify-between">
+        <div className="flex flex-col gap-1.5">
+          <p className="text-[10px] font-extrabold uppercase text-bloom-pink">
+            Catalog operations
+          </p>
+          <h1 className="text-[30px] font-semibold text-bloom-ink">Products</h1>
+          <p className="text-[13px] text-bloom-muted">
+            Review listings, trade readiness, supplier verification, and
+            publication status.
+          </p>
+        </div>
+        <div className="flex shrink-0 items-start gap-2">
+          <button
+            type="button"
+            onClick={handleExport}
+            disabled={rows.length === 0}
+            className="flex h-10 items-center gap-2 rounded-[10px] border border-bloom-border bg-white px-4 text-[13px] font-semibold text-bloom-ink transition-colors hover:bg-bloom-cream disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <DownloadIcon className="size-[15px]" />
+            Export CSV
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsModalOpen(true)}
+            className="flex h-10 items-center gap-2 rounded-[10px] bg-bloom-pink px-4 text-[13px] font-bold text-white shadow-sm transition-opacity hover:opacity-95"
+          >
+            <PlusIcon className="size-4" />
+            Add product
+          </button>
+        </div>
       </div>
-      <div className="flex shrink-0 items-start gap-2">
-        <button
-          type="button"
-          onClick={handleExport}
-          disabled={rows.length === 0}
-          className="flex h-10 items-center gap-2 rounded-[10px] border border-bloom-border bg-white px-4 text-[13px] font-semibold text-bloom-ink transition-colors hover:bg-bloom-cream disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <DownloadIcon className="size-[15px]" />
-          Export CSV
-        </button>
-        <button
-          type="button"
-          disabled
-          title="Product creation is coming soon"
-          className="flex h-10 cursor-not-allowed items-center gap-2 rounded-[10px] bg-bloom-pink px-4 text-[13px] font-bold text-white opacity-60"
-        >
-          <PlusIcon className="size-4" />
-          Add product
-        </button>
-      </div>
-    </div>
+
+      <CreateProductModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+      />
+    </>
   );
 }

@@ -1,3 +1,4 @@
+import { deleteCookie } from "@/lib/cookies";
 import { PRODUCT_COLUMNS } from "./productColumns";
 import type { ProductRow } from "./productData";
 import type { PaginatedResponse } from "./productTypes";
@@ -65,20 +66,32 @@ export function ProductTable({
             </p>
           ))}
         </div>
-
         {/* Body states */}
         {isError ? (
           <StateMessage
-            title="Couldn't load products"
-            detail="The request to the catalog service failed. Check that you're signed in and the API is reachable, then try again."
+            title="Session expired or unauthorized"
+            detail="Your current session token is invalid, expired, or from a previous server. Please log in again to authenticate with the Render backend."
             action={
-              <button
-                type="button"
-                onClick={onRetry}
-                className="mt-1 rounded-[8px] border border-bloom-pink bg-white px-3 py-1.5 text-[12px] font-bold text-bloom-pink"
-              >
-                Retry
-              </button>
+              <div className="mt-2 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={onRetry}
+                  className="rounded-[8px] border border-bloom-border bg-white px-3 py-1.5 text-[12px] font-bold text-bloom-ink hover:bg-bloom-cream"
+                >
+                  Retry
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    deleteCookie("access_token");
+                    deleteCookie("user_data");
+                    window.location.href = "/login?force=true";
+                  }}
+                  className="rounded-[8px] bg-bloom-pink px-4 py-1.5 text-[12px] font-bold text-white hover:opacity-90"
+                >
+                  Log in again
+                </button>
+              </div>
             }
           />
         ) : isLoading ? (

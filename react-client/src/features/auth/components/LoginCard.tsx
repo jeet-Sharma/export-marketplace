@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { ShieldCheckIcon } from "./icons";
 import { LoginForm } from "./LoginForm";
 
@@ -16,7 +17,9 @@ export function LoginCard() {
         </p>
       </div>
 
-      <LoginForm />
+      <Suspense fallback={<div className="h-44 w-full animate-pulse rounded-[10px] bg-bloom-border/30" />}>
+        <LoginForm />
+      </Suspense>
 
       <div className="flex w-full items-center gap-2 rounded-[10px] bg-bloom-green-surface px-3 py-[10px]">
         <ShieldCheckIcon className="size-4 shrink-0 text-bloom-green" />

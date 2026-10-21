@@ -33,28 +33,38 @@ function buildTradeSetup(product: ApiProduct): string[] {
 }
 
 /**
- * Map a backend product to the table row view model. The admin list endpoint
- * returns foreign-key IDs (categoryId/vendorId/sourceCountryId) but not the
- * joined display names, so those are shown as neutral placeholders rather than
- * fabricated labels — wire real names when the endpoint joins them or a
- * reference lookup is added. Image likewise isn't in the list payload yet.
+ * Map a backend product to the table row view model.
+ * Joins real category and vendor display names returned by the API.
  */
 export function mapApiProductToRow(product: ApiProduct): ProductRow {
   const isPublished = product.status === "PUBLISHED";
+  const categoryName = product.category?.name ?? "Category —";
+  const vendorName =
+    product.vendor?.companyName ??
+    product.vendor?.displayName ??
+    "Vendor —";
+  const originName =
+    product.sourceCountry?.name ??
+    product.sourceCountry?.iso2Code ??
+    "";
+  const imageUrl =
+    product.images?.[0]?.url ?? "/products/placeholder.svg";
+
   return {
     id: product.id,
     name: product.name,
-    image: "/products/placeholder.svg",
-    category: "Category —",
-    origin: "",
+    image: imageUrl,
+    category: categoryName,
+    origin: originName,
     tradeSetup: buildTradeSetup(product),
     price: formatPrice(product.price, product.currencyCode),
-    supplier: "Vendor —",
+    supplier: vendorName,
     verification: "pending",
     publication: toPublicationStatus(product.status),
     exportEligibility: product.exportEligibility
       ? `Export eligibility: ${product.exportEligibility}`
       : "Export eligibility: Pending",
     note: isPublished ? "Visible to buyers" : undefined,
+    rawStatus: product.status,
   };
 }

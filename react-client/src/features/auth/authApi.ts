@@ -14,6 +14,7 @@ export const authApi = baseApi.injectEndpoints({
         url: "/auth/login",
         method: "POST",
         body: credentials,
+        credentials: 'omit',
       }),
     }),
     logout: builder.mutation<{ success: boolean }, void>({

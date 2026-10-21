@@ -3,14 +3,27 @@ import type { DashboardRole } from "./navConfig";
 const VALID_ROLES: readonly DashboardRole[] = ["admin", "vendor", "user"];
 
 /**
- * Resolve a dashboard role from an untrusted URL searchParam value.
- * Falls back to "admin" so the route always renders a valid workspace.
- * This is view-only role switching for the demo — real role resolution
- * will come from the authenticated session, never from a client param.
+ * Map a URL `?role=` value or a backend role code (e.g. PLATFORM_ADMIN)
+ * onto the dashboard workspace keys.
  */
-export function resolveRole(value: string | string[] | undefined): DashboardRole {
-  const raw = Array.isArray(value) ? value[0] : value;
-  return VALID_ROLES.includes(raw as DashboardRole)
-    ? (raw as DashboardRole)
-    : "admin";
+export function resolveRole(
+  value: string | string[] | undefined,
+): DashboardRole {
+  const raw = (Array.isArray(value) ? value[0] : value)?.trim().toLowerCase();
+  if (!raw) {
+    return "admin";
+  }
+  if (VALID_ROLES.includes(raw as DashboardRole)) {
+    return raw as DashboardRole;
+  }
+  if (raw === "buyer") {
+    return "user";
+  }
+  if (raw.includes("vendor")) {
+    return "vendor";
+  }
+  if (raw.includes("admin")) {
+    return "admin";
+  }
+  return "admin";
 }

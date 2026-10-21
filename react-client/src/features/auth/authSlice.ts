@@ -1,21 +1,43 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
+import { getCookie, clearAuthCookies } from "@/lib/cookies";
+import { isTokenExpired } from "@/lib/jwt";
 import type { AuthUser } from "./authTypes";
 
 /**
- * Minimal global auth state (frontend-rules #24): the access token and the
- * authenticated user, nothing more. The access token is kept in memory only
- * — never localStorage — so it isn't exposed to XSS persistence; the refresh
- * token lives in an HTTP-only cookie the browser handles on its own.
+ * Global auth state hydrated from cookies on page load (F5),
+ * kept in sync with Redux memory.
  */
 export type AuthState = {
   accessToken: string | null;
   user: AuthUser | null;
 };
 
-const initialState: AuthState = {
-  accessToken: null,
-  user: null,
-};
+// Read cookies on initial browser load so refresh (F5) doesn't log the user out
+function getInitialAuthState(): AuthState {
+  if (typeof window === "undefined") {
+    return { accessToken: null, user: null };
+  }
+
+  try {
+    const token = getCookie("access_token");
+    const rawUser = getCookie("user_data");
+
+    if (!token || isTokenExpired(token)) {
+      clearAuthCookies();
+      return { accessToken: null, user: null };
+    }
+
+    return {
+      accessToken: token,
+      user: rawUser ? (JSON.parse(rawUser) as AuthUser) : null,
+    };
+  } catch {
+    clearAuthCookies();
+    return { accessToken: null, user: null };
+  }
+}
+
+const initialState: AuthState = getInitialAuthState();
 
 const authSlice = createSlice({
   name: "auth",
@@ -31,9 +53,35 @@ const authSlice = createSlice({
     clearCredentials(state) {
       state.accessToken = null;
       state.user = null;
+
+      // Clean up cookies on logout
+      clearAuthCookies();
+    },
+    hydrateFromCookies(state) {
+      if (typeof window === "undefined") {
+        return;
+      }
+      try {
+        const token = getCookie("access_token");
+        const rawUser = getCookie("user_data");
+        if (token && !isTokenExpired(token)) {
+          state.accessToken = token;
+          state.user = rawUser ? (JSON.parse(rawUser) as AuthUser) : null;
+        } else {
+          state.accessToken = null;
+          state.user = null;
+          clearAuthCookies();
+        }
+      } catch {
+        state.accessToken = null;
+        state.user = null;
+        clearAuthCookies();
+      }
     },
   },
 });
 
-export const { setCredentials, clearCredentials } = authSlice.actions;
+export const { setCredentials, clearCredentials, hydrateFromCookies } =
+  authSlice.actions;
 export const authReducer = authSlice.reducer;
+

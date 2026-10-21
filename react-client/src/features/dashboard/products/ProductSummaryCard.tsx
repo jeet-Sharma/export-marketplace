@@ -17,11 +17,40 @@ const NOTE_TONE = {
   muted: "text-bloom-muted",
 };
 
-export function ProductSummaryCard({ summary }: { summary: ProductSummary }) {
+export function ProductSummaryCard({
+  summary,
+  isActive = false,
+  onClick,
+}: {
+  summary: ProductSummary;
+  isActive?: boolean;
+  onClick?: () => void;
+}) {
   const Icon = ICONS[summary.icon];
 
   return (
-    <div className="flex flex-1 items-center gap-3 rounded-[14px] border border-[#eee9e4] bg-bloom-surface p-4 shadow-[0px_6px_20px_-4px_rgba(53,16,31,0.07)]">
+    <div
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onClick={onClick}
+      onKeyDown={
+        onClick
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onClick();
+              }
+            }
+          : undefined
+      }
+      className={`flex flex-1 items-center gap-3 rounded-[14px] border p-4 shadow-[0px_6px_20px_-4px_rgba(53,16,31,0.07)] transition-all ${
+        onClick ? "cursor-pointer hover:border-bloom-pink/40 hover:shadow-md" : ""
+      } ${
+        isActive
+          ? "border-bloom-pink bg-white ring-2 ring-bloom-pink/20"
+          : "border-[#eee9e4] bg-bloom-surface"
+      }`}
+    >
       <div
         className={`flex size-[38px] shrink-0 items-center justify-center rounded-[10px] ${summary.iconSurface}`}
       >

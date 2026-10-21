@@ -1,12 +1,14 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { useAppDispatch } from "@/store/hooks";
 import { useLoginMutation } from "../authApi";
 import { setCredentials } from "../authSlice";
+import { setCookie } from "@/lib/cookies";
+import { getTokenExpiryDate } from "@/lib/jwt";
 import { loginSchema, type LoginFormValues } from "../loginSchema";
 import {
   CheckIcon,
@@ -32,8 +34,17 @@ function getErrorMessage(error: unknown): string {
 
 export function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const dispatch = useAppDispatch();
   const [login, { isLoading }] = useLoginMutation();
+
+  const reason = searchParams.get("reason");
+  const sessionNotice =
+    reason === "expired"
+      ? "Your session has expired. Please log in again."
+      : reason === "unauthorized"
+        ? "Please sign in to access that page."
+        : null;
 
   const [showPassword, setShowPassword] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -54,9 +65,17 @@ export function LoginForm() {
       // success (frontend-rules #18). Credentials go in the POST body — never
       // the URL — so the password can't leak into history/logs.
       const result = await login(values).unwrap();
+
+      // 1. Store access token and user data in cookies (expires exactly when the JWT expires)
+      const tokenExpiry = getTokenExpiryDate(result.accessToken) ?? 7;
+      setCookie("access_token", result.accessToken, tokenExpiry);
+      setCookie("user_data", JSON.stringify(result.user), tokenExpiry);
+
+      // 2. Store in Redux memory for client components
       dispatch(
         setCredentials({ accessToken: result.accessToken, user: result.user }),
       );
+
       router.push("/dashboard");
     } catch (error) {
       setFormError(getErrorMessage(error));
@@ -146,6 +165,15 @@ export function LoginForm() {
           </button>
         </div>
       </div>
+
+      {sessionNotice ? (
+        <div
+          role="status"
+          className="rounded-[10px] border border-amber-300 bg-amber-50 px-3 py-2 text-[12px] font-semibold text-amber-800"
+        >
+          {sessionNotice}
+        </div>
+      ) : null}
 
       {formError ? (
         <p
