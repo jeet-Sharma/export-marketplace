@@ -1,4 +1,9 @@
-/** Shared label + 44px input shell for the checkout form, matching the Figma "Form field" spec (node 1:3242 etc.). */
+import { useId } from "react";
+
+/** Shared label + 44px input shell for the checkout form, matching the Figma "Form field" spec (node 1:3242 etc.).
+ * Each instance generates a stable per-render id via `useId()` so the `<label htmlFor>` is
+ * explicitly wired to its `<input>` — screen readers announce the field name reliably and
+ * clicking the label focuses the control. */
 export function CheckoutField({
   label,
   defaultValue,
@@ -8,10 +13,14 @@ export function CheckoutField({
   defaultValue?: string;
   placeholder?: string;
 }) {
+  const id = useId();
   return (
     <div className="flex flex-1 flex-col gap-1.5">
-      <label className="text-[12px] font-bold text-ink">{label}</label>
+      <label htmlFor={id} className="text-[12px] font-bold text-ink">
+        {label}
+      </label>
       <input
+        id={id}
         type="text"
         defaultValue={defaultValue}
         placeholder={placeholder}
@@ -31,11 +40,15 @@ export function CheckoutSelectField({
   defaultValue: string;
   options: string[];
 }) {
+  const id = useId();
   return (
     <div className="flex flex-1 flex-col gap-1.5">
-      <label className="text-[12px] font-bold text-ink">{label}</label>
+      <label htmlFor={id} className="text-[12px] font-bold text-ink">
+        {label}
+      </label>
       <div className="relative">
         <select
+          id={id}
           defaultValue={defaultValue}
           className="h-11 w-full appearance-none rounded-[6px] border border-border bg-white px-3 text-[13px] text-ink outline-none focus-visible:border-pink"
         >

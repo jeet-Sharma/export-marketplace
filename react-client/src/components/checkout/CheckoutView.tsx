@@ -89,8 +89,13 @@ export function CheckoutView({ product }: CheckoutViewProps) {
               />
             </div>
             <CheckoutField label="Street address" placeholder="e.g. Wijnhaven 107" />
-            <div className="flex w-full gap-3">
-              <div className="w-[180px] shrink-0">
+            {/*
+              * On small screens the three fields stack vertically to avoid
+              * horizontal overflow. At sm+ the postal-code column snaps to its
+              * fixed 180px width and the city/province fields share the rest.
+              */}
+            <div className="flex w-full flex-col gap-3 sm:flex-row">
+              <div className="w-full sm:w-[180px] sm:shrink-0">
                 <CheckoutField label="Postal code" placeholder="e.g. 3011 WN" />
               </div>
               <CheckoutField label="City" placeholder="e.g. Rotterdam" />

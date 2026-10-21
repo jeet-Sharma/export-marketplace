@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useId, useState } from "react";
 import { PlusIcon } from "../components/icons";
 import { SelectField, TextField } from "./AddProductFormFields";
 import { useCreateProductMutation } from "./productsApi";
@@ -10,6 +10,7 @@ import {
 } from "./referenceDataApi";
 import type { CreateProductPayload } from "./productTypes";
 import { useGetAdminVendorsQuery } from "../vendors/vendorsApi";
+import { AccessibleDialog } from "@/components/ui/AccessibleDialog";
 
 type ExtraDetailValueType = "Text" | "Number" | "Color";
 
@@ -47,13 +48,19 @@ function emptyDetailRow(): ExtraDetailRow {
  * (CreateProductDto) with either status=DRAFT ("Save as draft") or
  * status=PUBLISHED ("Publish product").
  *
- * Three Figma elements have no backing feature yet and are called out
+ * Four Figma elements have no full backing feature yet and are called out
  * rather than silently wired to fake behavior:
  * - "Product images" upload: there's no image-upload endpoint wired into
  *   this form (the real upload flow is presigned-URL based, see
  *   ProductsService.requestImageUploadUrl/addImage, a multi-step process
  *   this single-submit form doesn't orchestrate yet). The upload control
  *   and thumbnail grid render per the design but don't persist a file.
+ * - "Short description": saved to CreateProductDto.description — the only
+ *   free-text description field the backend exposes at this endpoint.
+ * - "Full product details": the backend has no separate long-description
+ *   field, so this input is captured but not sent. The placeholder makes
+ *   this explicit. A future richText/longDescription column on the Product
+ *   entity is the correct next step.
  * - "Quantity tiers": the Figma field is a single free-text description
  *   ("100–500 kg, 500 kg+"), but the backend's real tier concept
  *   (CreateProductDto.priceTiers) is a structured array of
@@ -117,7 +124,10 @@ export function AddProductModal({ onClose }: AddProductModalProps) {
 
     return {
       name: name.trim(),
-      description: fullDetails.trim() || undefined,
+      // shortDescription maps to the only free-text description field the
+      // backend exposes (CreateProductDto.description). fullDetails has no
+      // dedicated column yet and is intentionally excluded — see doc comment.
+      description: shortDescription.trim() || undefined,
       categoryId: categoryId || undefined,
       vendorId,
       status,
@@ -166,35 +176,16 @@ export function AddProductModal({ onClose }: AddProductModalProps) {
     );
   }
 
-  // Prevents the page behind the overlay from scrolling while this dialog
-  // is open — the dialog itself has its own internal scroll region, so
-  // the background should stay fixed rather than also moving underneath it.
-  useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, []);
+  // AccessibleDialog handles body-scroll lock, focus-move-in, Tab trapping,
+  // Escape, backdrop-click, and focus-return — no useEffect needed here.
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby={headingId}
-      className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-[#35101f]/60 p-4"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
+    <AccessibleDialog labelId={headingId} onClose={onClose}>
       {/*
-       * The overlay itself never scrolls (overflow-hidden, items-center) —
-       * only the modal body below does. The shell is capped at 90vh so it
-       * always fits the viewport with room around it (never needs the page
-       * to grow), and its width shrinks on narrower screens via the
-       * calc() clamp instead of ever triggering horizontal scroll.
-       */}
-      <div className="flex max-h-[90vh] w-[min(800px,100%)] flex-col overflow-hidden rounded-[18px] border border-[#eee9e4] bg-bloom-card shadow-[0px_18px_48px_-12px_rgba(53,16,31,0.12)]">
+       * AccessibleDialog renders the panel shell (role=dialog, aria-modal,
+       * aria-labelledby, max-h, rounded, shadow). The children below are the
+       * scrollable header + body + footer that go inside it.
+       */
         {/* Modal header */}
         <div className="flex items-center justify-between border-b border-[#eee9e4] px-6 py-5">
           <div className="flex max-w-[620px] flex-col gap-1">
@@ -286,7 +277,7 @@ export function AddProductModal({ onClose }: AddProductModalProps) {
                 label="Full product details"
                 value={fullDetails}
                 onChange={setFullDetails}
-                placeholder="Add origin, certifications, and key features"
+                placeholder="Add origin, certifications, and key features (not saved yet — no long-description field exists)"
               />
             </div>
           </section>
@@ -535,6 +526,6 @@ export function AddProductModal({ onClose }: AddProductModalProps) {
           </div>
         </div>
       </div>
-    </div>
+    </AccessibleDialog>
   );
 }

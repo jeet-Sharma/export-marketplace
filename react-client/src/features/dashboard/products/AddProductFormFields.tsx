@@ -1,16 +1,27 @@
+import { useId } from "react";
 import type { ReactNode } from "react";
 
-/** Shared label + 40px input shell, matching every field in the Figma "Add product" modal (node 1:4180). */
+/** Shared label + 40px input shell, matching every field in the Figma "Add product" modal (node 1:4180).
+ *
+ * `htmlFor` is required so the rendered `<label>` is explicitly associated with
+ * its control — screen readers can reliably announce the field name, and clicking
+ * the label focuses the input/select. Callers (TextField, SelectField) generate a
+ * stable id via `useId()` and pass it here. */
 export function FieldShell({
   label,
+  htmlFor,
   children,
 }: {
   label: string;
+  /** Must match the `id` on the child control. */
+  htmlFor: string;
   children: ReactNode;
 }) {
   return (
     <div className="flex flex-1 flex-col gap-1.5">
-      <label className="text-[11px] font-bold text-bloom-ink">{label}</label>
+      <label htmlFor={htmlFor} className="text-[11px] font-bold text-bloom-ink">
+        {label}
+      </label>
       {children}
     </div>
   );
@@ -35,10 +46,12 @@ export function TextField({
   suffix?: string;
   type?: "text" | "number";
 }) {
+  const id = useId();
   return (
-    <FieldShell label={label}>
+    <FieldShell label={label} htmlFor={id}>
       <div className={`flex items-center ${inputBaseClasses}`}>
         <input
+          id={id}
           type={type}
           value={value}
           onChange={(e) => onChange(e.target.value)}
@@ -66,10 +79,12 @@ export function SelectField({
   placeholder: string;
   options: { value: string; label: string }[];
 }) {
+  const id = useId();
   return (
-    <FieldShell label={label}>
+    <FieldShell label={label} htmlFor={id}>
       <div className="relative">
         <select
+          id={id}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           className={`${inputBaseClasses} appearance-none ${
