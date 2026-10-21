@@ -18,6 +18,8 @@ export const routes = {
   products: "/products",
   /** `slug` must be the product's real API slug (ApiProductListItem.slug) — never a value re-derived from its display name. */
   product: (slug: string) => `/products/${slug}`,
+  /** UI-only checkout page (no backend yet) reached from a product's "Buy now" action. */
+  checkout: (slug: string) => `/checkout/${slug}`,
   /**
    * Category-filtered listing. Uses the existing `/products` page with a
    * `category` query param (no separate `/categories/[slug]` route exists

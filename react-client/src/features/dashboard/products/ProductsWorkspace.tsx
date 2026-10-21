@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import { AddProductModal } from "./AddProductModal";
 import { mapApiProductToRow } from "./mapProduct";
 import type { ProductSummary } from "./productData";
 import { ProductControls } from "./ProductControls";
@@ -18,6 +20,8 @@ type ProductsWorkspaceProps = {
 export function ProductsWorkspace({ role }: ProductsWorkspaceProps) {
   const { state, setSearch, setSort, setPage, setStatus, setCategoryId } =
     useProductQueryParams();
+  const [isAddProductOpen, setIsAddProductOpen] = useState(false);
+
 
   // Primary list query respecting all active filters
   const { data, isLoading, isFetching, isError, refetch } =
@@ -89,7 +93,7 @@ export function ProductsWorkspace({ role }: ProductsWorkspaceProps) {
 
   return (
     <>
-      <ProductsHeading rows={rows} />
+      <ProductsHeading rows={rows} onAddProduct={() => setIsAddProductOpen(true)} />
 
       <div className="flex w-full flex-col gap-3 sm:flex-row">
         {dynamicSummaries.map((summary) => {
@@ -139,6 +143,10 @@ export function ProductsWorkspace({ role }: ProductsWorkspaceProps) {
         onRetry={refetch}
         onPageChange={setPage}
       />
+
+      {isAddProductOpen ? (
+        <AddProductModal onClose={() => setIsAddProductOpen(false)} />
+      ) : null}
     </>
   );
 }

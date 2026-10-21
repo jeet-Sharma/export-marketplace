@@ -2,6 +2,7 @@ import { baseApi } from "@/store/baseApi";
 import type {
   AdminProductsQuery,
   ApiProduct,
+  CreateProductPayload,
   ApiVendor,
   CreateProductInput,
   PaginatedResponse,
@@ -44,18 +45,31 @@ export const productsApi = baseApi.injectEndpoints({
       providesTags: (result) =>
         result
           ? [
-              ...result.items.map((p) => ({
-                type: "Product" as const,
-                id: p.id,
-              })),
-              { type: "ProductList" as const, id: "LIST" },
-            ]
+            ...result.items.map((p) => ({
+              type: "Product" as const,
+              id: p.id,
+            })),
+            { type: "ProductList" as const, id: "LIST" },
+          ]
           : [{ type: "ProductList" as const, id: "LIST" }],
     }),
 
     getAdminProduct: builder.query<ApiProduct, string>({
       query: (id) => ({ url: `/admin/products/${id}` }),
       providesTags: (_result, _error, id) => [{ type: "Product", id }],
+    }),
+
+    // POST /admin/products (section 6.3). May be saved as DRAFT or
+    // request immediate PUBLISHED status via payload.status — see
+    // CreateProductDto on the backend. Invalidates the list so a newly
+    // created product shows up without a manual refetch.
+    createProduct: builder.mutation<ApiProduct, CreateProductPayload>({
+      query: (payload) => ({
+        url: "/admin/products",
+        method: "POST",
+        body: payload,
+      }),
+      invalidatesTags: [{ type: "ProductList", id: "LIST" }],
     }),
 
     createAdminProduct: builder.mutation<ApiProduct, CreateProductInput>({
@@ -131,6 +145,7 @@ export const productsApi = baseApi.injectEndpoints({
       }),
       invalidatesTags: (_result, _error, { productId }) => [
         { type: "Product", id: productId },
+        { type: "ProductList", id: "LIST" },
       ],
     }),
 
@@ -144,6 +159,7 @@ export const productsApi = baseApi.injectEndpoints({
       }),
       invalidatesTags: (_result, _error, { productId }) => [
         { type: "Product", id: productId },
+        { type: "ProductList", id: "LIST" },
       ],
     }),
 
@@ -157,6 +173,7 @@ export const productsApi = baseApi.injectEndpoints({
 export const {
   useGetAdminProductsQuery,
   useGetAdminProductQuery,
+  useCreateProductMutation,
   useCreateAdminProductMutation,
   useUpdateAdminProductMutation,
   usePublishAdminProductMutation,

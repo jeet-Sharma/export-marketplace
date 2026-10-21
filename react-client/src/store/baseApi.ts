@@ -44,8 +44,8 @@ const baseQueryWithReauth: BaseQueryFn<
   unknown,
   FetchBaseQueryError
 > = async (args, api, extraOptions) => {
-  const isLoginEndpoint =
-    typeof args === "object" && "url" in args && args.url.includes("login");
+  const url = typeof args === "string" ? args : args.url;
+  const isLoginEndpoint = Boolean(url && url.includes("login"));
 
   // Pre-flight check: If access token has expired, purge cookies immediately
   // and abort before sending an invalid request to the backend.
