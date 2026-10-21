@@ -10,10 +10,15 @@ import { AppModule } from '../src/app.module.js';
 // .github/workflows/ci.yml, which provisions both before this runs).
 //
 // A DatabaseModule mock was used here previously so e2e tests could run
-// without any DB infrastructure. That stopped being possible once
-// AuthModule (the first controller-bearing module needing a live
-// DataSource) was added to AppModule — see app.module.ts's comment on
-// AuthModule. If a future module needs to be tested without touching
+// without any DB infrastructure. That stopped being possible once every
+// domain entity (Identity, Reference Data, Catalog, Inventory) started
+// using Postgres-specific column types (char, jsonb, numeric with
+// precision, generated/STORED columns) that an in-memory SQLite substitute
+// cannot represent, and once AuthModule (the first controller-bearing
+// module needing a live DataSource) was added to AppModule — see
+// app.module.ts's comment on AuthModule. `synchronize` is hard-disabled
+// everywhere (db.config.ts) because the schema is owned by migrations, not
+// entity auto-sync. If a future module needs to be tested without touching
 // Postgres, prefer a focused unit test with a mocked repository over
 // re-introducing a DatabaseModule-wide mock here.
 describe('AppController (e2e)', () => {

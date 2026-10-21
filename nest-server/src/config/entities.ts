@@ -18,6 +18,15 @@ import { CountryEntity } from '../modules/reference-data/entities/country.entity
 import { CurrencyEntity } from '../modules/reference-data/entities/currency.entity.js';
 import { ExchangeRateEntity } from '../modules/reference-data/entities/exchange-rate.entity.js';
 import { HsCodeEntity } from '../modules/reference-data/entities/hs-code.entity.js';
+import { ProductEntity } from '../modules/catalog/entities/product.entity.js';
+import { ProductTargetCountryEntity } from '../modules/catalog/entities/product-target-country.entity.js';
+import { ProductPriceTierEntity } from '../modules/catalog/entities/product-price-tier.entity.js';
+import { ProductMediaEntity } from '../modules/catalog/entities/product-media.entity.js';
+import { ProductApprovalLogEntity } from '../modules/catalog/entities/product-approval-log.entity.js';
+import { InventoryEntity } from '../modules/inventory/entities/inventory.entity.js';
+import { StockReservationEntity } from '../modules/inventory/entities/stock-reservation.entity.js';
+import { StockMovementEntity } from '../modules/inventory/entities/stock-movement.entity.js';
+import { StockAlertEntity } from '../modules/inventory/entities/stock-alert.entity.js';
 
 /**
  * The single, authoritative list of TypeORM entities.
@@ -52,4 +61,13 @@ export const ENTITIES = [
   RolePermissionEntity,
   UserRoleEntity,
   AuditLogEntity,
+  ProductEntity,
+  ProductTargetCountryEntity,
+  ProductPriceTierEntity,
+  ProductMediaEntity,
+  ProductApprovalLogEntity,
+  InventoryEntity,
+  StockReservationEntity,
+  StockMovementEntity,
+  StockAlertEntity,
 ];

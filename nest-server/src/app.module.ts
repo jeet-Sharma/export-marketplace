@@ -6,6 +6,10 @@ import { AppConfigModule } from './config/config.module.js';
 import { DatabaseModule } from './modules/database/database.module.js';
 import { StorageModule } from './modules/storage/storage.module.js';
 import { MessagingModule } from './modules/messaging/messaging.module.js';
+import { ReferenceDataModule } from './modules/reference-data/reference-data.module.js';
+import { IdentityModule } from './modules/identity/identity.module.js';
+import { CatalogModule } from './modules/catalog/catalog.module.js';
+import { InventoryModule } from './modules/inventory/inventory.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
@@ -41,20 +45,28 @@ const observeImports =
     // real AWS in production. See docker-compose.yml and .env.example.
     StorageModule,
     MessagingModule,
-    // AuthModule (POST /auth/register) is the first module with an actual
-    // controller that needs the real DataSource. test/*.e2e-spec.ts no
-    // longer mocks DatabaseModule (it boots against a real Postgres), and
-    // .github/workflows/ci.yml's "API" job provisions a Postgres service
-    // container + runs migrations before the e2e step.
+    // Reference Data, Identity, Catalog and Inventory
+    // (Data_Modeling_Complete.md Parts 1-4) — REST APIs for the vendor
+    // product/approval workflow and stock. ReferenceDataModule must load
+    // first: OrganizationEntity (Identity) and ProductEntity (Catalog)
+    // both have @ManyToOne relations into CountryEntity/CurrencyEntity, so
+    // those entities must be registered somewhere in the module graph for
+    // TypeORM to resolve them, even though no controller here reads from
+    // ReferenceDataModule directly yet. IdentityModule loads before
+    // CatalogModule, which imports it for cross-module entities
+    // (organization, vendor_target_country).
+    ReferenceDataModule,
+    IdentityModule,
+    CatalogModule,
+    InventoryModule,
+    // AuthModule (POST /auth/register) is the first module whose
+    // controller/service actually reaches Identity entities through Nest
+    // DI transactions (DataSource.transaction, not @InjectRepository) —
+    // see AuthModule's own doc comment. Placed after
+    // Identity/Catalog/Inventory since it depends on RoleEntity being
+    // seeded by the SeedBuyerRole migration, which itself depends on
+    // CreateCompaniesPeopleAccess having already run.
     AuthModule,
-    // Note: ReferenceDataModule/IdentityModule (Data_Modeling_Complete.md
-    // Parts 1-2 entities) are intentionally NOT imported here yet — nothing
-    // has a controller/service that reads or writes them through Nest DI
-    // yet (AuthModule reaches their entities via DataSource.transaction
-    // directly, not via these modules). The entities are still registered
-    // with the real DataSource via db.config.ts's `entities` array, so
-    // migrations/schema work today; wire each module in once its first
-    // real consumer (a controller/service) is built.
   ],
   controllers: [AppController],
   providers: [AppService],
