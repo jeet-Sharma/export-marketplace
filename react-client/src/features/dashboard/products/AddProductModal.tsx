@@ -185,8 +185,8 @@ export function AddProductModal({ onClose }: AddProductModalProps) {
        * AccessibleDialog renders the panel shell (role=dialog, aria-modal,
        * aria-labelledby, max-h, rounded, shadow). The children below are the
        * scrollable header + body + footer that go inside it.
-       */
-        {/* Modal header */}
+       */}
+      {/* Modal header */}
         <div className="flex items-center justify-between border-b border-[#eee9e4] px-6 py-5">
           <div className="flex max-w-[620px] flex-col gap-1">
             <p className="text-[10px] font-extrabold uppercase text-bloom-pink">
@@ -525,7 +525,6 @@ export function AddProductModal({ onClose }: AddProductModalProps) {
             </button>
           </div>
         </div>
-      </div>
     </AccessibleDialog>
   );
 }
