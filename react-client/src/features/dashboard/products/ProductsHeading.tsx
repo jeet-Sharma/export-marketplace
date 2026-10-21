@@ -5,6 +5,7 @@ import type { ProductRow } from "./productData";
 
 type ProductsHeadingProps = {
   rows: ProductRow[];
+  onAddProduct: () => void;
 };
 
 /** Serialize the currently loaded rows to a CSV string, quoting every field. */
@@ -19,7 +20,7 @@ function rowsToCsv(rows: ProductRow[]): string {
   return [header.map(escape).join(","), ...lines].join("\r\n");
 }
 
-export function ProductsHeading({ rows }: ProductsHeadingProps) {
+export function ProductsHeading({ rows, onAddProduct }: ProductsHeadingProps) {
   const handleExport = () => {
     const csv = rowsToCsv(rows);
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -55,9 +56,8 @@ export function ProductsHeading({ rows }: ProductsHeadingProps) {
         </button>
         <button
           type="button"
-          disabled
-          title="Product creation is coming soon"
-          className="flex h-10 cursor-not-allowed items-center gap-2 rounded-[10px] bg-bloom-pink px-4 text-[13px] font-bold text-white opacity-60"
+          onClick={onAddProduct}
+          className="flex h-10 items-center gap-2 rounded-[10px] bg-bloom-pink px-4 text-[13px] font-bold text-white transition-colors hover:bg-pink-hover"
         >
           <PlusIcon className="size-4" />
           Add product

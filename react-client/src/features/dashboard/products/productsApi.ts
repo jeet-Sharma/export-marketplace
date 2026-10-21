@@ -2,6 +2,7 @@ import { baseApi } from "@/store/baseApi";
 import type {
   AdminProductsQuery,
   ApiProduct,
+  CreateProductPayload,
   PaginatedResponse,
 } from "./productTypes";
 
@@ -45,8 +46,24 @@ export const productsApi = baseApi.injectEndpoints({
       query: (id) => ({ url: `/admin/products/${id}` }),
       providesTags: (_result, _error, id) => [{ type: "Product", id }],
     }),
+
+    // POST /admin/products (section 6.3). May be saved as DRAFT or
+    // request immediate PUBLISHED status via payload.status — see
+    // CreateProductDto on the backend. Invalidates the list so a newly
+    // created product shows up without a manual refetch.
+    createProduct: builder.mutation<ApiProduct, CreateProductPayload>({
+      query: (payload) => ({
+        url: "/admin/products",
+        method: "POST",
+        body: payload,
+      }),
+      invalidatesTags: [{ type: "ProductList", id: "LIST" }],
+    }),
   }),
 });
 
-export const { useGetAdminProductsQuery, useGetAdminProductQuery } =
-  productsApi;
+export const {
+  useGetAdminProductsQuery,
+  useGetAdminProductQuery,
+  useCreateProductMutation,
+} = productsApi;

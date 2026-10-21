@@ -3,6 +3,7 @@ import { ProductBreadcrumb } from "@/components/products/ProductBreadcrumb";
 import { ProductDetailTabs } from "@/components/products/ProductDetailTabs";
 import { ProductGallery } from "@/components/products/ProductGallery";
 import { ProductPriceTiers } from "@/components/products/ProductPriceTiers";
+import { ProductPurchaseActions } from "@/components/products/ProductPurchaseActions";
 import { ProductQuantityTiers } from "@/components/products/ProductQuantityTiers";
 import { ProductShippingSummary } from "@/components/products/ProductShippingSummary";
 import { ProductSpecifications } from "@/components/products/ProductSpecifications";
@@ -26,10 +27,12 @@ interface ProductDetailViewProps {
  * requirements: "Only display fields supported by the actual API
  * response. Do not invent data." Several Figma elements have no backing
  * data at all and are intentionally omitted rather than faked:
- * organic/verified badges, buyer-inquiry counts, cart/buy-now/RFQ actions
- * (Phase 1 excludes cart/checkout/RFQ), save/heart button, document
- * checklist, and the supplier "verification overview" grid — none of
- * these have a corresponding database field or feature today.
+ * organic/verified badges, buyer-inquiry counts, save/heart button,
+ * document checklist, and the supplier "verification overview" grid —
+ * none of these have a corresponding database field or feature today.
+ * The "Request a quote" / "Add to cart" / "Buy now" buttons ARE rendered
+ * (per design), but as disabled placeholders — see
+ * ProductPurchaseActions's own comment for why.
  *
  * For fields the API DOES support but returned no value for on a given
  * product, we render a literal "—" instead of hiding the field, so the
@@ -96,6 +99,8 @@ export function ProductDetailView({ product, relatedProducts }: ProductDetailVie
                 )}
               </div>
             </div>
+
+            <ProductPurchaseActions slug={product.slug} />
 
             <Link
               href={routes.products}
