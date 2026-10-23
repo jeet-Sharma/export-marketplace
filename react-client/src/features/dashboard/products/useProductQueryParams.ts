@@ -80,7 +80,7 @@ export function useProductQueryParams() {
         params.delete("page");
       }
       for (const [key, value] of Object.entries(updates)) {
-        if (value === null || value === "" || value === "all") {
+        if (value === null || value === "" || (key === "status" && value === "all")) {
           params.delete(key);
         } else {
           params.set(key, String(value));
