@@ -3,7 +3,6 @@ import type {
   AdminProductsQuery,
   ApiProduct,
   CreateProductPayload,
-  ApiVendor,
   CreateProductInput,
   PaginatedResponse,
   ProductImageResponse,
@@ -16,6 +15,7 @@ import type {
  * Server state owner is RTK Query cache with proper invalidation tags.
  */
 export const productsApi = baseApi.injectEndpoints({
+  overrideExisting: true,
   endpoints: (builder) => ({
     getAdminProducts: builder.query<
       PaginatedResponse<ApiProduct>,
@@ -120,7 +120,12 @@ export const productsApi = baseApi.injectEndpoints({
 
     requestImageUploadUrl: builder.mutation<
       UploadUrlResponse,
-      { productId: string; filename: string; contentType: string }
+      {
+        productId: string;
+        filename: string;
+        contentType: string;
+        contentLengthBytes: number;
+      }
     >({
       query: ({ productId, ...body }) => ({
         url: `/admin/products/${productId}/images/upload-url`,
@@ -136,6 +141,7 @@ export const productsApi = baseApi.injectEndpoints({
         objectKey: string;
         sortOrder?: number;
         altText?: string;
+        isPrimary?: boolean;
       }
     >({
       query: ({ productId, ...body }) => ({
@@ -162,11 +168,6 @@ export const productsApi = baseApi.injectEndpoints({
         { type: "ProductList", id: "LIST" },
       ],
     }),
-
-    getAdminVendors: builder.query<{ items: ApiVendor[] }, void>({
-      query: () => "/admin/vendors",
-      providesTags: [{ type: "Vendor", id: "LIST" }],
-    }),
   }),
 });
 
@@ -181,5 +182,6 @@ export const {
   useRequestImageUploadUrlMutation,
   useAddProductImageMutation,
   useRemoveProductImageMutation,
-  useGetAdminVendorsQuery,
 } = productsApi;
+
+export { useGetAdminVendorsQuery } from "../vendors/vendorsApi";

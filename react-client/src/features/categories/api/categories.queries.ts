@@ -8,6 +8,7 @@ import type { ApiCategory } from "../types/category-api.types";
  * without modification.
  */
 const categoriesApi = baseApi.injectEndpoints({
+  overrideExisting: true,
   endpoints: (builder) => ({
     /** GET /api/v1/categories — active categories for navigation/filtering (section 11). */
     getCategories: builder.query<ApiCategory[], void>({

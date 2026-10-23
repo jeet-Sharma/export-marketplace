@@ -155,8 +155,11 @@ export type UpdateProductInput = Partial<Omit<CreateProductInput, "status">>;
 
 export type UploadUrlResponse = {
   uploadUrl: string;
-  objectKey: string;
+  objectKey?: string;
   key?: string;
+  httpMethod?: "POST" | "PUT";
+  fields?: Record<string, string>;
+  expiresInSeconds?: number;
   expiresAt?: string;
 };
 

@@ -8,6 +8,7 @@ import type { ApiCountry } from "../types/country-api.types";
  * without modification.
  */
 const countriesApi = baseApi.injectEndpoints({
+  overrideExisting: true,
   endpoints: (builder) => ({
     /** GET /api/v1/countries — active countries for shipping/origin filters (public). */
     getCountries: builder.query<ApiCountry[], void>({

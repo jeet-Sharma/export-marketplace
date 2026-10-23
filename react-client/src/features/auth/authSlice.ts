@@ -1,6 +1,5 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
-import { getCookie, clearAuthCookies } from "@/lib/cookies";
-import { isTokenExpired } from "@/lib/jwt";
+import { getCookie, deleteCookie } from "@/lib/cookies";
 import type { AuthUser } from "./authTypes";
 
 /**
@@ -22,17 +21,11 @@ function getInitialAuthState(): AuthState {
     const token = getCookie("access_token");
     const rawUser = getCookie("user_data");
 
-    if (!token || isTokenExpired(token)) {
-      clearAuthCookies();
-      return { accessToken: null, user: null };
-    }
-
     return {
-      accessToken: token,
+      accessToken: token ?? null,
       user: rawUser ? (JSON.parse(rawUser) as AuthUser) : null,
     };
   } catch {
-    clearAuthCookies();
     return { accessToken: null, user: null };
   }
 }
@@ -55,33 +48,12 @@ const authSlice = createSlice({
       state.user = null;
 
       // Clean up cookies on logout
-      clearAuthCookies();
-    },
-    hydrateFromCookies(state) {
-      if (typeof window === "undefined") {
-        return;
-      }
-      try {
-        const token = getCookie("access_token");
-        const rawUser = getCookie("user_data");
-        if (token && !isTokenExpired(token)) {
-          state.accessToken = token;
-          state.user = rawUser ? (JSON.parse(rawUser) as AuthUser) : null;
-        } else {
-          state.accessToken = null;
-          state.user = null;
-          clearAuthCookies();
-        }
-      } catch {
-        state.accessToken = null;
-        state.user = null;
-        clearAuthCookies();
-      }
+      deleteCookie("access_token");
+      deleteCookie("user_data");
     },
   },
 });
 
-export const { setCredentials, clearCredentials, hydrateFromCookies } =
-  authSlice.actions;
+export const { setCredentials, clearCredentials } = authSlice.actions;
 export const authReducer = authSlice.reducer;
 

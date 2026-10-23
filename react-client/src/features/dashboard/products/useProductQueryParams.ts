@@ -10,6 +10,14 @@ const VALID_SORTS: readonly ProductSort[] = [
   "price_desc",
 ];
 
+// FIX: UUID v4 regex used to validate ?categoryId= before forwarding to the
+// API. Without this, any raw string in the URL (a slug, a display name, an
+// empty string, etc.) was passed verbatim to GET /admin/products where the
+// backend's @IsUUID() validator returns a 400. This mirrors the same allowlist
+// pattern already used above for `sort` and `status`.
+const UUID_V4_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const PAGE_SIZE = 10;
 
 export type ProductQueryState = {
@@ -40,6 +48,15 @@ export function useProductQueryParams() {
     const validStatus =
       rawStatus === "PUBLISHED" || rawStatus === "DRAFT" ? rawStatus : "all";
 
+    // FIX: Validate categoryId as a proper UUID v4 before returning it.
+    // Previously: `searchParams.get("categoryId") ?? undefined`
+    // That forwarded any raw string (slug, display name, empty string) straight
+    // to the admin products API, causing a 400 from @IsUUID() validation.
+    // Now: only a well-formed UUID passes through; everything else → undefined,
+    // which the downstream spread `...(categoryId ? { categoryId } : {})`
+    // in productsApi.ts correctly omits from the request params.
+    const rawCategoryId = searchParams.get("categoryId");
+
     return {
       page: Number.isInteger(rawPage) && rawPage > 0 ? rawPage : 1,
       pageSize: PAGE_SIZE,
@@ -48,7 +65,11 @@ export function useProductQueryParams() {
         ? (rawSort as ProductSort)
         : "newest",
       status: validStatus,
-      categoryId: searchParams.get("categoryId") ?? undefined,
+      // FIX: Only forward categoryId when it is a valid UUID v4.
+      categoryId:
+        rawCategoryId && UUID_V4_RE.test(rawCategoryId)
+          ? rawCategoryId
+          : undefined,
     };
   }, [searchParams]);
 
@@ -94,5 +115,24 @@ export function useProductQueryParams() {
     [patch],
   );
 
-  return { state, setSearch, setSort, setPage, setStatus, setCategoryId };
+  const resetParams = useCallback(
+    (newStatus?: "all" | "PUBLISHED" | "DRAFT") => {
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete("search");
+      params.delete("page");
+      params.delete("categoryId");
+      if (newStatus && newStatus !== "all") {
+        params.set("status", newStatus);
+      } else {
+        params.delete("status");
+      }
+      const queryString = params.toString();
+      router.replace(queryString ? `${pathname}?${queryString}` : pathname, {
+        scroll: false,
+      });
+    },
+    [router, pathname, searchParams],
+  );
+
+  return { state, setSearch, setSort, setPage, setStatus, setCategoryId, resetParams };
 }

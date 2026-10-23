@@ -22,7 +22,6 @@ export function ProductsWorkspace({ role }: ProductsWorkspaceProps) {
     useProductQueryParams();
   const [isAddProductOpen, setIsAddProductOpen] = useState(false);
 
-
   // Primary list query respecting all active filters
   const { data, isLoading, isFetching, isError, refetch } =
     useGetAdminProductsQuery({
@@ -93,7 +92,15 @@ export function ProductsWorkspace({ role }: ProductsWorkspaceProps) {
 
   return (
     <>
-      <ProductsHeading rows={rows} onAddProduct={() => setIsAddProductOpen(true)} />
+      <ProductsHeading
+        onAddProduct={() => setIsAddProductOpen(true)}
+        exportQuery={{
+          search: state.search || undefined,
+          sort: state.sort,
+          status: state.status === "all" ? undefined : state.status,
+          categoryId: state.categoryId || undefined,
+        }}
+      />
 
       <div className="flex w-full flex-col gap-3 sm:flex-row">
         {dynamicSummaries.map((summary) => {
@@ -101,8 +108,8 @@ export function ProductsWorkspace({ role }: ProductsWorkspaceProps) {
             summary.key === "all"
               ? state.status === "all"
               : summary.key === "published"
-              ? state.status === "PUBLISHED"
-              : state.status === "DRAFT";
+                ? state.status === "PUBLISHED"
+                : state.status === "DRAFT";
 
           const handleClick = () => {
             if (summary.key === "all") setStatus("all");

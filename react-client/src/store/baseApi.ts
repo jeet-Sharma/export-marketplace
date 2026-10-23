@@ -94,6 +94,9 @@ const baseQueryWithReauth: BaseQueryFn<
 export const baseApi = createApi({
   reducerPath: "api",
   baseQuery: baseQueryWithReauth,
-  tagTypes: ["Product", "ProductList", "Category", "Country", "Vendor"],
+  // FIX: Added "PublicProductList" so the public catalogue uses its own tag,
+  // separate from the admin "ProductList" tag. This prevents createProduct
+  // mutations from invalidating and refetching GET /products with undefined params.
+  tagTypes: ["Product", "ProductList", "PublicProductList", "Category", "Country", "Vendor"],
   endpoints: () => ({}),
 });

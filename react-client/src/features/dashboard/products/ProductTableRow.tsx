@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { PRODUCT_COLUMNS } from "./productColumns";
@@ -26,6 +27,20 @@ export function ProductTableRow({
   const [unpublish, { isLoading: isUnpublishing }] =
     useUnpublishAdminProductMutation();
 
+  const [imgSrc, setImgSrc] = useState<string>(() => {
+    return product.image && product.image.trim()
+      ? product.image
+      : "/products/placeholder.svg";
+  });
+
+  useEffect(() => {
+    setImgSrc(
+      product.image && product.image.trim()
+        ? product.image
+        : "/products/placeholder.svg",
+    );
+  }, [product.image]);
+
   const isBusy = isPublishing || isUnpublishing;
   const isPublished = product.rawStatus === "PUBLISHED";
 
@@ -42,6 +57,11 @@ export function ProductTableRow({
     }
   };
 
+  const safeImgSrc =
+    imgSrc && typeof imgSrc === "string" && imgSrc.trim().length > 0
+      ? imgSrc.trim()
+      : "/products/placeholder.svg";
+
   return (
     <div
       className={
@@ -53,10 +73,12 @@ export function ProductTableRow({
       {/* Product identity */}
       <div className={`flex items-center gap-3 ${PRODUCT_COLUMNS.product}`}>
         <Image
-          src={product.image}
-          alt={product.name}
+          src={safeImgSrc}
+          alt={product.name || "Product"}
           width={54}
           height={54}
+          unoptimized
+          onError={() => setImgSrc("/products/placeholder.svg")}
           className="size-[54px] shrink-0 rounded-[10px] object-cover"
         />
         <div className="flex min-w-0 flex-col gap-1">

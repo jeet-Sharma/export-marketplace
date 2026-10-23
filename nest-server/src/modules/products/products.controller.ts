@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
   HttpCode,
   HttpStatus,
   Param,
@@ -10,8 +11,11 @@ import {
   Patch,
   Post,
   Query,
+  Res,
+  StreamableFile,
   UseGuards,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import {
   ApiBearerAuth,
   ApiNoContentResponse,
@@ -55,7 +59,7 @@ import { ProductsService } from './products.service.js';
 @Controller('admin/products')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class ProductsController {
-  constructor(private readonly productsService: ProductsService) { }
+  constructor(private readonly productsService: ProductsService) {}
 
   @ApiOperation({ summary: 'List drafts and published products (section 6.1)' })
   @ApiOkResponse({
@@ -69,6 +73,32 @@ export class ProductsController {
     return this.productsService.findAll(query);
   }
 
+  // IMPORTANT: this literal route MUST come before @Get(':id') so NestJS
+  // matches the static path first and does not treat "export" as an :id param.
+  @ApiOperation({
+    summary: 'Export all matching products as a CSV file',
+    description:
+      'Streams a CSV with columns: Product Name, Minimum Order Quantity, ' +
+      'Price, Vendor Name, Status. Accepts the same filter/sort query params ' +
+      'as GET /admin/products but ignores page/pageSize — every matching row ' +
+      'is included.',
+  })
+  @ApiOkResponse({ description: 'CSV file download.' })
+  @Get('export/csv')
+  @RequirePermissions('product.view')
+  @Header('Content-Type', 'text/csv; charset=utf-8')
+  async exportCsv(
+    @Query() query: QueryAdminProductsDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<StreamableFile> {
+    res.setHeader(
+      'Content-Disposition',
+      'attachment; filename="products.csv"',
+    );
+    const stream = await this.productsService.exportProductsCsv(query);
+    return new StreamableFile(stream);
+  }
+
   @ApiOperation({ summary: 'Get one product for management (section 6.2)' })
   @ApiParam({ name: 'id', format: 'uuid' })
   @ApiOkResponse({
@@ -80,7 +110,6 @@ export class ProductsController {
   findOne(@Param('id', ParseUUIDPipe) id: string): Promise<ProductDetailDto> {
     return this.productsService.findOneForAdmin(id);
   }
-
 
   @ApiOperation({
     summary: 'Create a product (section 6.3)',
@@ -97,7 +126,6 @@ export class ProductsController {
     // client-supplied value — see API spec section 6.3 and security-rules.md.
     return this.productsService.create(dto, user.sub);
   }
-
 
   @ApiOperation({ summary: 'Partially update a product (section 6.4)' })
   @ApiParam({ name: 'id', format: 'uuid' })

@@ -42,6 +42,10 @@ import type { QueryAdminProductsDto } from './dto/query-admin-products.dto.js';
 import { UploadUrlResponseDto } from './dto/upload-url-response.dto.js';
 import type { UpdateProductDto } from './dto/update-product.dto.js';
 import { randomUUID } from 'node:crypto';
+import { PassThrough, Transform } from 'node:stream';
+import { pipeline } from 'node:stream';
+import { stringify } from 'csv-stringify';
+import type { Readable } from 'node:stream';
 
 const PRESIGNED_UPLOAD_URL_TTL_SECONDS = 900;
 
@@ -951,5 +955,141 @@ export class ProductsService {
       candidate = `${baseOrFallback}-${suffix}`;
     }
     return candidate;
+  }
+
+
+  /**
+   * Streams all products matching the supplied filters as a CSV download.
+   *
+   * Only the five columns required for the export are selected:
+   *   Name, MOQ, Price, Vendor Name, Status.
+   *
+   * Pagination (page/pageSize) is intentionally NOT applied so the
+   * download always contains every matching row, not one page.
+   *
+   * The readable stream is returned immediately; CSV bytes are produced
+   * lazily as the TypeORM cursor reads rows from the database.  The
+   * controller wraps this in a StreamableFile with
+   * Content-Disposition: attachment so the browser starts a download.
+   */
+  async exportProductsCsv(query: QueryAdminProductsDto): Promise<Readable> {
+    // ----------------------------------------------------------------
+    // Build query — same filters as findAll(), NO pagination
+    // ----------------------------------------------------------------
+    const qb = this.productRepository
+      .createQueryBuilder('product')
+      .leftJoin('product.vendor', 'vendor');
+
+    // Select only the five export columns.
+    // COALESCE picks displayName first and falls back to companyName so
+    // every row has a non-null vendor label — mirrors the frontend display.
+    qb.select([
+      'product.name          AS "name"',
+      'product.moq           AS "moq"',
+      'product.price         AS "price"',
+      'product.status        AS "status"',
+      'COALESCE(vendor.display_name, vendor.company_name) AS "vendorName"',
+    ]);
+
+    if (query.status) {
+      qb.andWhere('product.status = :status', { status: query.status });
+    }
+    if (query.categoryId) {
+      qb.andWhere('product.categoryId = :categoryId', {
+        categoryId: query.categoryId,
+      });
+    }
+    if (query.vendorId) {
+      qb.andWhere('product.vendorId = :vendorId', {
+        vendorId: query.vendorId,
+      });
+    }
+    if (query.search) {
+      qb.andWhere('product.name ILIKE :search', {
+        search: `%${query.search}%`,
+      });
+    }
+
+    switch (query.sort) {
+      case 'price_asc':
+        qb.orderBy('product.price', 'ASC', 'NULLS LAST');
+        break;
+      case 'price_desc':
+        qb.orderBy('product.price', 'DESC', 'NULLS LAST');
+        break;
+      case 'newest':
+      default:
+        qb.orderBy('product.createdAt', 'DESC');
+        break;
+    }
+
+    // ----------------------------------------------------------------
+    // Sanitise rows to prevent CSV injection (formula-character prefix)
+    // ----------------------------------------------------------------
+    const TEXT_COLS = new Set(['name', 'status', 'vendorName']);
+
+    const sanitize = new Transform({
+      objectMode: true,
+      transform(
+        row: Record<string, unknown>,
+        _enc: BufferEncoding,
+        cb: (err?: Error | null, data?: unknown) => void,
+      ) {
+        const out: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(row)) {
+          if (
+            typeof v === 'string' &&
+            TEXT_COLS.has(k) &&
+            /^[\s]*[=+\-@]/.test(v)
+          ) {
+            out[k] = "'" + v;
+          } else {
+            out[k] = v;
+          }
+        }
+        cb(null, out);
+      },
+    });
+
+    // ----------------------------------------------------------------
+    // CSV serialiser — five columns in display order
+    // ----------------------------------------------------------------
+    const csv = stringify({
+      header: true,
+      columns: [
+        { key: 'name',       header: 'Product Name'           },
+        { key: 'moq',        header: 'Minimum Order Quantity'  },
+        { key: 'price',      header: 'Price'                   },
+        { key: 'vendorName', header: 'Vendor Name'             },
+        { key: 'status',     header: 'Status'                  },
+      ],
+    });
+
+    // ----------------------------------------------------------------
+    // Pipe: DB cursor -> sanitiser -> CSV serialiser -> HTTP output
+    // ----------------------------------------------------------------
+    const output = new PassThrough();
+
+    void (async () => {
+      try {
+        const dbStream = await qb.stream();
+        pipeline(dbStream, sanitize, csv, output, (err) => {
+          if (err) {
+            this.logger.error('Product CSV export stream error', err.stack);
+            output.destroy(err);
+          }
+        });
+      } catch (err) {
+        this.logger.error(
+          'Failed to start product CSV export stream',
+          err instanceof Error ? err.stack : String(err),
+        );
+        output.destroy(
+          err instanceof Error ? err : new Error('CSV export failed'),
+        );
+      }
+    })();
+
+    return output;
   }
 }

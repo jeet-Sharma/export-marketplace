@@ -8,6 +8,7 @@ import type { LoginRequest, LoginResponse } from "./authTypes";
  * here yet — add one when silent re-auth on 401 is implemented.
  */
 export const authApi = baseApi.injectEndpoints({
+  overrideExisting: true,
   endpoints: (builder) => ({
     login: builder.mutation<LoginResponse, LoginRequest>({
       query: (credentials) => ({
