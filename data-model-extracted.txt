@@ -1,0 +1,930 @@
+﻿EXPORT MARKETPLACE PLATFORM
+Phase 1 Data Model & ERD
+Version 0.1
+
+Item
+Value
+Document
+Phase-1-Data-Model-v0.1
+Database
+PostgreSQL
+Scope
+Phase 1 - Public Product Catalogue + Platform Product Management + Supplier/Vendor master + RBAC foundation
+Status
+Draft for review
+Design principle
+Implement current MVP cleanly; preserve extension points for later phases
+
+1. Purpose and Scope
+This document defines the proposed Phase 1 relational data model for the Export Marketplace Platform. It translates the approved Phase 1 product-management and public-catalogue requirements into a PostgreSQL-oriented schema.
+Public marketplace exposes only PUBLISHED products.
+Authorized Platform Users create and manage products.
+Products may be saved as DRAFT and published later.
+Publishing makes a product publicly visible immediately in Phase 1.
+Unpublishing returns the product to DRAFT.
+Role/permission tables provide a foundation for configurable platform access.
+Vendor self-service registration/login, Buyer, RFQ, Order, Payment, Inventory, Logistics and advanced Compliance tables are intentionally excluded from Phase 1. A minimal vendors master is included because products are assigned to suppliers.
+Note: Some field-level decisions remain open in the BRD/PRD. These are marked TBD rather than silently treated as final requirements.
+2. Entity Overview
+Domain
+Table
+Purpose
+Identity & Access
+users
+Platform-user identity and authentication metadata.
+Identity & Access
+roles
+Named roles assigned to platform users.
+Identity & Access
+permissions
+Atomic permissions such as product.create and product.publish.
+Identity & Access
+user_roles
+Many-to-many link between users and roles.
+Identity & Access
+role_permissions
+Many-to-many link between roles and permissions.
+Catalogue
+categories
+Product category master data.
+Catalogue
+products
+Core product and export catalogue record.
+Catalogue
+product_images
+Multiple S3-backed images per product.
+Catalogue
+product_price_tiers
+Optional quantity-based bulk pricing with per-tier shipping, duties and tax estimates.
+Reference
+countries
+Country master data.
+Catalogue
+product_countries
+Countries/markets where a product is available or targeted.
+Supplier
+vendors
+Minimal supplier/vendor master selected by Platform Users when creating products.
+
+3. Conceptual ERD
+USERS  >-----<  USER_ROLES  >-----  ROLES  >-----<  ROLE_PERMISSIONS  >-----  PERMISSIONS  |  | vendor_id (nullable, for future Vendor Users)  vVENDORS  -----<  PRODUCTS  >-----  CATEGORIES  ^                 |  |                 +-----< PRODUCT_IMAGES  |                 +-----< PRODUCT_PRICE_TIERS  |                 +-----< PRODUCT_COUNTRIES >----- COUNTRIES  |  +---- products.vendor_idPRODUCTS.source_country_id -----------------------> COUNTRIESPRODUCTS.created_by / updated_by -----------------> USERS
+Relationship notation: '-----<' indicates one-to-many and '>-----<' indicates many-to-many through a junction table.
+4. Relationship Summary
+Parent
+Relationship
+Child / Reference
+Rule
+users
+M:N
+roles via user_roles
+A user can hold multiple roles; a role can be assigned to multiple users.
+roles
+M:N
+permissions via role_permissions
+A role groups atomic permissions.
+categories
+1:N
+products
+Proposed Phase 1 model uses one category per product; confirm with Product Manager.
+users
+1:N
+products
+created_by / updated_by track the responsible platform user.
+products
+1:N
+product_images
+A product can have multiple images.
+products
+1:N
+product_price_tiers
+A product can have optional bulk-price tiers.
+countries
+1:N
+products
+source_country_id identifies product origin/source country.
+products
+M:N
+countries via product_countries
+A product can be available in multiple target markets.
+vendors
+1:N
+products
+One vendor/supplier can supply many products; each Phase 1 product references one supplier/vendor.
+vendors
+1:N
+users via users.vendor_id
+One Vendor can have many Vendor Users; each User can belong to at most one Vendor. Platform Users keep vendor_id NULL.
+
+5. Table-by-Table Design
+5.1 users
+Stores login accounts. In Phase 1 these are primarily Platform Users. The nullable vendor_id is included so future Vendor Users can be connected directly to one Vendor without introducing a vendor_users junction table.
+Business / modeling notes
+Use a UUID primary key.
+Store password_hash, never plaintext passwords.
+Use status rather than hard-deleting operational users where possible.
+created_at and updated_at should use timezone-aware timestamps.
+Column
+Type
+Key / Constraint
+Nullability
+Purpose
+id
+uuid
+PK
+Required
+Primary identifier.
+email
+varchar(320)
+UNIQUE
+Required
+Login/identity email; normalize before uniqueness check.
+password_hash
+text
+
+Required
+JWT authentication credential backing data.
+first_name
+varchar(100)
+
+Required
+Platform user's first name.
+last_name
+varchar(100)
+
+Required
+Platform user's last name.
+status
+varchar(30)
+
+Required
+Suggested values: ACTIVE, INACTIVE.
+last_login_at
+timestamptz
+
+Optional
+Last successful login time.
+created_at
+timestamptz
+
+Required
+Creation timestamp.
+updated_at
+timestamptz
+
+Required
+Last update timestamp.
+vendor_id
+uuid
+FK -> vendors.id
+Optional
+Future Vendor association. NULL for Platform Users; set for Vendor Users when Vendor login is introduced. One user belongs to at most one Vendor.
+
+5.2 roles
+Defines named access roles. This avoids hard-coding all authorization decisions directly into users.
+Business / modeling notes
+Seed at least one administrative role for Phase 1.
+Role-management UI can remain future scope even though the schema foundation exists.
+Column
+Type
+Key / Constraint
+Nullability
+Purpose
+id
+uuid
+PK
+Required
+Role identifier.
+code
+varchar(100)
+UNIQUE
+Required
+Stable machine-readable code, e.g. PLATFORM_ADMIN.
+name
+varchar(150)
+
+Required
+Human-readable role name.
+description
+text
+
+Optional
+Role purpose.
+is_system
+boolean
+
+Required
+Marks protected/system-defined roles.
+created_at
+timestamptz
+
+Required
+Creation timestamp.
+updated_at
+timestamptz
+
+Required
+Last update timestamp.
+
+5.3 permissions
+Stores atomic authorization capabilities used by the NestJS authorization layer.
+Business / modeling notes
+Recommended Phase 1 product permissions: product.view, product.create, product.edit, product.publish, product.unpublish.
+Additional permissions can be added later without changing the users table.
+Column
+Type
+Key / Constraint
+Nullability
+Purpose
+id
+uuid
+PK
+Required
+Permission identifier.
+code
+varchar(120)
+UNIQUE
+Required
+Stable permission code.
+name
+varchar(150)
+
+Required
+Display name.
+description
+text
+
+Optional
+Explanation of the permission.
+created_at
+timestamptz
+
+Required
+Creation timestamp.
+
+5.4 user_roles
+Junction table assigning one or more roles to a user.
+Business / modeling notes
+Composite uniqueness on user_id + role_id prevents duplicate assignments.
+Column
+Type
+Key / Constraint
+Nullability
+Purpose
+user_id
+uuid
+PK/FK -> users.id
+Required
+Assigned user.
+role_id
+uuid
+PK/FK -> roles.id
+Required
+Assigned role.
+assigned_at
+timestamptz
+
+Required
+Assignment timestamp.
+assigned_by
+uuid
+FK -> users.id
+Optional
+Platform user who assigned the role.
+
+5.5 role_permissions
+Junction table mapping roles to atomic permissions.
+Business / modeling notes
+Composite uniqueness on role_id + permission_id.
+Column
+Type
+Key / Constraint
+Nullability
+Purpose
+role_id
+uuid
+PK/FK -> roles.id
+Required
+Role.
+permission_id
+uuid
+PK/FK -> permissions.id
+Required
+Permission.
+created_at
+timestamptz
+
+Required
+Mapping creation timestamp.
+
+5.6 categories
+Stores product categories used by catalogue navigation and filtering.
+Business / modeling notes
+Phase 1 assumes one direct category per product for simplicity.
+If the client later requires category trees, parent_id can be added without redesigning products.
+Column
+Type
+Key / Constraint
+Nullability
+Purpose
+id
+uuid
+PK
+Required
+Category identifier.
+name
+varchar(150)
+
+Required
+Category display name.
+slug
+varchar(180)
+UNIQUE
+Required
+Public URL/filter identifier.
+description
+text
+
+Optional
+Category description.
+is_active
+boolean
+
+Required
+Controls category availability.
+sort_order
+integer
+
+Optional
+UI ordering.
+created_at
+timestamptz
+
+Required
+Creation timestamp.
+updated_at
+timestamptz
+
+Required
+Last update timestamp.
+
+5.7 countries
+Reference/master table for source country and available/target export markets.
+Business / modeling notes
+Use ISO codes so country data remains interoperable.
+Country-specific currency, compliance or logistics configuration can be introduced in later phases.
+Column
+Type
+Key / Constraint
+Nullability
+Purpose
+id
+uuid
+PK
+Required
+Country identifier.
+iso2_code
+char(2)
+UNIQUE
+Required
+ISO 3166-1 alpha-2 code.
+iso3_code
+char(3)
+UNIQUE
+Optional
+ISO 3166-1 alpha-3 code.
+name
+varchar(150)
+UNIQUE
+Required
+Country name.
+is_active
+boolean
+
+Required
+Whether selectable in current platform data.
+
+5.8 vendors
+Stores the minimal supplier/vendor master required by the Add Product UI. In Phase 1, Platform Users select a supplier when creating or editing a product. This does not introduce Vendor Portal, Vendor login, KYC, Maker/Checker or vendor-managed product workflows.
+Business / modeling notes
+Treat Supplier and Vendor as the same Phase 1 business entity unless the Product Manager defines them separately.
+A vendor can supply many products; each Phase 1 product references one vendor/supplier.
+Use ACTIVE / INACTIVE status for catalogue selection. Do not label a supplier as verified unless verification requirements are explicitly approved.
+Future Vendor registration/login can reuse this master by setting users.vendor_id to the Vendor. KYC, approval and Maker/Checker workflows can then be added without changing products.vendor_id.
+Column
+Type
+Key / Constraint
+Nullability
+Purpose
+id
+uuid
+PK
+Required
+Vendor identifier.
+company_name
+varchar(250)
+
+Required
+Legal/business company name.
+display_name
+varchar(200)
+
+Optional
+Marketplace-friendly supplier name.
+email
+varchar(320)
+
+Optional
+Primary supplier contact email.
+phone
+varchar(50)
+
+Optional
+Primary supplier contact number.
+country_id
+uuid
+FK -> countries.id
+TBD
+Supplier home/registered country.
+status
+varchar(30)
+
+Required
+Suggested values: ACTIVE, INACTIVE.
+created_at
+timestamptz
+
+Required
+Creation timestamp.
+updated_at
+timestamptz
+
+Required
+Last update timestamp.
+
+5.9 products
+Core Phase 1 product catalogue entity. It supports public product discovery and Platform User product onboarding.
+Business / modeling notes
+status is limited to DRAFT and PUBLISHED in Phase 1.
+Public catalogue queries must filter to PUBLISHED.
+created_by and updated_by reference generic users rather than an admin-specific field, preserving future extensibility.
+Single category, one base price/currency and the exact publish-time required fields remain subject to final Product Manager/client confirmation.
+Do not place multiple image URLs or multiple target-country IDs directly in this table.
+Column
+Type
+Key / Constraint
+Nullability
+Purpose
+id
+uuid
+PK
+Required
+Product identifier.
+slug
+varchar(220)
+UNIQUE
+Required
+Public URL identifier.
+name
+varchar(250)
+
+Required
+Product name.
+description
+text
+
+TBD
+Product description; publish requirement TBD.
+category_id
+uuid
+FK -> categories.id
+TBD
+Single Phase 1 category; cardinality requires confirmation.
+vendor_id
+uuid
+FK -> vendors.id
+Required
+Supplier/vendor associated with the product.
+status
+varchar(20)
+
+Required
+DRAFT or PUBLISHED.
+price
+numeric(18,4)
+
+TBD
+Base product price.
+currency_code
+char(3)
+
+TBD
+ISO 4217 currency, e.g. USD.
+unit
+varchar(50)
+
+TBD
+Commercial unit, e.g. kg, piece, box.
+moq
+numeric(18,4)
+
+TBD
+Minimum Order Quantity.
+hs_code
+varchar(20)
+
+TBD
+Harmonized System code.
+source_country_id
+uuid
+FK -> countries.id
+TBD
+Product source/origin country.
+export_eligibility
+varchar(50)
+
+TBD
+Informational export eligibility value.
+country_restrictions
+text
+
+Optional
+Informational country restrictions.
+estimated_delivery_text
+varchar(150)
+
+Optional
+Display text such as 10-15 business days.
+duties_taxes_note
+text
+
+Optional
+Approximate/informational duties and tax note.
+created_by
+uuid
+FK -> users.id
+Required
+Platform user who created the product.
+updated_by
+uuid
+FK -> users.id
+Required
+Platform user who last updated it.
+published_at
+timestamptz
+
+Optional
+Latest/initial publication timestamp; exact audit semantics can evolve.
+created_at
+timestamptz
+
+Required
+Creation timestamp.
+updated_at
+timestamptz
+
+Required
+Last update timestamp.
+
+5.10 product_images
+Stores multiple product images whose binary objects live in AWS S3.
+Business / modeling notes
+Store an S3 object key rather than image bytes.
+Exactly one primary image per product is recommended when images exist; whether a primary image is mandatory for Publish is TBD.
+sort_order controls gallery display order.
+Column
+Type
+Key / Constraint
+Nullability
+Purpose
+id
+uuid
+PK
+Required
+Image record identifier.
+product_id
+uuid
+FK -> products.id
+Required
+Owning product.
+s3_object_key
+text
+
+Required
+S3 object key/path.
+alt_text
+varchar(250)
+
+Optional
+Accessible image description.
+is_primary
+boolean
+
+Required
+Marks primary catalogue image.
+sort_order
+integer
+
+Required
+Gallery order.
+created_at
+timestamptz
+
+Required
+Creation timestamp.
+
+5.11 product_price_tiers
+Stores optional bulk pricing by quantity range.
+Business / modeling notes
+Tiers for the same product should not overlap.
+min_quantity must be positive; max_quantity may be null for an open-ended highest tier.
+Whether tier currency must always equal products.currency_code should be confirmed.
+Column
+Type
+Key / Constraint
+Nullability
+Purpose
+id
+uuid
+PK
+Required
+Tier identifier.
+product_id
+uuid
+FK -> products.id
+Required
+Owning product.
+min_quantity
+numeric(18,4)
+
+Required
+Minimum quantity for tier.
+max_quantity
+numeric(18,4)
+
+Optional
+Maximum quantity; null means no upper bound.
+price
+numeric(18,4)
+
+Required
+Product/unit price for this quantity tier.
+shipping_estimate
+numeric(18,4)
+
+Optional
+Estimated shipping amount for this pricing tier.
+duties_estimate
+numeric(18,4)
+
+Optional
+Estimated customs/import duties for this pricing tier.
+taxes_estimate
+numeric(18,4)
+
+Optional
+Estimated taxes for this pricing tier.
+currency_code
+char(3)
+
+Required
+Currency used by price and cost estimates, e.g. USD.
+created_at
+timestamptz
+
+Required
+Creation timestamp.
+updated_at
+timestamptz
+
+Required
+Last update timestamp.
+
+5.12 product_countries
+Maps a product to the countries/markets in which it is available or targeted.
+Business / modeling notes
+Composite uniqueness on product_id + country_id.
+This table represents availability/target markets only; source/origin remains products.source_country_id.
+Future country-specific pricing, restrictions or compliance metadata can extend this association if approved.
+Column
+Type
+Key / Constraint
+Nullability
+Purpose
+product_id
+uuid
+PK/FK -> products.id
+Required
+Product.
+country_id
+uuid
+PK/FK -> countries.id
+Required
+Available/target country.
+created_at
+timestamptz
+
+Required
+Mapping creation timestamp.
+
+6. Product Lifecycle Rules
+Current State
+Action
+New State
+Public Visibility
+New
+Save Draft
+DRAFT
+Hidden
+New
+Publish
+PUBLISHED
+Visible immediately
+DRAFT
+Edit + Save
+DRAFT
+Hidden
+DRAFT
+Publish
+PUBLISHED
+Visible immediately
+PUBLISHED
+Edit + Save
+PUBLISHED
+Remains visible
+PUBLISHED
+Unpublish
+DRAFT
+Hidden
+
+The database should enforce valid status values, while the service layer should enforce publish validation and authorization. A public product-detail lookup must return only PUBLISHED products.
+7. Recommended Constraints and Indexes
+Table
+Recommended index / constraint
+Reason
+users
+UNIQUE(lower(email)) or normalized-email uniqueness
+Prevents duplicate identities.
+roles
+UNIQUE(code)
+Stable role lookup.
+permissions
+UNIQUE(code)
+Stable permission lookup.
+user_roles
+UNIQUE(user_id, role_id)
+Prevents duplicate role assignment.
+role_permissions
+UNIQUE(role_id, permission_id)
+Prevents duplicate permission mapping.
+categories
+UNIQUE(slug)
+Public/category lookup.
+products
+UNIQUE(slug)
+Public product URL lookup.
+products
+INDEX(status, created_at)
+Published catalogue and newest sorting.
+products
+INDEX(category_id, status)
+Category filtering on public catalogue.
+products
+INDEX(source_country_id, status)
+Source-country filtering.
+products
+CHECK(price >= 0), CHECK(moq > 0) when values exist
+Basic numeric integrity.
+product_images
+INDEX(product_id, sort_order)
+Efficient gallery loading.
+product_price_tiers
+INDEX(product_id, min_quantity)
+Efficient ordered tier loading.
+product_countries
+UNIQUE(product_id, country_id)
+Prevents duplicate market mapping.
+product_countries
+INDEX(country_id, product_id)
+Country/market filtering.
+vendors
+INDEX(status, company_name)
+Efficient supplier dropdown/listing.
+products
+INDEX(vendor_id, status)
+Supplier product lookup and public filtering if later required.
+users
+INDEX(vendor_id) WHERE vendor_id IS NOT NULL
+Efficient lookup of users belonging to a Vendor when Vendor login is introduced.
+product_price_tiers
+CHECK(price >= 0), CHECK(shipping_estimate >= 0), CHECK(duties_estimate >= 0), CHECK(taxes_estimate >= 0)
+Prevents negative monetary values when estimates are provided.
+
+8. Delete and Referential-Integrity Strategy
+Product deletion behavior is still an open business decision. Until confirmed, prefer unpublish over permanent deletion.
+Child records such as product_images, product_price_tiers and product_countries can use cascade deletion only if permanent product deletion is formally approved.
+Reference/master records such as categories and countries should normally be deactivated instead of deleted when already referenced.
+Users referenced by audit fields should not be physically deleted without an explicit retention/anonymization strategy.
+9. AWS S3 Image Storage
+PostgreSQL stores product-image metadata; AWS S3 stores the image objects. The backend can create upload/access URLs as appropriate. The database should keep stable object keys rather than temporary signed URLs.
+products   |   +---- product_images.s3_object_key                         |                         v                    AWS S3 Bucket
+10. Phase 1 Public Query Boundary
+The public catalogue boundary must enforce publication status at the backend/service/query layer.
+Public Product Listing:WHERE products.status = 'PUBLISHED'Public Product Detail:WHERE products.slug = :slug  AND products.status = 'PUBLISHED'Admin / authorized Platform User:May access DRAFT and PUBLISHED subject to permission checks.
+Note: UI filtering alone is not a security or publication boundary. Draft exclusion must be enforced server-side.
+11. Future Extension Points - Not Phase 1 Tables
+Future domain
+How Phase 1 stays extensible
+Vendor / Supplier
+A minimal vendors master and products.vendor_id exist in Phase 1. users.vendor_id is nullable and can connect a future Vendor User directly to one Vendor. This supports one Vendor having many Users without a vendor_users table. If one User must later manage multiple Vendors, a junction table can be introduced then.
+Buyer
+Buyer accounts and organizations can be introduced as a separate domain without changing catalogue fundamentals.
+RFQ / Quotations
+Can reference product_id, buyer organization and vendor organization when the workflow is approved.
+Orders / Payments
+Can be introduced as transaction modules after checkout and settlement rules are defined.
+Inventory
+Can be modeled by product/variant and warehouse once stock ownership and reservation rules are defined.
+Logistics
+Shipment entities can be added once provider, payer and tracking requirements are approved.
+Compliance
+Structured country/product compliance rules can replace or supplement Phase 1 informational fields.
+Multi-currency / country pricing
+A future product_prices or offer/pricing model can be introduced if one base price is insufficient.
+
+Note: Future-ready means preserving clean boundaries, not creating unused future tables now.
+12. Open Decisions Before v1.0
+Decision
+Current v0.1 treatment
+Draft vs Publish mandatory fields
+Marked TBD; service-level publish validation to be finalized.
+Primary image mandatory for Publish?
+Recommended, but not treated as final.
+Image count / limits
+Not fixed.
+One category or multiple categories?
+v0.1 proposes one category_id for Phase 1; confirm.
+Category hierarchy?
+Not implemented; can add parent_id later if required.
+One base price/currency or country-specific pricing?
+v0.1 uses one base price/currency; confirm.
+MOQ mandatory?
+Field exists; publish requirement TBD.
+HS Code mandatory?
+Field exists; publish requirement TBD.
+Export eligibility vocabulary
+Field exists; enum/reference values TBD.
+Exact country restriction structure
+Text in v0.1; structured rules are future unless required now.
+Permanent product deletion?
+Not assumed; unpublish preferred until confirmed.
+RBAC management UI in Phase 1?
+Schema foundation included; UI scope remains separate.
+Audit-history depth
+created_by/updated_by/timestamps included; full event history not included.
+Supplier/vendor required for Publish?
+v0.1 models products.vendor_id as required; confirm whether Draft may temporarily omit it.
+Supplier verification wording
+Do not assume VERIFIED status in Phase 1 unless vendor verification/KYC is explicitly included.
+
+13. Example Product Record
+Field
+Example
+name
+Organic Turmeric Powder
+status
+PUBLISHED
+category
+Spices
+price
+8.50
+currency_code
+USD
+unit
+kg
+moq
+100
+hs_code
+0910.30
+source_country
+India
+target/available countries
+USA, UAE, UK
+export_eligibility
+Eligible
+estimated_delivery_text
+10-15 business days
+supplier/vendor
+ABC Spices Pvt Ltd
+
+14. Implementation Guidance
+Use PostgreSQL UUID primary keys consistently.
+Create schema changes through versioned database migrations.
+Keep NestJS modules aligned with domain boundaries such as auth/access-control and catalog.
+Use transactions for multi-table product create/update operations when images, tiers or countries change together.
+Validate authorization in the backend, not only in the Next.js UI.
+Validate publication requirements in the service/domain layer before setting status to PUBLISHED.
+Keep S3 object lifecycle and database metadata synchronized through explicit application flows.
+Do not add Vendor Portal/onboarding/KYC tables, Buyer, RFQ, Order or Payment schema until those workflows are defined. The minimal vendors master is included because Phase 1 product onboarding selects a supplier. users.vendor_id is nullable now and supports future Vendor login when needed.
+15. Next Technical Document
+After this Data Model v0.1 is reviewed against the BRD/PRD and client/product decisions, the next technical artifact should be Phase-1 API Specification v0.1. It should define authentication, admin product-management and public catalogue endpoints against this model.
+

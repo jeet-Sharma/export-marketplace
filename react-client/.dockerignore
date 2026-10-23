@@ -1,0 +1,34 @@
+node_modules
+.next
+out
+build
+coverage
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Env & secrets (provided at runtime via compose)
+.env
+.env.*
+!.env.example
+
+# Git / CI
+.git
+.gitignore
+
+# Editor / OS
+.vscode
+.idea
+.DS_Store
+*.pem
+
+# Docker
+Dockerfile
+Dockerfile.dev
+.dockerignore
+
+# Misc
+*.tsbuildinfo
+.vercel
