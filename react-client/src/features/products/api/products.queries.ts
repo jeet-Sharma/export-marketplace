@@ -16,20 +16,39 @@ import type {
  * continues to compile without modification.
  */
 const catalogueApi = baseApi.injectEndpoints({
+  overrideExisting: true,
   endpoints: (builder) => ({
     /** GET /api/v1/products — public marketplace catalogue (section 12.1). */
     getProducts: builder.query<ApiPaginatedProducts, GetProductsParams>({
-      query: (params = {}) => ({ url: "/products", params }),
+      // FIX 1: Strip undefined values before RTK serialises params.
+      // fetchBaseQuery passes params to URLSearchParams, which calls String()
+      // on every value — String(undefined) = "undefined". The backend's
+      // @IsUUID() and @IsNumber() validators reject those strings with a 400,
+      // breaking the product list after createProduct's invalidatesTags fires
+      // a refetch with undefined optional fields in the params object.
+      query: (params = {}) => ({
+        url: "/products",
+        params: Object.fromEntries(
+          Object.entries(params).filter(([, v]) => v !== undefined),
+        ),
+      }),
+      // FIX 2: Use "PublicProductList" instead of "ProductList".
+      // Both tags previously shared the same name, so createProduct's
+      // invalidatesTags: [{ type: "ProductList", id: "LIST" }] was also
+      // invalidating this public endpoint and triggering a refetch that sent
+      // "undefined" strings as query params (see FIX 1 above).
+      // Now only admin mutations touch "ProductList"; the public catalogue
+      // has its own isolated tag and is not affected by admin writes.
       providesTags: (result) =>
         result
           ? [
               ...result.items.map((p) => ({
-                type: "Product" as const,
+                type: "PublicProductList" as const,
                 id: p.id,
               })),
-              { type: "ProductList" as const, id: "LIST" },
+              { type: "PublicProductList" as const, id: "LIST" },
             ]
-          : [{ type: "ProductList" as const, id: "LIST" }],
+          : [{ type: "PublicProductList" as const, id: "LIST" }],
     }),
 
     /**
@@ -155,5 +174,3 @@ export function useProductsInfiniteQuery(
     refetch,
   };
 }
-
-

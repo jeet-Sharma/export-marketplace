@@ -1,8 +1,14 @@
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { PRODUCT_COLUMNS } from "./productColumns";
 import type { ProductRow } from "./productData";
 import { PublicationBadge, VerificationBadge } from "./StatusBadges";
+
+import {
+  usePublishAdminProductMutation,
+  useUnpublishAdminProductMutation,
+} from "./productsApi";
 
 type ProductTableRowProps = {
   product: ProductRow;
@@ -17,6 +23,45 @@ export function ProductTableRow({
   detailHref,
   highlighted = false,
 }: ProductTableRowProps) {
+  const [publish, { isLoading: isPublishing }] = usePublishAdminProductMutation();
+  const [unpublish, { isLoading: isUnpublishing }] =
+    useUnpublishAdminProductMutation();
+
+  const [imgSrc, setImgSrc] = useState<string>(() => {
+    return product.image && product.image.trim()
+      ? product.image
+      : "/products/placeholder.svg";
+  });
+
+  useEffect(() => {
+    setImgSrc(
+      product.image && product.image.trim()
+        ? product.image
+        : "/products/placeholder.svg",
+    );
+  }, [product.image]);
+
+  const isBusy = isPublishing || isUnpublishing;
+  const isPublished = product.rawStatus === "PUBLISHED";
+
+  const handleTogglePublish = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    try {
+      if (isPublished) {
+        await unpublish(product.id).unwrap();
+      } else {
+        await publish(product.id).unwrap();
+      }
+    } catch (err) {
+      console.error("Failed to update status:", err);
+    }
+  };
+
+  const safeImgSrc =
+    imgSrc && typeof imgSrc === "string" && imgSrc.trim().length > 0
+      ? imgSrc.trim()
+      : "/products/placeholder.svg";
+
   return (
     <div
       className={
@@ -28,10 +73,12 @@ export function ProductTableRow({
       {/* Product identity */}
       <div className={`flex items-center gap-3 ${PRODUCT_COLUMNS.product}`}>
         <Image
-          src={product.image}
-          alt={product.name}
+          src={safeImgSrc}
+          alt={product.name || "Product"}
           width={54}
           height={54}
+          unoptimized
+          onError={() => setImgSrc("/products/placeholder.svg")}
           className="size-[54px] shrink-0 rounded-[10px] object-cover"
         />
         <div className="flex min-w-0 flex-col gap-1">
@@ -92,23 +139,26 @@ export function ProductTableRow({
       </div>
 
       {/* Row actions */}
-      <div className={`flex gap-1.5 ${PRODUCT_COLUMNS.actions}`}>
+      <div className={`flex items-center gap-1.5 ${PRODUCT_COLUMNS.actions}`}>
         <Link
           href={detailHref}
-          className={
-            highlighted
-              ? "flex h-[30px] flex-1 items-center justify-center rounded-[6px] border border-bloom-pink bg-bloom-pink text-[11px] font-bold text-white"
-              : "flex h-[30px] flex-1 items-center justify-center rounded-[6px] border border-bloom-pink bg-white text-[11px] font-bold text-bloom-pink"
-          }
+          className="flex h-[30px] flex-1 items-center justify-center rounded-[6px] border border-bloom-pink bg-white text-[11px] font-bold text-bloom-pink transition-colors hover:bg-bloom-pink hover:text-white"
         >
           View
         </Link>
-        <Link
-          href={detailHref}
-          className="flex h-[30px] flex-1 items-center justify-center rounded-[6px] border border-bloom-border bg-white text-[11px] font-semibold text-bloom-ink"
+        <button
+          type="button"
+          onClick={handleTogglePublish}
+          disabled={isBusy}
+          title={isPublished ? "Unpublish listing" : "Publish listing"}
+          className={`flex h-[30px] flex-1 items-center justify-center rounded-[6px] text-[11px] font-semibold transition-colors disabled:opacity-50 ${
+            isPublished
+              ? "border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100"
+              : "border border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
+          }`}
         >
-          Edit
-        </Link>
+          {isBusy ? "…" : isPublished ? "Unpublish" : "Publish"}
+        </button>
       </div>
     </div>
   );

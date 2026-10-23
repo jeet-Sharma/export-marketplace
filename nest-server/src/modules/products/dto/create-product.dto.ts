@@ -16,6 +16,7 @@ import {
 import { IsCalendarDate } from '../../../common/validation/is-calendar-date.decorator.js';
 import { IsNumericPrecision } from '../../../common/validation/is-numeric-precision.decorator.js';
 import { PriceTierDto } from './price-tier.dto.js';
+import { CreateProductImageDto } from './create-product-image.dto.js';
 
 // Matches products.price/products.moq's numeric(18, 4) column definition
 // (see product.entity.ts) — see IsNumericPrecision's own comment for why
@@ -174,4 +175,14 @@ export class CreateProductDto {
   @ValidateNested({ each: true })
   @Type(() => PriceTierDto)
   priceTiers?: PriceTierDto[];
+
+  @ApiPropertyOptional({
+    type: [CreateProductImageDto],
+    description: 'Image uploading via presigned URL',
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateProductImageDto)
+  images?: CreateProductImageDto[];
 }

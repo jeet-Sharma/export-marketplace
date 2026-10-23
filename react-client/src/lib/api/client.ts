@@ -31,20 +31,11 @@ import axios from "axios";
  * sent to the browser. When it is absent (local dev outside Docker, CI, etc.)
  * we fall back to NEXT_PUBLIC_API_URL which is always defined.
  */
-const isServer = typeof window === "undefined";
-
-const rawURL = isServer
-  ? // Prefer the internal Docker network URL on the server so SSR fetches
-    // reach the `api` container directly. Falls back to the public URL for
-    // local (non-Docker) development where API_INTERNAL_URL is not set.
-    (process.env.API_INTERNAL_URL ??
-      process.env.NEXT_PUBLIC_API_URL ??
-      process.env.NEXT_PUBLIC_API_BASE_URL ??
-      "http://localhost:3005")
-  : // In the browser, always use the public host-reachable URL.
-    (process.env.NEXT_PUBLIC_API_URL ??
-      process.env.NEXT_PUBLIC_API_BASE_URL ??
-      "http://localhost:3005");
+const rawURL =
+  process.env.NEXT_PUBLIC_API_BASE_URL ??
+  process.env.NEXT_PUBLIC_API_URL ??
+  process.env.API_INTERNAL_URL ??
+  "https://export-marketplace.onrender.com";
 
 // Normalise: remove a trailing /api/v1 if the env var already includes it,
 // then always append /api/v1 so Docker defaults and local .env both resolve
