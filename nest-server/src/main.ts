@@ -3,6 +3,7 @@ import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import { AppModule, ObserveInstrument } from './app.module.js';
+import { resolveCorsOrigins } from './config/cors-origins.js';
 import { validationExceptionFactory } from './common/validation/validation-exception-factory.js';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter.js';
 
@@ -20,12 +21,10 @@ async function bootstrap() {
   // (e.g. http://localhost:3000 vs http://localhost:3005), and AuthController
   // sets an HTTP-only refresh-token cookie — so credentialed cross-origin
   // requests need CORS explicitly enabled with credentials allowed.
-  // CORS_ORIGIN accepts a single origin or a comma-separated list.
-  const corsOrigin = process.env.CORS_ORIGIN?.trim();
+  // CORS_ORIGIN accepts extra origins as a comma-separated list. Local
+  // dev and the deployed Vercel app are always allowed — see cors-origins.ts.
   app.enableCors({
-    origin: corsOrigin
-      ? corsOrigin.split(',').map((o) => o.trim())
-      : 'http://localhost:3000',
+    origin: resolveCorsOrigins(),
     credentials: true,
   });
 
