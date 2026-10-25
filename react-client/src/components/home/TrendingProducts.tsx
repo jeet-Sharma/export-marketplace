@@ -99,7 +99,7 @@ export function TrendingProducts() {
         /* Responsive grid: 1 col on phones, scaling up to 4 on wide screens */
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {products.map(({ id, ...product }) => (
-            <ProductCard key={id} {...product} />
+            <ProductCard key={id} {...product} showViewAction />
           ))}
         </div>
       )}

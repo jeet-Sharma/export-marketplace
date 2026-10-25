@@ -205,11 +205,13 @@ export function ProductsPageContent() {
         categoryName={categoryName}
         categorySlug={selectedCategory?.slug ?? null}
         description={categoryDescription}
+        categories={categories ?? []}
       />
 
       <div className="flex w-full flex-col gap-6 lg:flex-row">
         <ProductFilters
-          categoryName={categoryName}
+          categories={categories ?? []}
+          selectedCategorySlug={selectedCategory?.slug ?? null}
           value={{
             minMoq: urlState.minMoq,
             maxMoq: urlState.maxMoq,
