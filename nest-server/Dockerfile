@@ -2,7 +2,10 @@
 
 # ─── Stage 1: dependencies ────────────────────────────────────────────────────
 # Install ALL dependencies (including dev) needed to build the project.
-FROM node:22-alpine AS deps
+# Node 24 ships npm 11, which is what generated this lockfile and what CI uses.
+# Node 22's npm 10 rejects the same lockfile during `npm ci`
+# (it reports a missing transitive typescript entry).
+FROM node:24-alpine AS deps
 WORKDIR /app
 
 COPY package.json package-lock.json ./
@@ -10,7 +13,7 @@ RUN npm ci
 
 # ─── Stage 2: build ───────────────────────────────────────────────────────────
 # Compile TypeScript -> dist using the full dependency set.
-FROM node:22-alpine AS build
+FROM node:24-alpine AS build
 WORKDIR /app
 
 COPY --from=deps /app/node_modules ./node_modules
@@ -22,7 +25,7 @@ RUN npm prune --omit=dev
 
 # ─── Stage 3: runtime ─────────────────────────────────────────────────────────
 # Minimal image containing only the compiled output and production deps.
-FROM node:22-alpine AS runtime
+FROM node:24-alpine AS runtime
 WORKDIR /app
 
 ENV NODE_ENV=production
