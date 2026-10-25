@@ -3,7 +3,8 @@
 # Development image for the NestJS server.
 # Source code is bind-mounted via docker-compose.dev.yml, so this image only
 # needs the dependencies installed. Nest's --watch handles live reload.
-FROM node:22-alpine
+# Node 24 ships npm 11, matching this lockfile. Node 22's npm 10 fails `npm ci`.
+FROM node:24-alpine
 WORKDIR /app
 
 ENV NODE_ENV=development
