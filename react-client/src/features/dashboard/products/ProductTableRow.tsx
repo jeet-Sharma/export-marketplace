@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { PRODUCT_COLUMNS } from "./productColumns";
@@ -27,19 +27,13 @@ export function ProductTableRow({
   const [unpublish, { isLoading: isUnpublishing }] =
     useUnpublishAdminProductMutation();
 
-  const [imgSrc, setImgSrc] = useState<string>(() => {
-    return product.image && product.image.trim()
-      ? product.image
+  const preferredSrc =
+    product.image && product.image.trim()
+      ? product.image.trim()
       : "/products/placeholder.svg";
-  });
-
-  useEffect(() => {
-    setImgSrc(
-      product.image && product.image.trim()
-        ? product.image
-        : "/products/placeholder.svg",
-    );
-  }, [product.image]);
+  const [brokenSrc, setBrokenSrc] = useState<string | null>(null);
+  const safeImgSrc =
+    brokenSrc === preferredSrc ? "/products/placeholder.svg" : preferredSrc;
 
   const isBusy = isPublishing || isUnpublishing;
   const isPublished = product.rawStatus === "PUBLISHED";
@@ -57,11 +51,6 @@ export function ProductTableRow({
     }
   };
 
-  const safeImgSrc =
-    imgSrc && typeof imgSrc === "string" && imgSrc.trim().length > 0
-      ? imgSrc.trim()
-      : "/products/placeholder.svg";
-
   return (
     <div
       className={
@@ -78,7 +67,11 @@ export function ProductTableRow({
           width={54}
           height={54}
           unoptimized
-          onError={() => setImgSrc("/products/placeholder.svg")}
+          onError={() => {
+            if (preferredSrc !== "/products/placeholder.svg") {
+              setBrokenSrc(preferredSrc);
+            }
+          }}
           className="size-[54px] shrink-0 rounded-[10px] object-cover"
         />
         <div className="flex min-w-0 flex-col gap-1">

@@ -5,8 +5,11 @@ import { PlusIcon } from "../components/icons";
 import { SelectField, TextField } from "./AddProductFormFields";
 import {
   useCreateProductMutation,
+  useUpdateAdminProductMutation,
   useRequestImageUploadUrlMutation,
   useAddProductImageMutation,
+  usePublishAdminProductMutation,
+  useUnpublishAdminProductMutation,
 } from "./productsApi";
 import {
   useGetCategoryOptionsQuery,
@@ -53,6 +56,22 @@ function emptyDetailRow(): ExtraDetailRow {
   return { id: crypto.randomUUID(), label: "", valueType: "Text", value: "" };
 }
 
+function messageFromUnknown(err: unknown, fallback: string): string {
+  if (typeof err === "object" && err !== null && "data" in err) {
+    const data = (err as { data?: { message?: string | string[] } }).data;
+    if (typeof data?.message === "string" && data.message.trim()) {
+      return data.message;
+    }
+    if (Array.isArray(data?.message) && data.message.length > 0) {
+      return data.message.join(", ");
+    }
+  }
+  if (err instanceof Error && err.message.trim()) {
+    return err.message;
+  }
+  return fallback;
+}
+
 export function AddProductModal({ onClose, onSuccess }: AddProductModalProps) {
   const headingId = useId();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -62,6 +81,9 @@ export function AddProductModal({ onClose, onSuccess }: AddProductModalProps) {
   const { data: vendorsResult } = useGetAdminVendorsQuery();
   const [createProduct, { isLoading: isCreating, error }] =
     useCreateProductMutation();
+  const [updateProduct] = useUpdateAdminProductMutation();
+  const [publishProduct] = usePublishAdminProductMutation();
+  const [unpublishProduct] = useUnpublishAdminProductMutation();
   const [requestImageUploadUrl] = useRequestImageUploadUrlMutation();
   const [addProductImage] = useAddProductImageMutation();
 
@@ -74,6 +96,12 @@ export function AddProductModal({ onClose, onSuccess }: AddProductModalProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [createdProduct, setCreatedProduct] = useState<{
+    id: string;
+    status: "DRAFT" | "PUBLISHED";
+  } | null>(null);
+  const [uploadedImageIds, setUploadedImageIds] = useState<string[]>([]);
 
   const [quantityTiers, setQuantityTiers] = useState("");
   const [moq, setMoq] = useState("");
@@ -107,7 +135,7 @@ export function AddProductModal({ onClose, onSuccess }: AddProductModalProps) {
     label: `${country.name} (${country.iso2Code})`,
   }));
 
-  const errorMessage = (() => {
+  const mutationError = (() => {
     if (!error) return null;
     if ("data" in error && typeof error.data === "object" && error.data !== null) {
       const data = error.data as { message?: string | string[] };
@@ -117,6 +145,7 @@ export function AddProductModal({ onClose, onSuccess }: AddProductModalProps) {
     }
     return "Could not save this product. Check the required fields (name and supplier) and try again.";
   })();
+  const errorMessage = submitError ?? mutationError;
 
   function buildPayload(status: "DRAFT" | "PUBLISHED"): CreateProductPayload {
     const parsedMoq = Number(moq);
@@ -203,64 +232,102 @@ export function AddProductModal({ onClose, onSuccess }: AddProductModalProps) {
       return;
     }
     setImageError(null);
+    setSubmitError(null);
+    const uploaded = new Set(uploadedImageIds);
+    let saved = createdProduct;
     try {
       setUploadProgress(
         status === "PUBLISHED" ? "Publishing product…" : "Saving draft…",
       );
-      const created = await createProduct(buildPayload(status)).unwrap();
 
-      if (selectedImages.length > 0) {
-        for (let i = 0; i < selectedImages.length; i++) {
-          const item = selectedImages[i];
-          setUploadProgress(
-            `Uploading image ${i + 1} of ${selectedImages.length}…`,
-          );
-
-          // 1. Request presigned upload URL from server
-          const uploadInfo = await requestImageUploadUrl({
-            productId: created.id,
-            filename: item.file.name,
-            contentType: item.file.type,
-            contentLengthBytes: item.file.size,
-          }).unwrap();
-
-          // 2. Direct upload to storage (Cloudinary or S3)
-          if (uploadInfo.fields) {
-            const formData = new FormData();
-            for (const [k, v] of Object.entries(uploadInfo.fields)) {
-              formData.append(k, v);
-            }
-            formData.append("file", item.file);
-            const uploadRes = await fetch(uploadInfo.uploadUrl, {
-              method: uploadInfo.httpMethod || "POST",
-              body: formData,
-            });
-            if (!uploadRes.ok) {
-              throw new Error(`Failed to upload ${item.file.name}`);
-            }
+      const payload = buildPayload(status);
+      if (!saved) {
+        const created = await createProduct(payload).unwrap();
+        saved = { id: created.id, status };
+        setCreatedProduct(saved);
+      } else {
+        await updateProduct({
+          id: saved.id,
+          data: {
+            name: payload.name,
+            vendorId: payload.vendorId,
+            description: payload.description ?? null,
+            categoryId: payload.categoryId ?? null,
+            price: payload.price ?? null,
+            currencyCode: payload.currencyCode ?? null,
+            unit: payload.unit ?? null,
+            moq: payload.moq ?? null,
+            hsCode: payload.hsCode ?? null,
+            sourceCountryId: payload.sourceCountryId ?? null,
+            targetCountryIds: payload.targetCountryIds ?? [],
+            exportEligibility: payload.exportEligibility ?? null,
+            countryRestrictions: payload.countryRestrictions ?? null,
+            estimatedDeliveryText: payload.estimatedDeliveryText ?? null,
+            dutiesTaxesNote: payload.dutiesTaxesNote ?? null,
+            expiryDate: payload.expiryDate ?? null,
+          },
+        }).unwrap();
+        if (saved.status !== status) {
+          if (status === "PUBLISHED") {
+            await publishProduct(saved.id).unwrap();
           } else {
-            const uploadRes = await fetch(uploadInfo.uploadUrl, {
-              method: uploadInfo.httpMethod || "PUT",
-              headers: { "Content-Type": item.file.type },
-              body: item.file,
-            });
-            if (!uploadRes.ok) {
-              throw new Error(`Failed to upload ${item.file.name}`);
-            }
+            await unpublishProduct(saved.id).unwrap();
           }
-
-          // 3. Persist product image record
-          await addProductImage({
-            productId: created.id,
-            objectKey: uploadInfo.key || uploadInfo.objectKey || "",
-            isPrimary: i === 0,
-            sortOrder: i,
-            altText: name.trim() || item.file.name,
-          }).unwrap();
+          saved = { id: saved.id, status };
+          setCreatedProduct(saved);
         }
       }
 
-      // Cleanup preview URLs
+      const pendingImages = selectedImages.filter((item) => !uploaded.has(item.id));
+      for (let i = 0; i < pendingImages.length; i++) {
+        const item = pendingImages[i];
+        setUploadProgress(
+          `Uploading image ${i + 1} of ${pendingImages.length}…`,
+        );
+
+        const uploadInfo = await requestImageUploadUrl({
+          productId: saved.id,
+          filename: item.file.name,
+          contentType: item.file.type,
+          contentLengthBytes: item.file.size,
+        }).unwrap();
+
+        if (uploadInfo.fields) {
+          const formData = new FormData();
+          for (const [k, v] of Object.entries(uploadInfo.fields)) {
+            formData.append(k, v);
+          }
+          formData.append("file", item.file);
+          const uploadRes = await fetch(uploadInfo.uploadUrl, {
+            method: uploadInfo.httpMethod || "POST",
+            body: formData,
+          });
+          if (!uploadRes.ok) {
+            throw new Error(`Failed to upload ${item.file.name}`);
+          }
+        } else {
+          const uploadRes = await fetch(uploadInfo.uploadUrl, {
+            method: uploadInfo.httpMethod || "PUT",
+            headers: { "Content-Type": item.file.type },
+            body: item.file,
+          });
+          if (!uploadRes.ok) {
+            throw new Error(`Failed to upload ${item.file.name}`);
+          }
+        }
+
+        await addProductImage({
+          productId: saved.id,
+          objectKey: uploadInfo.key || uploadInfo.objectKey || "",
+          isPrimary: uploaded.size === 0 && i === 0,
+          sortOrder: uploaded.size + i,
+          altText: name.trim() || item.file.name,
+        }).unwrap();
+
+        uploaded.add(item.id);
+        setUploadedImageIds([...uploaded]);
+      }
+
       selectedImages.forEach((img) => URL.revokeObjectURL(img.previewUrl));
 
       if (onSuccess) {
@@ -269,8 +336,13 @@ export function AddProductModal({ onClose, onSuccess }: AddProductModalProps) {
         onClose();
       }
     } catch (err) {
-      console.error("Submission failed:", err);
-      // Inline error message handles user display
+      const detail = messageFromUnknown(err, "");
+      setSubmitError(
+        saved
+          ? `${detail ? `${detail} ` : ""}The product was saved. Retry to finish the remaining images without creating a duplicate.`
+          : detail ||
+              "Could not save this product. Check the required fields (name and supplier) and try again.",
+      );
     } finally {
       setUploadProgress(null);
     }

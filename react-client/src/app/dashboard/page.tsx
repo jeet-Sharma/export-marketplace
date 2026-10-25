@@ -1,7 +1,6 @@
 import { Suspense } from "react";
 import { cookies } from "next/headers";
 import { BuyerWorkspace } from "@/features/dashboard/buyer/BuyerWorkspace";
-import { AuthDebugLogger } from "@/features/dashboard/components/AuthDebugLogger";
 import { DashboardLayout } from "@/features/dashboard/components/DashboardLayout";
 import { resolveRole } from "@/features/dashboard/config/resolveRole";
 import { ProductsWorkspace } from "@/features/dashboard/products/ProductsWorkspace";
@@ -38,13 +37,8 @@ export default async function DashboardPage({
     }
   }
 
-  // Server-side terminal log
-  console.log("🖥️ [Server /dashboard] access_token:", cookieStore.get("access_token")?.value);
-  console.log("🖥️ [Server /dashboard] user_data:", rawUserData);
-
   const role = resolveRole(roleParam ?? sessionRole);
   const isBuyer = role === "user";
-  const token = cookieStore.get("access_token")?.value;
 
   return (
     <DashboardLayout
@@ -52,9 +46,6 @@ export default async function DashboardPage({
       activeKey={ACTIVE_KEY[role]}
       section={isBuyer ? "Browse market" : "Products"}
     >
-      {/* Logs cookies (access_token, user_data, permissions) to browser DevTools console */}
-      <AuthDebugLogger />
-
       {isBuyer ? (
         <BuyerWorkspace />
       ) : (

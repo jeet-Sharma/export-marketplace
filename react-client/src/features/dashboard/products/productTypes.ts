@@ -150,8 +150,27 @@ export type CreateProductInput = {
   expiryDate?: string;
 };
 
-// Input payload for PATCH /admin/products/:id
-export type UpdateProductInput = Partial<Omit<CreateProductInput, "status">>;
+// Input payload for PATCH /admin/products/:id.
+// Optional fields accept null so the client can clear a saved value.
+// Omitted fields stay unchanged on the server.
+export type UpdateProductInput = {
+  name?: string;
+  vendorId?: string;
+  description?: string | null;
+  categoryId?: string | null;
+  price?: number | null;
+  currencyCode?: string | null;
+  unit?: string | null;
+  moq?: number | null;
+  hsCode?: string | null;
+  sourceCountryId?: string | null;
+  targetCountryIds?: string[];
+  exportEligibility?: string | null;
+  countryRestrictions?: string | null;
+  estimatedDeliveryText?: string | null;
+  dutiesTaxesNote?: string | null;
+  expiryDate?: string | null;
+};
 
 export type UploadUrlResponse = {
   uploadUrl: string;

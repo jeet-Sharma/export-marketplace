@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useCategoriesQuery } from "@/features/categories/api/categories.queries";
 import { useCountriesQuery } from "@/features/countries/api/countries.queries";
 import {
@@ -39,20 +39,6 @@ export function EditProductModal({
   const [description, setDescription] = useState(product.description ?? "");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  useEffect(() => {
-    setName(product.name);
-    setVendorId(product.vendorId);
-    setCategoryId(product.categoryId ?? "");
-    setPrice(product.price ?? "");
-    setCurrencyCode(product.currencyCode ?? "USD");
-    setUnit(product.unit ?? "kg");
-    setMoq(product.moq ?? "");
-    setHsCode(product.hsCode ?? "");
-    setSourceCountryId(product.sourceCountryId ?? "");
-    setDescription(product.description ?? "");
-    setErrorMsg(null);
-  }, [product]);
-
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -72,21 +58,17 @@ export function EditProductModal({
     const data: UpdateProductInput = {
       name: name.trim(),
       vendorId,
-      currencyCode: currencyCode || undefined,
-      unit: unit.trim() || undefined,
-      description: description.trim() || undefined,
-      categoryId: categoryId || undefined,
-      sourceCountryId: sourceCountryId || undefined,
-      hsCode: hsCode.trim() || undefined,
+      // Empty optional fields are sent as null so PATCH clears them.
+      // Omitting the field would leave the previously saved value in place.
+      currencyCode: currencyCode || null,
+      unit: unit.trim() || null,
+      description: description.trim() || null,
+      categoryId: categoryId || null,
+      sourceCountryId: sourceCountryId || null,
+      hsCode: hsCode.trim() || null,
+      price: price.trim() === "" ? null : Number(price),
+      moq: moq.trim() === "" ? null : Number(moq),
     };
-
-    if (price && !isNaN(Number(price))) {
-      data.price = parseFloat(price);
-    }
-
-    if (moq && !isNaN(Number(moq))) {
-      data.moq = parseFloat(moq);
-    }
 
     try {
       await updateProduct({ id: product.id, data }).unwrap();

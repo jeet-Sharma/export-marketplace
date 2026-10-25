@@ -10,14 +10,9 @@ import { isTokenExpired } from "@/lib/jwt";
 import { selectAccessToken } from "@/features/auth/authSelectors";
 import { clearCredentials } from "@/features/auth/authSlice";
 import type { RootState } from "./store";
+import { resolveApiBaseUrl } from "@/lib/api/resolveApiBaseUrl";
 
-const rawURL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ??
-  process.env.NEXT_PUBLIC_API_URL ??
-  process.env.API_INTERNAL_URL ??
-  "https://export-marketplace.onrender.com";
-
-export const API_BASE_URL = rawURL.replace(/\/api\/v1\/?$/, "") + "/api/v1";
+export const API_BASE_URL = resolveApiBaseUrl();
 
 const rawBaseQuery = fetchBaseQuery({
   baseUrl: API_BASE_URL,

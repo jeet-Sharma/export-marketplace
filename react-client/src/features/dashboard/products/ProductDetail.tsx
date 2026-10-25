@@ -189,11 +189,13 @@ export function ProductDetail({ productId, backHref }: ProductDetailProps) {
           ) : null}
 
           {/* Edit Modal */}
-          <EditProductModal
-            isOpen={isEditOpen}
-            product={data}
-            onClose={() => setIsEditOpen(false)}
-          />
+          {isEditOpen ? (
+            <EditProductModal
+              isOpen
+              product={data}
+              onClose={() => setIsEditOpen(false)}
+            />
+          ) : null}
         </div>
       )}
     </div>

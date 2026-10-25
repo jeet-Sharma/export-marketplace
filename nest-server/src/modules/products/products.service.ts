@@ -137,9 +137,10 @@ export class ProductsService {
     qb.skip((page - 1) * pageSize).take(pageSize);
 
     const [items, totalItems] = await qb.getManyAndCount();
+    const itemsWithImages = await this.attachPrimaryImages(items);
 
     return {
-      items,
+      items: itemsWithImages,
       pagination: {
         page,
         pageSize,
@@ -147,6 +148,45 @@ export class ProductsService {
         totalPages: Math.ceil(totalItems / pageSize),
       },
     };
+  }
+
+  // The admin table shows each product's photo. Joining images into the
+  // paginated query would multiply rows and break skip/take counts, so the
+  // primary image is loaded afterwards and given the same display URL the
+  // detail endpoint returns.
+  private async attachPrimaryImages(
+    products: Product[],
+  ): Promise<Array<Product & { images: ProductImageResponseDto[] }>> {
+    if (products.length === 0) {
+      return [];
+    }
+
+    const images = await this.productImageRepository
+      .createQueryBuilder('image')
+      .where('image.productId IN (:...productIds)', {
+        productIds: products.map((product) => product.id),
+      })
+      .orderBy('image.isPrimary', 'DESC')
+      .addOrderBy('image.sortOrder', 'ASC')
+      .addOrderBy('image.createdAt', 'ASC')
+      .getMany();
+
+    const primaryByProductId = new Map<string, ProductImage>();
+    for (const image of images) {
+      if (!primaryByProductId.has(image.productId)) {
+        primaryByProductId.set(image.productId, image);
+      }
+    }
+
+    return Promise.all(
+      products.map(async (product) => {
+        const image = primaryByProductId.get(product.id);
+        const imageDtos = image
+          ? [await toProductImageResponseDto(image, this.storageStrategy)]
+          : [];
+        return Object.assign(product, { images: imageDtos });
+      }),
+    );
   }
 
   // Full management view, including images/price tiers/country mappings
@@ -220,7 +260,11 @@ export class ProductsService {
     }));
 
     for (const image of uploadedImages) {
-      await this.assertValidUploadedImage(image.s3ObjectKey);
+      // productId is allocated above, before insert, so a client-supplied
+      // key must already live under this product's prefix. Keys issued for
+      // another product are rejected here, before metadata inspection can
+      // delete an object this request does not own.
+      await this.assertValidUploadedImage(image.s3ObjectKey, productId);
     }
 
     try {
@@ -759,12 +803,9 @@ export class ProductsService {
 
   private async assertValidUploadedImage(
     objectKey: string,
-    productId?: string,
+    productId: string,
   ): Promise<void> {
-    if (
-      productId &&
-      !this.storageStrategy.keyBelongsToProduct(objectKey, productId)
-    ) {
+    if (!this.storageStrategy.keyBelongsToProduct(objectKey, productId)) {
       throw new BadRequestException({
         code: 'VALIDATION_ERROR',
         message: 'Image object key does not belong to this product',
