@@ -1,11 +1,19 @@
 import Link from "next/link";
 import { routes } from "@/config/routes";
 
+export interface CategoryChip {
+  id: string;
+  name: string;
+  slug: string;
+}
+
 interface CategoryIntroProps {
   categoryName: string;
-  /** Real category slug from the API — used for the "All {category}" tab link. `null` when showing all products (no category selected). */
+  /** Real category slug from the API. `null` when showing all products. */
   categorySlug: string | null;
   description: string;
+  /** Every active category. The one matching `categorySlug` is highlighted. */
+  categories: CategoryChip[];
 }
 
 /** Breadcrumb trail above the category heading. */
@@ -47,41 +55,54 @@ function CategoryHeading({
 }
 
 /**
- * Single "All {category}" tab for the active category, linking back to this
- * same filtered listing via the category's real slug. The backend's
- * category model is currently flat (no subcategory hierarchy), so there is
- * no real data for a subcategory-tab row yet — this renders only the one
- * tab the API can actually back, rather than a row of fabricated
- * subcategory names.
+ * Every category, on one row. The category in the URL is filled pink;
+ * the others stay outlined. Choosing another chip loads that category's
+ * products and moves the highlight.
  */
-function CategoryTab({
-  categoryName,
+function CategoryTabs({
+  categories,
   categorySlug,
 }: {
-  categoryName: string;
-  categorySlug: string;
+  categories: CategoryChip[];
+  categorySlug: string | null;
 }) {
+  if (categories.length === 0) return null;
+
   return (
     <div className="flex w-full flex-wrap gap-[10px]">
-      <Link
-        href={routes.category(categorySlug)}
-        className="flex h-11 flex-1 items-center justify-center whitespace-nowrap rounded-[10px] border border-pink bg-pink px-4 text-[13px] font-bold text-white"
-      >
-        All {categoryName}
-      </Link>
+      {categories.map((category) => {
+        const selected = category.slug === categorySlug;
+        return (
+          <Link
+            key={category.id}
+            href={routes.category(category.slug)}
+            aria-current={selected ? "page" : undefined}
+            className={`flex h-11 min-w-[140px] flex-1 items-center justify-center whitespace-nowrap rounded-[10px] border border-pink px-4 text-[13px] ${
+              selected
+                ? "bg-pink font-bold text-white"
+                : "bg-white text-ink"
+            }`}
+          >
+            {selected ? `All ${category.name}` : category.name}
+          </Link>
+        );
+      })}
     </div>
   );
 }
 
-/** Category introduction: breadcrumb, heading and category tab (omitted entirely when no category is selected). */
-export function CategoryIntro({ categoryName, categorySlug, description }: CategoryIntroProps) {
+/** Category introduction: breadcrumb, heading, and every category as a selectable chip. */
+export function CategoryIntro({
+  categoryName,
+  categorySlug,
+  description,
+  categories,
+}: CategoryIntroProps) {
   return (
     <div className="flex w-full flex-col gap-[18px]">
       <Breadcrumb categoryName={categoryName} />
       <CategoryHeading categoryName={categoryName} description={description} />
-      {categorySlug ? (
-        <CategoryTab categoryName={categoryName} categorySlug={categorySlug} />
-      ) : null}
+      <CategoryTabs categories={categories} categorySlug={categorySlug} />
     </div>
   );
 }

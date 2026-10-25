@@ -1,7 +1,10 @@
 import { useState } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { Checkbox } from "@/components/ui/Checkbox";
+import { routes } from "@/config/routes";
 import { useCountriesQuery } from "@/features/countries/api/countries.queries";
+import type { CategoryChip } from "@/components/products/CategoryIntro";
 
 interface FilterGroupProps {
   title: string;
@@ -18,16 +21,32 @@ function FilterGroup({ title, children }: FilterGroupProps) {
   );
 }
 
-/**
- * Category filter group. Shows only the active category — the backend's
- * category model has no subcategory hierarchy yet, so there is no real
- * data for a subcategory checkbox list (see CategoryIntro's CategoryTab
- * for the same constraint on the tabs above the grid).
- */
-function CategoryFilterGroup({ categoryName }: { categoryName: string }) {
+/** Every category. The one in the URL is pink; choosing another filters the grid. */
+function CategoryFilterGroup({
+  categories,
+  selectedSlug,
+}: {
+  categories: CategoryChip[];
+  selectedSlug: string | null;
+}) {
   return (
     <FilterGroup title="Category">
-      <p className="text-[14px] font-bold text-pink">{categoryName}</p>
+      <ul className="flex flex-col gap-2">
+        {categories.map((category) => {
+          const selected = category.slug === selectedSlug;
+          return (
+            <li key={category.id}>
+              <Link
+                href={routes.category(category.slug)}
+                aria-current={selected ? "page" : undefined}
+                className={`text-[14px] ${selected ? "font-bold text-pink" : "text-ink"}`}
+              >
+                {category.name}
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
     </FilterGroup>
   );
 }
@@ -135,7 +154,8 @@ export interface ProductFiltersValue {
 }
 
 interface ProductFiltersProps {
-  categoryName: string;
+  categories: CategoryChip[];
+  selectedCategorySlug: string | null;
   value: ProductFiltersValue;
   onChange: (next: ProductFiltersValue) => void;
   onReset: () => void;
@@ -143,7 +163,8 @@ interface ProductFiltersProps {
 
 /** Sidebar filter panel for the product listing page — fully controlled by the URL state in ProductsPageContent. */
 export function ProductFilters({
-  categoryName,
+  categories,
+  selectedCategorySlug,
   value,
   onChange,
   onReset,
@@ -160,7 +181,10 @@ export function ProductFilters({
           Reset all
         </button>
       </div>
-      <CategoryFilterGroup categoryName={categoryName} />
+      <CategoryFilterGroup
+        categories={categories}
+        selectedSlug={selectedCategorySlug}
+      />
       <MoqFilterGroup
         key={`${value.minMoq ?? ""}-${value.maxMoq ?? ""}`}
         minMoq={value.minMoq}
