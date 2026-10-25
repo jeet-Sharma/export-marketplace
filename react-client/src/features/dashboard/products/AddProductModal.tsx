@@ -1,9 +1,16 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { PlusIcon } from "../components/icons";
 import { SelectField, TextField } from "./AddProductFormFields";
-import { useCreateProductMutation } from "./productsApi";
+import {
+  useCreateProductMutation,
+  useUpdateAdminProductMutation,
+  useRequestImageUploadUrlMutation,
+  useAddProductImageMutation,
+  usePublishAdminProductMutation,
+  useUnpublishAdminProductMutation,
+} from "./productsApi";
 import {
   useGetCategoryOptionsQuery,
   useGetCountryOptionsQuery,
@@ -21,8 +28,15 @@ type ExtraDetailRow = {
   value: string;
 };
 
+type SelectedImage = {
+  id: string;
+  file: File;
+  previewUrl: string;
+};
+
 type AddProductModalProps = {
   onClose: () => void;
+  onSuccess?: (createdStatus?: "DRAFT" | "PUBLISHED") => void;
 };
 
 const EXPORT_ELIGIBILITY_OPTIONS = [
@@ -42,54 +56,58 @@ function emptyDetailRow(): ExtraDetailRow {
   return { id: crypto.randomUUID(), label: "", valueType: "Text", value: "" };
 }
 
-/**
- * "Add product" modal, matching the Figma design (node 1:3817 / modal
- * 1:4180) field-for-field. Submits via POST /admin/products
- * (CreateProductDto) with either status=DRAFT ("Save as draft") or
- * status=PUBLISHED ("Publish product").
- *
- * Four Figma elements have no full backing feature yet and are called out
- * rather than silently wired to fake behavior:
- * - "Product images" upload: there's no image-upload endpoint wired into
- *   this form (the real upload flow is presigned-URL based, see
- *   ProductsService.requestImageUploadUrl/addImage, a multi-step process
- *   this single-submit form doesn't orchestrate yet). The upload control
- *   and thumbnail grid render per the design but don't persist a file.
- * - "Short description": saved to CreateProductDto.description — the only
- *   free-text description field the backend exposes at this endpoint.
- * - "Full product details": the backend has no separate long-description
- *   field, so this input is captured but not sent. The placeholder makes
- *   this explicit. A future richText/longDescription column on the Product
- *   entity is the correct next step.
- * - "Quantity tiers": the Figma field is a single free-text description
- *   ("100–500 kg, 500 kg+"), but the backend's real tier concept
- *   (CreateProductDto.priceTiers) is a structured array of
- *   {minQuantity, maxQuantity, price, ...} rows, not a parseable string.
- *   Rather than guessing a parse, this field is captured but not sent —
- *   a real tier builder (one row per tier, like Figma's price-tier table
- *   elsewhere in the app) is the correct next step, not a text field.
- * - "Add extra details" (custom label/value rows): the Product entity has
- *   no free-form attributes column, so these rows are visual-only and are
- *   not included in the POST body. Flagged in the row list below rather
- *   than removed, since the task asked for exact visual fidelity.
- */
-export function AddProductModal({ onClose }: AddProductModalProps) {
+function messageFromUnknown(err: unknown, fallback: string): string {
+  if (typeof err === "object" && err !== null && "data" in err) {
+    const data = (err as { data?: { message?: string | string[] } }).data;
+    if (typeof data?.message === "string" && data.message.trim()) {
+      return data.message;
+    }
+    if (Array.isArray(data?.message) && data.message.length > 0) {
+      return data.message.join(", ");
+    }
+  }
+  if (err instanceof Error && err.message.trim()) {
+    return err.message;
+  }
+  return fallback;
+}
+
+export function AddProductModal({ onClose, onSuccess }: AddProductModalProps) {
   const headingId = useId();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: categories } = useGetCategoryOptionsQuery();
   const { data: countries } = useGetCountryOptionsQuery();
   const { data: vendorsResult } = useGetAdminVendorsQuery();
-  const [createProduct, { isLoading, error }] = useCreateProductMutation();
+  const [createProduct, { isLoading: isCreating, error }] =
+    useCreateProductMutation();
+  const [updateProduct] = useUpdateAdminProductMutation();
+  const [publishProduct] = usePublishAdminProductMutation();
+  const [unpublishProduct] = useUnpublishAdminProductMutation();
+  const [requestImageUploadUrl] = useRequestImageUploadUrlMutation();
+  const [addProductImage] = useAddProductImageMutation();
 
   const [name, setName] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [shortDescription, setShortDescription] = useState("");
   const [fullDetails, setFullDetails] = useState("");
 
+  const [selectedImages, setSelectedImages] = useState<SelectedImage[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [createdProduct, setCreatedProduct] = useState<{
+    id: string;
+    status: "DRAFT" | "PUBLISHED";
+  } | null>(null);
+  const [uploadedImageIds, setUploadedImageIds] = useState<string[]>([]);
+
   const [quantityTiers, setQuantityTiers] = useState("");
   const [moq, setMoq] = useState("");
   const [hsCode, setHsCode] = useState("");
   const [exportEligibility, setExportEligibility] = useState("");
+  const [sourceCountryId, setSourceCountryId] = useState("");
   const [shippingCountryId, setShippingCountryId] = useState("");
   const [deliveryEstimate, setDeliveryEstimate] = useState("");
   const [expiryMonths, setExpiryMonths] = useState("");
@@ -106,7 +124,7 @@ export function AddProductModal({ onClose }: AddProductModalProps) {
 
   const vendorOptions = (vendorsResult?.items ?? []).map((vendor) => ({
     value: vendor.id,
-    label: vendor.displayName ?? vendor.companyName,
+    label: vendor.displayName || vendor.companyName || vendor.id,
   }));
   const categoryOptions = (categories ?? []).map((category) => ({
     value: category.id,
@@ -114,8 +132,20 @@ export function AddProductModal({ onClose }: AddProductModalProps) {
   }));
   const countryOptions = (countries ?? []).map((country) => ({
     value: country.id,
-    label: country.name,
+    label: `${country.name} (${country.iso2Code})`,
   }));
+
+  const mutationError = (() => {
+    if (!error) return null;
+    if ("data" in error && typeof error.data === "object" && error.data !== null) {
+      const data = error.data as { message?: string | string[] };
+      if (data.message) {
+        return Array.isArray(data.message) ? data.message.join(", ") : data.message;
+      }
+    }
+    return "Could not save this product. Check the required fields (name and supplier) and try again.";
+  })();
+  const errorMessage = submitError ?? mutationError;
 
   function buildPayload(status: "DRAFT" | "PUBLISHED"): CreateProductPayload {
     const parsedMoq = Number(moq);
@@ -133,10 +163,10 @@ export function AddProductModal({ onClose }: AddProductModalProps) {
       status,
       price: price && Number.isFinite(parsedPrice) ? parsedPrice : undefined,
       currencyCode: price ? "USD" : undefined,
-      unit: moq ? "kg" : undefined,
+      unit: moq || price ? "kg" : undefined,
       moq: moq && Number.isFinite(parsedMoq) ? parsedMoq : undefined,
       hsCode: hsCode.trim() || undefined,
-      sourceCountryId: undefined,
+      sourceCountryId: sourceCountryId || undefined,
       targetCountryIds: shippingCountryId ? [shippingCountryId] : undefined,
       exportEligibility: exportEligibility || undefined,
       estimatedDeliveryText: deliveryEstimate.trim() || undefined,
@@ -157,16 +187,164 @@ export function AddProductModal({ onClose }: AddProductModalProps) {
     };
   }
 
+  const handleFilesSelected = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setImageError(null);
+
+    const validTypes = ["image/jpeg", "image/png", "image/webp"];
+    const maxBytes = 5 * 1024 * 1024; // 5MB
+
+    const newImages: SelectedImage[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (!validTypes.includes(file.type)) {
+        setImageError("Only JPG, PNG, and WebP images are supported.");
+        continue;
+      }
+      if (file.size > maxBytes) {
+        setImageError(`"${file.name}" exceeds the 5MB file size limit.`);
+        continue;
+      }
+      newImages.push({
+        id: crypto.randomUUID(),
+        file,
+        previewUrl: URL.createObjectURL(file),
+      });
+    }
+
+    if (newImages.length > 0) {
+      setSelectedImages((prev) => [...prev, ...newImages]);
+    }
+  };
+
+  const handleRemoveImage = (id: string) => {
+    setSelectedImages((prev) => {
+      const target = prev.find((img) => img.id === id);
+      if (target) {
+        URL.revokeObjectURL(target.previewUrl);
+      }
+      return prev.filter((img) => img.id !== id);
+    });
+  };
+
   async function handleSubmit(status: "DRAFT" | "PUBLISHED") {
     if (!name.trim() || !vendorId) {
       return;
     }
+    setImageError(null);
+    setSubmitError(null);
+    const uploaded = new Set(uploadedImageIds);
+    let saved = createdProduct;
     try {
-      await createProduct(buildPayload(status)).unwrap();
-      onClose();
-    } catch {
-      // Error state is surfaced inline via the `error` field below; swallow
-      // here so an unhandled rejection doesn't bubble past this handler.
+      setUploadProgress(
+        status === "PUBLISHED" ? "Publishing product…" : "Saving draft…",
+      );
+
+      const payload = buildPayload(status);
+      if (!saved) {
+        const created = await createProduct(payload).unwrap();
+        saved = { id: created.id, status };
+        setCreatedProduct(saved);
+      } else {
+        await updateProduct({
+          id: saved.id,
+          data: {
+            name: payload.name,
+            vendorId: payload.vendorId,
+            description: payload.description ?? null,
+            categoryId: payload.categoryId ?? null,
+            price: payload.price ?? null,
+            currencyCode: payload.currencyCode ?? null,
+            unit: payload.unit ?? null,
+            moq: payload.moq ?? null,
+            hsCode: payload.hsCode ?? null,
+            sourceCountryId: payload.sourceCountryId ?? null,
+            targetCountryIds: payload.targetCountryIds ?? [],
+            exportEligibility: payload.exportEligibility ?? null,
+            countryRestrictions: payload.countryRestrictions ?? null,
+            estimatedDeliveryText: payload.estimatedDeliveryText ?? null,
+            dutiesTaxesNote: payload.dutiesTaxesNote ?? null,
+            expiryDate: payload.expiryDate ?? null,
+          },
+        }).unwrap();
+        if (saved.status !== status) {
+          if (status === "PUBLISHED") {
+            await publishProduct(saved.id).unwrap();
+          } else {
+            await unpublishProduct(saved.id).unwrap();
+          }
+          saved = { id: saved.id, status };
+          setCreatedProduct(saved);
+        }
+      }
+
+      const pendingImages = selectedImages.filter((item) => !uploaded.has(item.id));
+      for (let i = 0; i < pendingImages.length; i++) {
+        const item = pendingImages[i];
+        setUploadProgress(
+          `Uploading image ${i + 1} of ${pendingImages.length}…`,
+        );
+
+        const uploadInfo = await requestImageUploadUrl({
+          productId: saved.id,
+          filename: item.file.name,
+          contentType: item.file.type,
+          contentLengthBytes: item.file.size,
+        }).unwrap();
+
+        if (uploadInfo.fields) {
+          const formData = new FormData();
+          for (const [k, v] of Object.entries(uploadInfo.fields)) {
+            formData.append(k, v);
+          }
+          formData.append("file", item.file);
+          const uploadRes = await fetch(uploadInfo.uploadUrl, {
+            method: uploadInfo.httpMethod || "POST",
+            body: formData,
+          });
+          if (!uploadRes.ok) {
+            throw new Error(`Failed to upload ${item.file.name}`);
+          }
+        } else {
+          const uploadRes = await fetch(uploadInfo.uploadUrl, {
+            method: uploadInfo.httpMethod || "PUT",
+            headers: { "Content-Type": item.file.type },
+            body: item.file,
+          });
+          if (!uploadRes.ok) {
+            throw new Error(`Failed to upload ${item.file.name}`);
+          }
+        }
+
+        await addProductImage({
+          productId: saved.id,
+          objectKey: uploadInfo.key || uploadInfo.objectKey || "",
+          isPrimary: uploaded.size === 0 && i === 0,
+          sortOrder: uploaded.size + i,
+          altText: name.trim() || item.file.name,
+        }).unwrap();
+
+        uploaded.add(item.id);
+        setUploadedImageIds([...uploaded]);
+      }
+
+      selectedImages.forEach((img) => URL.revokeObjectURL(img.previewUrl));
+
+      if (onSuccess) {
+        onSuccess(status);
+      } else {
+        onClose();
+      }
+    } catch (err) {
+      const detail = messageFromUnknown(err, "");
+      setSubmitError(
+        saved
+          ? `${detail ? `${detail} ` : ""}The product was saved. Retry to finish the remaining images without creating a duplicate.`
+          : detail ||
+              "Could not save this product. Check the required fields (name and supplier) and try again.",
+      );
+    } finally {
+      setUploadProgress(null);
     }
   }
 
@@ -226,7 +404,7 @@ export function AddProductModal({ onClose }: AddProductModalProps) {
 
             <div className="flex w-full gap-3">
               <TextField
-                label="Product name"
+                label="Product name *"
                 value={name}
                 onChange={setName}
                 placeholder="e.g. Organic Turmeric Fingers · Export Grade"
@@ -240,10 +418,36 @@ export function AddProductModal({ onClose }: AddProductModalProps) {
               />
             </div>
 
-            {/* Product images — visual only, see component doc comment */}
-            <div className="flex w-full flex-col gap-1.5">
+            {/* Product images */}
+            <div className="flex w-full flex-col gap-2">
               <label className="text-[11px] font-bold text-bloom-ink">Product images</label>
-              <div className="flex w-full items-center gap-3 rounded-[10px] border border-bloom-border bg-white p-3">
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                multiple
+                onChange={(e) => handleFilesSelected(e.target.files)}
+                className="hidden"
+              />
+
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setIsDragging(true);
+                }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setIsDragging(false);
+                  handleFilesSelected(e.dataTransfer.files);
+                }}
+                className={`flex w-full items-center gap-3 rounded-[10px] border p-3 transition-colors ${
+                  isDragging
+                    ? "border-bloom-pink bg-[#fbeaf0]/40 ring-2 ring-bloom-pink/20"
+                    : "border-bloom-border bg-white"
+                }`}
+              >
                 <div className="flex size-8 shrink-0 items-center justify-center rounded-[8px] bg-[#fbeaf0]">
                   <svg aria-hidden viewBox="0 0 24 24" className="size-4 text-bloom-pink" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                     <rect width="18" height="18" x="3" y="3" rx="2" />
@@ -252,18 +456,60 @@ export function AddProductModal({ onClose }: AddProductModalProps) {
                   </svg>
                 </div>
                 <div className="flex flex-1 flex-col gap-0.5">
-                  <p className="text-[13px] font-semibold text-bloom-ink">Upload product images</p>
-                  <p className="text-[11px] text-bloom-muted">Add hero, detail, and packaging shots for buyer review.</p>
+                  <p className="text-[13px] font-semibold text-bloom-ink">
+                    Upload product images
+                  </p>
+                  <p className="text-[11px] text-bloom-muted">
+                    JPG, PNG, or WebP up to 5MB. Drag &amp; drop or click upload.
+                  </p>
                 </div>
                 <button
                   type="button"
-                  disabled
-                  title="Image upload isn't wired into this form yet"
-                  className="shrink-0 cursor-not-allowed rounded-[8px] bg-bloom-pink px-3 py-2 text-[11px] font-bold text-white opacity-60"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={Boolean(uploadProgress)}
+                  className="shrink-0 rounded-[8px] bg-bloom-pink px-3 py-2 text-[11px] font-bold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   Upload
                 </button>
               </div>
+
+              {imageError ? (
+                <p className="text-[11px] font-semibold text-red-600">{imageError}</p>
+              ) : null}
+
+              {selectedImages.length > 0 ? (
+                <div className="flex flex-wrap gap-2.5 pt-1">
+                  {selectedImages.map((img, idx) => (
+                    <div
+                      key={img.id}
+                      className="group relative flex items-center gap-2 rounded-[8px] border border-bloom-border bg-white p-1.5 shadow-sm"
+                    >
+                      <img
+                        src={img.previewUrl}
+                        alt={img.file.name}
+                        className="size-11 shrink-0 rounded-[6px] object-cover"
+                      />
+                      <div className="flex flex-col pr-6">
+                        <span className="max-w-[120px] truncate text-[11px] font-semibold text-bloom-ink">
+                          {img.file.name}
+                        </span>
+                        <span className="text-[10px] text-bloom-muted">
+                          {(img.file.size / 1024).toFixed(0)} KB {idx === 0 ? "· Primary" : ""}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveImage(img.id)}
+                        disabled={Boolean(uploadProgress)}
+                        title="Remove image"
+                        className="absolute right-1.5 top-1.5 flex size-5 items-center justify-center rounded-full bg-[#f4f1ee] text-[12px] font-bold text-bloom-muted hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
             </div>
 
             <div className="flex w-full gap-3">
@@ -326,21 +572,28 @@ export function AddProductModal({ onClose }: AddProductModalProps) {
 
             <div className="flex w-full gap-3">
               <SelectField
+                label="Origin country"
+                value={sourceCountryId}
+                onChange={setSourceCountryId}
+                placeholder="Select origin country"
+                options={countryOptions}
+              />
+              <SelectField
                 label="Shipping country"
                 value={shippingCountryId}
                 onChange={setShippingCountryId}
                 placeholder="Select destination country"
                 options={countryOptions}
               />
+            </div>
+
+            <div className="flex w-full gap-3">
               <TextField
                 label="Delivery estimate"
                 value={deliveryEstimate}
                 onChange={setDeliveryEstimate}
                 placeholder="e.g. 10–15 days"
               />
-            </div>
-
-            <div className="flex w-full gap-3">
               <TextField
                 label="Expiry"
                 value={expiryMonths}
@@ -438,7 +691,7 @@ export function AddProductModal({ onClose }: AddProductModalProps) {
             </div>
 
             <SelectField
-              label="Supplier"
+              label="Supplier *"
               value={vendorId}
               onChange={setVendorId}
               placeholder="Select verified supplier"
@@ -487,41 +740,56 @@ export function AddProductModal({ onClose }: AddProductModalProps) {
             </div>
           </section>
 
-          {error ? (
-            <p className="text-[12px] text-error">
-              Could not save this product. Check the required fields (name and supplier) and try again.
-            </p>
+          {errorMessage ? (
+            <div
+              role="alert"
+              className="flex items-start gap-2.5 rounded-[10px] border border-red-200 bg-red-50 p-3 text-[12px] font-semibold text-red-700"
+            >
+              <svg aria-hidden viewBox="0 0 24 24" className="mt-0.5 size-4 shrink-0 text-red-600" fill="none" stroke="currentColor" strokeWidth={2}>
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="8" x2="12" y2="12" />
+                <line x1="12" y1="16" x2="12.01" y2="16" />
+              </svg>
+              <span>{errorMessage}</span>
+            </div>
           ) : null}
         </div>
 
         {/* Modal footer */}
         <div className="flex items-center justify-between border-t border-[#eee9e4] px-6 py-4">
           <p className="text-[12px] text-bloom-muted">
-            Drafts are saved privately and can be published later.
+            {uploadProgress ? (
+              <span className="font-semibold text-bloom-pink">{uploadProgress}</span>
+            ) : (
+              "Product name & verified supplier are required."
+            )}
           </p>
           <div className="flex items-center gap-2">
             <button
               type="button"
+              disabled={isCreating || Boolean(uploadProgress)}
               onClick={onClose}
-              className="flex h-10 items-center rounded-[10px] border border-bloom-border bg-white px-4 text-[13px] font-semibold text-bloom-ink transition-colors hover:bg-bloom-cream"
+              className="flex h-10 items-center rounded-[10px] border border-bloom-border bg-white px-4 text-[13px] font-semibold text-bloom-ink transition-colors hover:bg-bloom-cream disabled:opacity-50"
             >
               Cancel
             </button>
             <button
               type="button"
-              disabled={isLoading || !name.trim() || !vendorId}
+              disabled={isCreating || Boolean(uploadProgress) || !name.trim() || !vendorId}
+              title={!name.trim() || !vendorId ? "Product name and supplier are required" : undefined}
               onClick={() => handleSubmit("DRAFT")}
               className="flex h-10 items-center rounded-[10px] border border-bloom-pink bg-white px-4 text-[13px] font-bold text-bloom-pink transition-colors hover:bg-[#fbeaf0] disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Save as draft
+              {isCreating && !uploadProgress ? "Saving…" : "Save as draft"}
             </button>
             <button
               type="button"
-              disabled={isLoading || !name.trim() || !vendorId}
+              disabled={isCreating || Boolean(uploadProgress) || !name.trim() || !vendorId}
+              title={!name.trim() || !vendorId ? "Product name and supplier are required" : undefined}
               onClick={() => handleSubmit("PUBLISHED")}
               className="flex h-10 items-center rounded-[10px] bg-bloom-pink px-4 text-[13px] font-bold text-white shadow-[0px_6px_10px_rgba(53,16,31,0.07)] transition-colors hover:bg-pink-hover disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {isLoading ? "Saving…" : "Publish product"}
+              {uploadProgress ? uploadProgress : isCreating ? "Saving…" : "Publish product"}
             </button>
           </div>
         </div>

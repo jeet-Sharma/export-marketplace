@@ -20,6 +20,7 @@ export type ApiVendor = {
  * not decorative.
  */
 export const vendorsApi = baseApi.injectEndpoints({
+  overrideExisting: true,
   endpoints: (builder) => ({
     getAdminVendors: builder.query<{ items: ApiVendor[] }, void>({
       query: () => ({ url: "/admin/vendors" }),

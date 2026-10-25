@@ -12,6 +12,7 @@ import type { ApiCountry } from "@/features/countries/types/country-api.types";
  * data-fetching stacks for the same session.
  */
 export const referenceDataApi = baseApi.injectEndpoints({
+  overrideExisting: true,
   endpoints: (builder) => ({
     getCategoryOptions: builder.query<ApiCategory[], void>({
       query: () => ({ url: "/categories" }),

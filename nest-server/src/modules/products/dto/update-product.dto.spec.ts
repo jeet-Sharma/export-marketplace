@@ -58,6 +58,23 @@ describe('UpdateProductDto', () => {
     expect(nameError).toBeDefined();
   });
 
+  it('accepts explicit null for optional fields so a client can clear them', async () => {
+    const dto = plainToInstance(UpdateProductDto, {
+      description: null,
+      categoryId: null,
+      price: null,
+      currencyCode: null,
+      unit: null,
+      moq: null,
+      hsCode: null,
+      sourceCountryId: null,
+    });
+
+    const errors = await validate(dto);
+
+    expect(errors).toHaveLength(0);
+  });
+
   it('accepts a valid calendar date for expiryDate', async () => {
     const dto = plainToInstance(UpdateProductDto, {
       expiryDate: '2027-12-31',

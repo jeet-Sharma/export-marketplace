@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { cookies } from "next/headers";
 import { BuyerWorkspace } from "@/features/dashboard/buyer/BuyerWorkspace";
 import { DashboardLayout } from "@/features/dashboard/components/DashboardLayout";
 import { resolveRole } from "@/features/dashboard/config/resolveRole";
@@ -20,7 +21,23 @@ export default async function DashboardPage({
   searchParams,
 }: DashboardPageProps) {
   const { role: roleParam } = await searchParams;
-  const role = resolveRole(roleParam);
+
+  // Resolve role from user_data cookie if no URL override query is provided
+  const cookieStore = await cookies();
+  const rawUserData = cookieStore.get("user_data")?.value;
+  let sessionRole: string | undefined;
+
+  if (rawUserData) {
+    try {
+      const parsed = JSON.parse(rawUserData);
+      // Backend roles are e.g. ["admin"] or ["vendor"] or ["buyer"/"user"]
+      sessionRole = parsed.roles?.[0]?.toLowerCase();
+    } catch {
+      // Fallback if parsing fails
+    }
+  }
+
+  const role = resolveRole(roleParam ?? sessionRole);
   const isBuyer = role === "user";
 
   return (

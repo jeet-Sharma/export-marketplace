@@ -10,5 +10,5 @@ export const PRODUCT_COLUMNS = {
   price: "min-w-[120px] flex-[0_0_15%]",
   supplier: "min-w-[150px] flex-1",
   status: "min-w-[130px] flex-1",
-  actions: "w-[124px] shrink-0",
+  actions: "w-[170px] shrink-0",
 } as const;

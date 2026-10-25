@@ -41,6 +41,11 @@ import type { PriceTierDto } from './dto/price-tier.dto.js';
 import type { QueryAdminProductsDto } from './dto/query-admin-products.dto.js';
 import { UploadUrlResponseDto } from './dto/upload-url-response.dto.js';
 import type { UpdateProductDto } from './dto/update-product.dto.js';
+import { randomUUID } from 'node:crypto';
+import { PassThrough, Transform } from 'node:stream';
+import { pipeline } from 'node:stream';
+import { stringify } from 'csv-stringify';
+import type { Readable } from 'node:stream';
 
 const PRESIGNED_UPLOAD_URL_TTL_SECONDS = 900;
 
@@ -132,9 +137,10 @@ export class ProductsService {
     qb.skip((page - 1) * pageSize).take(pageSize);
 
     const [items, totalItems] = await qb.getManyAndCount();
+    const itemsWithImages = await this.attachPrimaryImages(items);
 
     return {
-      items,
+      items: itemsWithImages,
       pagination: {
         page,
         pageSize,
@@ -142,6 +148,45 @@ export class ProductsService {
         totalPages: Math.ceil(totalItems / pageSize),
       },
     };
+  }
+
+  // The admin table shows each product's photo. Joining images into the
+  // paginated query would multiply rows and break skip/take counts, so the
+  // primary image is loaded afterwards and given the same display URL the
+  // detail endpoint returns.
+  private async attachPrimaryImages(
+    products: Product[],
+  ): Promise<Array<Product & { images: ProductImageResponseDto[] }>> {
+    if (products.length === 0) {
+      return [];
+    }
+
+    const images = await this.productImageRepository
+      .createQueryBuilder('image')
+      .where('image.productId IN (:...productIds)', {
+        productIds: products.map((product) => product.id),
+      })
+      .orderBy('image.isPrimary', 'DESC')
+      .addOrderBy('image.sortOrder', 'ASC')
+      .addOrderBy('image.createdAt', 'ASC')
+      .getMany();
+
+    const primaryByProductId = new Map<string, ProductImage>();
+    for (const image of images) {
+      if (!primaryByProductId.has(image.productId)) {
+        primaryByProductId.set(image.productId, image);
+      }
+    }
+
+    return Promise.all(
+      products.map(async (product) => {
+        const image = primaryByProductId.get(product.id);
+        const imageDtos = image
+          ? [await toProductImageResponseDto(image, this.storageStrategy)]
+          : [];
+        return Object.assign(product, { images: imageDtos });
+      }),
+    );
   }
 
   // Full management view, including images/price tiers/country mappings
@@ -205,47 +250,76 @@ export class ProductsService {
   ): Promise<Product> {
     this.assertPriceTiersDoNotOverlap(dto.priceTiers);
 
-    for (
-      let attempt = 1;
-      attempt <= ProductsService.MAX_SLUG_RETRIES;
-      attempt++
-    ) {
-      const slug = await this.generateUniqueSlug(
-        dto.name,
-        attempt > 1 ? attempt : undefined,
-      );
+    const productId = randomUUID();
 
-      try {
-        return await this.dataSource.transaction((manager) =>
-          this.createWithSlug(manager, dto, slug, createdByUserId),
-        );
-      } catch (error) {
-        if (
-          this.isUniqueViolation(error) &&
-          attempt < ProductsService.MAX_SLUG_RETRIES
-        ) {
-          continue;
-        }
-        if (this.isUniqueViolation(error)) {
-          throw new ConflictException({
-            code: 'CONFLICT',
-            message:
-              'Could not allocate a unique product slug, please try again',
-            errors: [
-              {
-                field: 'name',
-                message: 'A product with a conflicting slug already exists',
-              },
-            ],
-          });
-        }
-        this.rethrowAsValidationError(error);
-      }
+    const uploadedImages = (dto.images ?? []).map((image, index) => ({
+      s3ObjectKey: image.objectKey,
+      altText: image.altText ?? null,
+      sortOrder: index,
+      isPrimary: index === 0,
+    }));
+
+    for (const image of uploadedImages) {
+      // productId is allocated above, before insert, so a client-supplied
+      // key must already live under this product's prefix. Keys issued for
+      // another product are rejected here, before metadata inspection can
+      // delete an object this request does not own.
+      await this.assertValidUploadedImage(image.s3ObjectKey, productId);
     }
 
-    // Unreachable — the loop above always returns or throws — but
-    // satisfies the compiler's control-flow analysis.
-    throw new ConflictException('Could not allocate a unique product slug');
+    try {
+      for (
+        let attempt = 1;
+        attempt <= ProductsService.MAX_SLUG_RETRIES;
+        attempt++
+      ) {
+        const slug = await this.generateUniqueSlug(
+          dto.name,
+          attempt > 1 ? attempt : undefined,
+        );
+
+        try {
+          return await this.dataSource.transaction((manager) =>
+            this.createWithSlug(
+              manager,
+              dto,
+              slug,
+              createdByUserId,
+              productId,
+              uploadedImages,
+            ),
+          );
+        } catch (error) {
+          if (
+            this.isUniqueViolation(error) &&
+            attempt < ProductsService.MAX_SLUG_RETRIES
+          ) {
+            continue;
+          }
+          if (this.isUniqueViolation(error)) {
+            throw new ConflictException({
+              code: 'CONFLICT',
+              message:
+                'Could not allocate a unique product slug, please try again',
+              errors: [
+                {
+                  field: 'name',
+                  message: 'A product with a conflicting slug already exists',
+                },
+              ],
+            });
+          }
+          this.rethrowAsValidationError(error);
+        }
+      }
+
+      throw new ConflictException('Could not allocate a unique product slug');
+    } catch (dbError: unknown) {
+      if (dbError instanceof Error) {
+        this.logger.error('Failed to create product', dbError.stack);
+      }
+      throw dbError;
+    }
   }
 
   private async createWithSlug(
@@ -253,8 +327,16 @@ export class ProductsService {
     dto: CreateProductDto,
     slug: string,
     createdByUserId: string,
+    productId: string,
+    uploadedImages: {
+      s3ObjectKey: string;
+      altText: string | null;
+      sortOrder: number;
+      isPrimary: boolean;
+    }[] = [],
   ): Promise<Product> {
     const product = manager.create(Product, {
+      id: productId,
       slug,
       name: dto.name,
       description: toNullable(dto.description),
@@ -297,6 +379,21 @@ export class ProductsService {
           productId: saved.id,
           countryId,
         })),
+      );
+    }
+
+    if (uploadedImages.length > 0) {
+      await manager.save(
+        ProductImage,
+        uploadedImages.map((image) =>
+          manager.create(ProductImage, {
+            productId: saved.id,
+            s3ObjectKey: image.s3ObjectKey,
+            altText: image.altText,
+            sortOrder: image.sortOrder,
+            isPrimary: image.isPrimary,
+          }),
+        ),
       );
     }
 
@@ -605,111 +702,7 @@ export class ProductsService {
     dto: CreateProductImageDto,
   ): Promise<ProductImageResponseDto> {
     await this.assertProductExists(productId);
-
-    if (!this.storageStrategy.keyBelongsToProduct(dto.objectKey, productId)) {
-      throw new BadRequestException({
-        code: 'VALIDATION_ERROR',
-        message: 'Image object key does not belong to this product',
-        errors: [
-          {
-            field: 'objectKey',
-            message: 'objectKey must be a key issued for this product',
-          },
-        ],
-      });
-    }
-
-    // Fast-path rejection for the common case: the same objectKey already
-    // registered against some image row (any product — the key itself is
-    // globally unique in storage, see UQ_product_images_s3_object_key).
-    // This is only a best-effort first pass, same caveat as
-    // generateUniqueSlug's pre-check: it runs before the transaction
-    // opens, so two concurrent addImage calls for the same objectKey can
-    // both pass it before either commits. The actual guarantee is the DB
-    // unique index; the catch block below converts that violation into
-    // the same 409 if this check is lost to the race.
-    const existingImageWithKey = await this.productImageRepository.exists({
-      where: { s3ObjectKey: dto.objectKey },
-    });
-    if (existingImageWithKey) {
-      throw new ConflictException({
-        code: 'CONFLICT',
-        message: 'This storage object is already registered to an image',
-        errors: [
-          {
-            field: 'objectKey',
-            message: 'objectKey is already attached to a product image',
-          },
-        ],
-      });
-    }
-
-    const metadata = await this.storageStrategy.getObjectMetadata(
-      dto.objectKey,
-    );
-    if (!metadata.exists) {
-      throw new BadRequestException({
-        code: 'VALIDATION_ERROR',
-        message: 'Image object was not found in storage',
-        errors: [
-          {
-            field: 'objectKey',
-            message: 'Upload the file before persisting its metadata',
-          },
-        ],
-      });
-    }
-
-    // Authoritative size check (API spec section 15: "Restrict product
-    // image type, size and upload behavior") — a presigned PUT URL alone
-    // can't enforce a hard max (see S3Service.getPresignedUploadUrl's
-    // comment), so this is the real enforcement point, checked against
-    // what was actually uploaded rather than trusting the client's
-    // declared contentLengthBytes from the upload-url request. An
-    // oversized object is deleted immediately rather than left orphaned
-    // in the bucket.
-    if (metadata.sizeBytes > MAX_IMAGE_UPLOAD_BYTES) {
-      await this.storageStrategy.delete(dto.objectKey);
-      throw new BadRequestException({
-        code: 'VALIDATION_ERROR',
-        message: 'Image exceeds the maximum allowed size',
-        errors: [
-          {
-            field: 'objectKey',
-            message: `Uploaded file is ${metadata.sizeBytes} bytes, which exceeds the ${MAX_IMAGE_UPLOAD_BYTES} byte limit`,
-          },
-        ],
-      });
-    }
-
-    // Authoritative file-TYPE check, based on the uploaded object's actual
-    // content (see StorageStrategy.getObjectMetadata's detectedContentType),
-    // never the client-declared Content-Type header used to request the
-    // upload URL — a malicious or buggy client can set that header to
-    // anything regardless of what bytes it actually sends. An object whose
-    // real content doesn't match one of ALLOWED_IMAGE_CONTENT_TYPES (e.g.
-    // an HTML/script/executable file renamed with a .jpg-looking key) is
-    // rejected and deleted immediately, the same treatment as an oversized
-    // upload above — it must not be left in storage, and must never be
-    // persisted as product image metadata.
-    if (
-      !metadata.detectedContentType ||
-      !ALLOWED_IMAGE_CONTENT_TYPES.includes(
-        metadata.detectedContentType as AllowedImageContentType,
-      )
-    ) {
-      await this.storageStrategy.delete(dto.objectKey);
-      throw new BadRequestException({
-        code: 'VALIDATION_ERROR',
-        message: 'Uploaded file is not a supported image format',
-        errors: [
-          {
-            field: 'objectKey',
-            message: `The uploaded file's content does not match an allowed image format (${ALLOWED_IMAGE_CONTENT_TYPES.join(', ')})`,
-          },
-        ],
-      });
-    }
+    await this.assertValidUploadedImage(dto.objectKey, productId);
 
     try {
       const saved = await this.dataSource.transaction(async (manager) => {
@@ -800,11 +793,92 @@ export class ProductsService {
     } catch (error) {
       this.logger.error(
         `Failed to delete storage object "${image.s3ObjectKey}" for ` +
-          `product image ${imageId} (product ${productId}) after its DB ` +
-          `row was removed; the object may be orphaned in storage: ` +
-          `${(error as Error).message}`,
+        `product image ${imageId} (product ${productId}) after its DB ` +
+        `row was removed; the object may be orphaned in storage: ` +
+        `${(error as Error).message}`,
         (error as Error).stack,
       );
+    }
+  }
+
+  private async assertValidUploadedImage(
+    objectKey: string,
+    productId: string,
+  ): Promise<void> {
+    if (!this.storageStrategy.keyBelongsToProduct(objectKey, productId)) {
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: 'Image object key does not belong to this product',
+        errors: [
+          {
+            field: 'objectKey',
+            message: 'objectKey must be a key issued for this product',
+          },
+        ],
+      });
+    }
+
+    const existingImageWithKey = await this.productImageRepository.exists({
+      where: { s3ObjectKey: objectKey },
+    });
+    if (existingImageWithKey) {
+      throw new ConflictException({
+        code: 'CONFLICT',
+        message: 'This storage object is already registered to an image',
+        errors: [
+          {
+            field: 'objectKey',
+            message: 'objectKey is already attached to a product image',
+          },
+        ],
+      });
+    }
+
+    const metadata = await this.storageStrategy.getObjectMetadata(objectKey);
+    if (!metadata.exists) {
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: 'Image object was not found in storage',
+        errors: [
+          {
+            field: 'objectKey',
+            message: 'Upload the file before persisting its metadata',
+          },
+        ],
+      });
+    }
+
+    if (metadata.sizeBytes > MAX_IMAGE_UPLOAD_BYTES) {
+      await this.storageStrategy.delete(objectKey);
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: 'Image exceeds the maximum allowed size',
+        errors: [
+          {
+            field: 'objectKey',
+            message: `Uploaded file is ${metadata.sizeBytes} bytes, which exceeds the ${MAX_IMAGE_UPLOAD_BYTES} byte limit`,
+          },
+        ],
+      });
+    }
+
+    if (
+      !metadata.detectedContentType ||
+      !ALLOWED_IMAGE_CONTENT_TYPES.includes(
+        metadata.detectedContentType as AllowedImageContentType,
+      )
+    ) {
+      await this.storageStrategy.delete(objectKey);
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: 'Uploaded file is not a supported image format',
+        errors: [
+          {
+            field: 'objectKey',
+            message: `The uploaded file's content does not match an allowed image format (${ALLOWED_IMAGE_CONTENT_TYPES.join(', ')})`,
+          },
+        ],
+      });
     }
   }
 
@@ -922,5 +996,141 @@ export class ProductsService {
       candidate = `${baseOrFallback}-${suffix}`;
     }
     return candidate;
+  }
+
+
+  /**
+   * Streams all products matching the supplied filters as a CSV download.
+   *
+   * Only the five columns required for the export are selected:
+   *   Name, MOQ, Price, Vendor Name, Status.
+   *
+   * Pagination (page/pageSize) is intentionally NOT applied so the
+   * download always contains every matching row, not one page.
+   *
+   * The readable stream is returned immediately; CSV bytes are produced
+   * lazily as the TypeORM cursor reads rows from the database.  The
+   * controller wraps this in a StreamableFile with
+   * Content-Disposition: attachment so the browser starts a download.
+   */
+  async exportProductsCsv(query: QueryAdminProductsDto): Promise<Readable> {
+    // ----------------------------------------------------------------
+    // Build query — same filters as findAll(), NO pagination
+    // ----------------------------------------------------------------
+    const qb = this.productRepository
+      .createQueryBuilder('product')
+      .leftJoin('product.vendor', 'vendor');
+
+    // Select only the five export columns.
+    // COALESCE picks displayName first and falls back to companyName so
+    // every row has a non-null vendor label — mirrors the frontend display.
+    qb.select([
+      'product.name          AS "name"',
+      'product.moq           AS "moq"',
+      'product.price         AS "price"',
+      'product.status        AS "status"',
+      'COALESCE(vendor.display_name, vendor.company_name) AS "vendorName"',
+    ]);
+
+    if (query.status) {
+      qb.andWhere('product.status = :status', { status: query.status });
+    }
+    if (query.categoryId) {
+      qb.andWhere('product.categoryId = :categoryId', {
+        categoryId: query.categoryId,
+      });
+    }
+    if (query.vendorId) {
+      qb.andWhere('product.vendorId = :vendorId', {
+        vendorId: query.vendorId,
+      });
+    }
+    if (query.search) {
+      qb.andWhere('product.name ILIKE :search', {
+        search: `%${query.search}%`,
+      });
+    }
+
+    switch (query.sort) {
+      case 'price_asc':
+        qb.orderBy('product.price', 'ASC', 'NULLS LAST');
+        break;
+      case 'price_desc':
+        qb.orderBy('product.price', 'DESC', 'NULLS LAST');
+        break;
+      case 'newest':
+      default:
+        qb.orderBy('product.createdAt', 'DESC');
+        break;
+    }
+
+    // ----------------------------------------------------------------
+    // Sanitise rows to prevent CSV injection (formula-character prefix)
+    // ----------------------------------------------------------------
+    const TEXT_COLS = new Set(['name', 'status', 'vendorName']);
+
+    const sanitize = new Transform({
+      objectMode: true,
+      transform(
+        row: Record<string, unknown>,
+        _enc: BufferEncoding,
+        cb: (err?: Error | null, data?: unknown) => void,
+      ) {
+        const out: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(row)) {
+          if (
+            typeof v === 'string' &&
+            TEXT_COLS.has(k) &&
+            /^[\s]*[=+\-@]/.test(v)
+          ) {
+            out[k] = "'" + v;
+          } else {
+            out[k] = v;
+          }
+        }
+        cb(null, out);
+      },
+    });
+
+    // ----------------------------------------------------------------
+    // CSV serialiser — five columns in display order
+    // ----------------------------------------------------------------
+    const csv = stringify({
+      header: true,
+      columns: [
+        { key: 'name',       header: 'Product Name'           },
+        { key: 'moq',        header: 'Minimum Order Quantity'  },
+        { key: 'price',      header: 'Price'                   },
+        { key: 'vendorName', header: 'Vendor Name'             },
+        { key: 'status',     header: 'Status'                  },
+      ],
+    });
+
+    // ----------------------------------------------------------------
+    // Pipe: DB cursor -> sanitiser -> CSV serialiser -> HTTP output
+    // ----------------------------------------------------------------
+    const output = new PassThrough();
+
+    void (async () => {
+      try {
+        const dbStream = await qb.stream();
+        pipeline(dbStream, sanitize, csv, output, (err) => {
+          if (err) {
+            this.logger.error('Product CSV export stream error', err.stack);
+            output.destroy(err);
+          }
+        });
+      } catch (err) {
+        this.logger.error(
+          'Failed to start product CSV export stream',
+          err instanceof Error ? err.stack : String(err),
+        );
+        output.destroy(
+          err instanceof Error ? err : new Error('CSV export failed'),
+        );
+      }
+    })();
+
+    return output;
   }
 }

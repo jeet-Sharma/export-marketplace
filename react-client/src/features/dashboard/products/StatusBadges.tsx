@@ -40,7 +40,7 @@ const PUBLICATION_STYLES: Record<
 };
 
 export function VerificationBadge({ status }: { status: VerificationStatus }) {
-  const style = VERIFICATION_STYLES[status];
+  const style = VERIFICATION_STYLES[status] || VERIFICATION_STYLES.pending;
   return (
     <span
       className={`inline-flex items-center rounded-full px-2 py-1.5 text-[11px] font-semibold ${style.className}`}
@@ -51,7 +51,7 @@ export function VerificationBadge({ status }: { status: VerificationStatus }) {
 }
 
 export function PublicationBadge({ status }: { status: PublicationStatus }) {
-  const style = PUBLICATION_STYLES[status];
+  const style = PUBLICATION_STYLES[status] || PUBLICATION_STYLES.draft;
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1.5 text-[11px] font-semibold ${style.className}`}

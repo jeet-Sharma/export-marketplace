@@ -4,6 +4,47 @@
 // them (money precision; see marketplace-domain.md).
 export type ApiProductStatus = "DRAFT" | "PUBLISHED";
 
+export type ProductImageResponse = {
+  id: string;
+  objectKey: string;
+  url: string;
+  sortOrder: number;
+  altText?: string | null;
+  createdAt?: string;
+};
+
+export type ProductPriceTier = {
+  id: string;
+  minQuantity: string;
+  maxQuantity: string | null;
+  unitPrice: string;
+};
+
+export type ProductCountryRef = {
+  id: string;
+  iso2Code: string;
+  iso3Code: string;
+  name: string;
+};
+
+export type ApiProductCategory = {
+  id: string;
+  name: string;
+  slug: string;
+};
+
+export type ApiVendor = {
+  id: string;
+  companyName: string;
+  displayName: string | null;
+  status: string;
+  country?: {
+    id: string;
+    code: string;
+    name: string;
+  } | null;
+};
+
 export type ApiProduct = {
   id: string;
   slug: string;
@@ -16,10 +57,20 @@ export type ApiProduct = {
   moq: string | null;
   hsCode: string | null;
   exportEligibility: string | null;
+  countryRestrictions?: string | null;
+  estimatedDeliveryText?: string | null;
+  dutiesTaxesNote?: string | null;
   categoryId: string | null;
+  category?: ApiProductCategory | null;
   vendorId: string;
+  vendor?: ApiVendor | null;
   sourceCountryId: string | null;
+  sourceCountry?: ProductCountryRef | null;
+  targetCountries?: ProductCountryRef[];
+  priceTiers?: ProductPriceTier[];
+  images?: ProductImageResponse[];
   expiryDate?: string | null;
+  publishedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -74,6 +125,61 @@ export type AdminProductsQuery = {
   search?: string;
   sort?: ProductSort;
   status?: ApiProductStatus;
+  categoryId?: string;
+  vendorId?: string;
+};
+
+// Input payload for POST /admin/products
+export type CreateProductInput = {
+  name: string;
+  vendorId: string;
+  status: ApiProductStatus;
+  description?: string;
+  categoryId?: string;
+  price?: number;
+  currencyCode?: string;
+  unit?: string;
+  moq?: number;
+  hsCode?: string;
+  sourceCountryId?: string;
+  targetCountryIds?: string[];
+  exportEligibility?: string;
+  countryRestrictions?: string;
+  estimatedDeliveryText?: string;
+  dutiesTaxesNote?: string;
+  expiryDate?: string;
+};
+
+// Input payload for PATCH /admin/products/:id.
+// Optional fields accept null so the client can clear a saved value.
+// Omitted fields stay unchanged on the server.
+export type UpdateProductInput = {
+  name?: string;
+  vendorId?: string;
+  description?: string | null;
+  categoryId?: string | null;
+  price?: number | null;
+  currencyCode?: string | null;
+  unit?: string | null;
+  moq?: number | null;
+  hsCode?: string | null;
+  sourceCountryId?: string | null;
+  targetCountryIds?: string[];
+  exportEligibility?: string | null;
+  countryRestrictions?: string | null;
+  estimatedDeliveryText?: string | null;
+  dutiesTaxesNote?: string | null;
+  expiryDate?: string | null;
+};
+
+export type UploadUrlResponse = {
+  uploadUrl: string;
+  objectKey?: string;
+  key?: string;
+  httpMethod?: "POST" | "PUT";
+  fields?: Record<string, string>;
+  expiresInSeconds?: number;
+  expiresAt?: string;
 };
 
 // Shared paginated envelope (API spec section 13) used by every list endpoint.

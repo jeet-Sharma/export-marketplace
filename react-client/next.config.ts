@@ -26,6 +26,9 @@ const nextConfig: NextConfig = {
   // for a small production Docker image.
   output: "standalone",
   images: {
+    dangerouslyAllowSVG: true,
+    contentDispositionType: "attachment",
+    contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
     // Product images may come from three different origins depending on the
     // active StorageStrategy and environment:
     //
@@ -41,6 +44,13 @@ const nextConfig: NextConfig = {
       {
         protocol: "https",
         hostname: "res.cloudinary.com",
+        pathname: "/**",
+      },
+
+      // ── Render Backend ──────────────────────────────────────────────────
+      {
+        protocol: "https",
+        hostname: "export-marketplace.onrender.com",
         pathname: "/**",
       },
 
