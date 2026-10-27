@@ -13,7 +13,7 @@ function CategoryChipsSkeleton() {
         <div
           key={index}
           aria-hidden
-          className="h-[46px] min-w-[140px] flex-1 animate-pulse rounded-[10px] border border-black/[0.09] bg-white"
+          className="skeleton-shimmer h-[46px] min-w-[140px] flex-1 rounded-[10px] border border-black/[0.09]"
         />
       ))}
     </div>
@@ -25,9 +25,9 @@ export function ShopByCategory() {
   const { data: categories, isLoading, isError, refetch } = useCategoriesQuery();
 
   return (
-    <section className="flex flex-col gap-[13px]">
+    <section className="flex flex-col gap-[10px]">
       <div className="flex items-center justify-between">
-        <h2 className="text-[23px] text-ink">Shop by category</h2>
+        <h2 className="text-[20px] text-ink">Shop by category</h2>
         <Link href={routes.categories} className="text-[13px] text-pink">
           View all categories →
         </Link>
@@ -50,7 +50,7 @@ export function ShopByCategory() {
             <Link
               key={category.id}
               href={routes.category(category.slug)}
-              className="flex h-[46px] min-w-[140px] flex-1 items-center justify-center rounded-[10px] border border-pink bg-white text-[13px] text-ink shadow-[0px_5px_18px_-2px_rgba(17,24,39,0.09)]"
+              className="flex h-[46px] min-w-[140px] flex-1 items-center justify-center rounded-[10px] border border-pink bg-white text-[13px] text-ink shadow-[0px_5px_18px_-2px_rgba(17,24,39,0.09)] transition-all duration-150 hover:border-pink-hover hover:bg-pink hover:text-white hover:shadow-[0px_8px_24px_-4px_rgba(217,66,114,0.22)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink focus-visible:ring-offset-2"
             >
               {category.name}
             </Link>

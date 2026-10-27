@@ -25,7 +25,7 @@ function ProductGridSkeleton() {
         <div
           key={index}
           aria-hidden
-          className="h-[352px] animate-pulse rounded-[10px] border border-black/[0.09] bg-white"
+          className="skeleton-shimmer h-[278px] rounded-[10px] border border-black/[0.09]"
         />
       ))}
     </div>

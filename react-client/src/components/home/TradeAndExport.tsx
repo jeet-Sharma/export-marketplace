@@ -23,7 +23,7 @@ function TradeAccount() {
       </p>
       <Link
         href={routes.tradeAccount}
-        className="text-[13px] font-extrabold text-amber"
+        className="text-[13px] font-extrabold text-amber transition-opacity duration-150 hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber/60 focus-visible:ring-offset-2 focus-visible:ring-offset-maroon rounded"
       >
         Open a trade account →
       </Link>
@@ -47,7 +47,7 @@ function ExportServices() {
       </div>
       <Link
         href={routes.exportServices}
-        className="text-[13px] font-extrabold text-pink"
+        className="text-[13px] font-extrabold text-pink transition-colors duration-150 hover:text-pink-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink focus-visible:ring-offset-2 rounded"
       >
         How global delivery works →
       </Link>

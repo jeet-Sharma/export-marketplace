@@ -11,9 +11,8 @@ import { TradeAndExport } from "@/components/home/TradeAndExport";
  */
 export default function HomePage() {
   return (
-    <main className="flex flex-col gap-9 px-7 pb-7 pt-[22px]">
+    <main className="flex flex-col gap-5 px-7 pb-5 pt-4">
       <PromotionalStories />
-      {/* Trust bar sits directly beneath the hero, matching the Figma design */}
       <AssuranceBar />
       <ShopByCategory />
       <TrendingProducts />

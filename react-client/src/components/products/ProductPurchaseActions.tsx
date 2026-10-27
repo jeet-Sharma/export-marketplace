@@ -7,49 +7,41 @@ interface ProductPurchaseActionsProps {
 }
 
 /**
- * Purchase action row matching the Figma design: "Request a quote" (full
- * width primary), then "Add to cart" / "Buy now" side by side, plus the
- * "No payment required" / "Response typically within 24h" footer line.
+ * Purchase action row matching the Figma design: all three actions
+ * ("Request a quote", "Add to cart", "Buy now") on a single row so the
+ * panel stays compact.
  *
  * "Request a quote" and "Add to cart" stay disabled placeholders — there
- * is no RFQ or cart feature on the backend today (no `cart` or `quote`
- * module exists in nest-server/src/modules). Rendering them as
+ * is no RFQ or cart feature on the backend today. Rendering them as
  * live-looking buttons that silently do nothing would mislead a buyer
- * into thinking a request was submitted. Same treatment as the disabled
- * "Message supplier" button on this page's supplier card.
+ * into thinking a request was submitted.
  *
- * "Buy now" IS a real link to the UI-only checkout page
- * (/checkout/[slug], see CheckoutView's doc comment) — that page has no
- * backend to submit to either, but it's a real page a user can navigate
- * to and review, rather than a dead button.
- *
- * Rendered once from ProductDetailView, so it appears on every product's
- * detail page, not just a single product.
+ * "Buy now" IS a real link to the UI-only checkout page (/checkout/[slug]).
  */
 export function ProductPurchaseActions({ slug }: ProductPurchaseActionsProps) {
   return (
     <div className="flex w-full flex-col gap-2">
-      <button
-        type="button"
-        disabled
-        title="Requesting a quote isn't available yet"
-        className="flex h-11 w-full items-center justify-center rounded-[10px] bg-pink/50 text-[14px] font-bold text-white disabled:cursor-not-allowed"
-      >
-        Request a quote
-      </button>
-
+      {/* All three actions in one row */}
       <div className="flex w-full gap-2">
         <button
           type="button"
           disabled
+          title="Requesting a quote isn't available yet"
+          className="flex h-11 flex-1 items-center justify-center rounded-[10px] bg-pink/50 text-[13px] font-bold text-white disabled:cursor-not-allowed"
+        >
+          Request a quote
+        </button>
+        <button
+          type="button"
+          disabled
           title="Cart isn't available yet"
-          className="flex h-11 flex-1 items-center justify-center rounded-[10px] border border-pink/40 bg-white text-[14px] font-bold text-pink/50 disabled:cursor-not-allowed"
+          className="flex h-11 flex-1 items-center justify-center rounded-[10px] border border-pink/40 bg-white text-[13px] font-bold text-pink/50 disabled:cursor-not-allowed"
         >
           Add to cart
         </button>
         <Link
           href={routes.checkout(slug)}
-          className="flex h-11 flex-1 items-center justify-center rounded-[10px] bg-pink text-[14px] font-bold text-white transition-colors hover:bg-pink-hover"
+          className="flex h-11 flex-1 items-center justify-center rounded-[10px] bg-pink text-[13px] font-bold text-white transition-colors hover:bg-pink-hover active:bg-pink-pressed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink focus-visible:ring-offset-2"
         >
           Buy now
         </Link>

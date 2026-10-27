@@ -21,7 +21,7 @@ function Brand() {
 /** Delivery destination indicator with pin icon and dropdown. */
 function DeliverTo() {
   return (
-    <button className="flex items-center gap-[6px] rounded-[8px] border border-white/20 px-[10px] py-[5px] text-white hover:border-white/40 transition-colors">
+    <button className="flex items-center gap-[6px] rounded-[8px] border border-white/20 px-[10px] py-[5px] text-white transition-colors duration-150 hover:border-white/50 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50">
       <svg width="12" height="14" viewBox="0 0 12 14" fill="none" aria-hidden>
         <path d="M6 0C3.24 0 1 2.24 1 5c0 3.75 5 9 5 9s5-5.25 5-9c0-2.76-2.24-5-5-5zm0 6.5C5.17 6.5 4.5 5.83 4.5 5S5.17 3.5 6 3.5 7.5 4.17 7.5 5 6.83 6.5 6 6.5z" fill="currentColor"/>
       </svg>
@@ -73,7 +73,7 @@ function SearchBar() {
       <button
         type="submit"
         aria-label="Search"
-        className="flex h-full w-[46px] items-center justify-center bg-amber"
+        className="flex h-full w-[46px] items-center justify-center bg-amber transition-colors duration-150 hover:bg-[#e09430] active:bg-[#c98020] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber focus-visible:ring-inset"
       >
         <Image
           src="/marketplace/search.svg"
@@ -92,7 +92,8 @@ function CartPill() {
   return (
     <Link
       href={routes.cart}
-      className="flex items-center gap-[6px] rounded-[8px] border border-white/20 px-[10px] py-[5px] text-white hover:border-white/40 transition-colors"
+      aria-label="View cart"
+      className="flex items-center gap-[6px] rounded-[8px] border border-white/20 px-[10px] py-[5px] text-white transition-all duration-150 hover:border-white/50 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
     >
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
         <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4zM3 6h18M16 10a4 4 0 01-8 0" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -122,9 +123,10 @@ function AccountLinks() {
 /** Primary navigation row: brand, delivery, search and account links. */
 export function PrimaryNav() {
   return (
-    <div className="flex h-[66px] flex-wrap items-center gap-[18px] bg-maroon px-7">
+    <div className="flex min-h-[66px] flex-wrap items-center gap-[14px] bg-maroon px-4 py-3 lg:gap-[18px] lg:px-7">
       <Brand />
       <DeliverTo />
+      {/* Search grows to fill available space; on small screens it wraps below brand */}
       <SearchBar />
       <AccountLinks />
     </div>

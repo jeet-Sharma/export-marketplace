@@ -28,10 +28,10 @@ function PageLink({
       aria-current={isActive ? "page" : undefined}
       disabled={isLoading}
       onClick={() => onPageChange(page)}
-      className={`flex size-10 items-center justify-center rounded-[8px] border text-sm transition-colors disabled:cursor-not-allowed ${
+      className={`flex size-10 items-center justify-center rounded-[8px] border text-sm transition-colors duration-150 disabled:cursor-not-allowed ${
         isActive
           ? "border-pink bg-pink font-bold text-white"
-          : "border-black/[0.09] bg-white text-ink hover:border-pink/40"
+          : "border-black/[0.09] bg-white text-ink hover:border-pink/40 hover:text-pink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink focus-visible:ring-offset-1"
       }`}
     >
       {page}

@@ -39,7 +39,7 @@ function CategoryFilterGroup({
               <Link
                 href={routes.category(category.slug)}
                 aria-current={selected ? "page" : undefined}
-                className={`text-[14px] ${selected ? "font-bold text-pink" : "text-ink"}`}
+                className={`block rounded py-[2px] text-[14px] transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink focus-visible:ring-offset-1 ${selected ? "font-bold text-pink" : "text-ink hover:text-pink"}`}
               >
                 {category.name}
               </Link>
@@ -74,7 +74,7 @@ function MoqFilterGroup({ minMoq, maxMoq, onApply }: MoqFilterGroupProps) {
   return (
     <FilterGroup title="MOQ">
       <div className="flex w-full items-center gap-[10px] text-[14px]">
-        <label className="flex flex-1 flex-col gap-1 rounded-[6px] border border-black/[0.09] bg-white p-[10px]">
+        <label className="flex flex-1 flex-col gap-1 rounded-[6px] border border-black/[0.09] bg-white p-[10px] transition-colors duration-150 focus-within:border-pink focus-within:ring-1 focus-within:ring-pink/30">
           <span className="text-[12px] text-ink/50">Min</span>
           <input
             type="number"
@@ -87,7 +87,7 @@ function MoqFilterGroup({ minMoq, maxMoq, onApply }: MoqFilterGroupProps) {
           />
         </label>
         <span className="text-ink/50">–</span>
-        <label className="flex flex-1 flex-col gap-1 rounded-[6px] border border-black/[0.09] bg-white p-[10px]">
+        <label className="flex flex-1 flex-col gap-1 rounded-[6px] border border-black/[0.09] bg-white p-[10px] transition-colors duration-150 focus-within:border-pink focus-within:ring-1 focus-within:ring-pink/30">
           <span className="text-[12px] text-ink/50">Max</span>
           <input
             type="number"
@@ -169,32 +169,64 @@ export function ProductFilters({
   onChange,
   onReset,
 }: ProductFiltersProps) {
+  // Mobile: filters collapse into a toggle so users reach the product grid
+  // without scrolling past the entire sidebar. Desktop: always expanded
+  // (lg:flex always wins via Tailwind's responsive prefix).
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  const hasActiveFilters = Boolean(
+    value.minMoq !== undefined || value.maxMoq !== undefined || value.sourceCountryIso2,
+  );
+
   return (
     <aside className="flex w-full shrink-0 flex-col lg:w-[228px]">
       <div className="flex h-[42px] w-full items-center justify-between">
         <h2 className="text-xl text-ink">Filters</h2>
-        <button
-          type="button"
-          onClick={onReset}
-          className="text-[13px] text-pink hover:underline"
-        >
-          Reset all
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={onReset}
+            className={`text-[13px] transition-colors duration-150 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink focus-visible:ring-offset-2 rounded ${hasActiveFilters ? "text-pink hover:text-pink-hover" : "text-ink/40 cursor-default"}`}
+            disabled={!hasActiveFilters}
+            aria-disabled={!hasActiveFilters}
+          >
+            Reset all
+          </button>
+          {/* Mobile toggle — hidden on desktop */}
+          <button
+            type="button"
+            aria-expanded={mobileOpen}
+            aria-controls="product-filters-panel"
+            onClick={() => setMobileOpen((v) => !v)}
+            className="flex h-8 items-center gap-1.5 rounded-[8px] border border-black/[0.09] bg-white px-3 text-[13px] text-ink transition-colors duration-150 hover:border-pink/40 hover:text-pink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink focus-visible:ring-offset-2 lg:hidden"
+          >
+            <svg width="14" height="12" viewBox="0 0 14 12" fill="none" aria-hidden>
+              <path d="M1 1h12M3 6h8M5 11h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+            {mobileOpen ? "Hide filters" : "Show filters"}
+          </button>
+        </div>
       </div>
-      <CategoryFilterGroup
-        categories={categories}
-        selectedSlug={selectedCategorySlug}
-      />
-      <MoqFilterGroup
-        key={`${value.minMoq ?? ""}-${value.maxMoq ?? ""}`}
-        minMoq={value.minMoq}
-        maxMoq={value.maxMoq}
-        onApply={(minMoq, maxMoq) => onChange({ ...value, minMoq, maxMoq })}
-      />
-      <ShippingCountryFilterGroup
-        selectedIso2={value.sourceCountryIso2}
-        onSelect={(sourceCountryIso2) => onChange({ ...value, sourceCountryIso2 })}
-      />
+      {/* Filter body — always visible on desktop; toggleable on mobile */}
+      <div
+        id="product-filters-panel"
+        className={`${mobileOpen ? "flex" : "hidden"} flex-col lg:flex`}
+      >
+        <CategoryFilterGroup
+          categories={categories}
+          selectedSlug={selectedCategorySlug}
+        />
+        <MoqFilterGroup
+          key={`${value.minMoq ?? ""}-${value.maxMoq ?? ""}`}
+          minMoq={value.minMoq}
+          maxMoq={value.maxMoq}
+          onApply={(minMoq, maxMoq) => onChange({ ...value, minMoq, maxMoq })}
+        />
+        <ShippingCountryFilterGroup
+          selectedIso2={value.sourceCountryIso2}
+          onSelect={(sourceCountryIso2) => onChange({ ...value, sourceCountryIso2 })}
+        />
+      </div>
     </aside>
   );
 }

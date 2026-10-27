@@ -9,7 +9,7 @@ import { toProductCardProps } from "@/features/products/api/products.mapper";
 
 const TRENDING_PAGE_SIZE = 12;
 
-/** Result count row shown above the trending product grid. */
+/** Result count row — only shown once real data has loaded. */
 function ResultsSummary({
   visibleCount,
   totalCount,
@@ -17,6 +17,10 @@ function ResultsSummary({
   visibleCount: number;
   totalCount: number;
 }) {
+  // Don't render the summary at all while still loading or if the total is
+  // not yet known — avoids "0 of 0" flickering before the first API page
+  // arrives, and avoids a stale "N of 0" flash during cache revalidation.
+  if (totalCount <= 0) return null;
   return (
     <div className="flex items-center justify-end">
       <p className="text-[12px] text-ink/50">
@@ -29,12 +33,12 @@ function ResultsSummary({
 /** Skeleton placeholder shown while the catalogue is loading. */
 function ProductGridSkeleton() {
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
       {Array.from({ length: TRENDING_PAGE_SIZE }).map((_, index) => (
         <div
           key={index}
           aria-hidden
-          className="h-[352px] animate-pulse rounded-[10px] border border-black/[0.09] bg-white"
+          className="skeleton-shimmer h-[278px] rounded-[10px] border border-black/[0.09]"
         />
       ))}
     </div>
@@ -62,11 +66,11 @@ export function TrendingProducts() {
     ) ?? [];
 
   return (
-    <section className="flex flex-col gap-[14px]">
+    <section className="flex flex-col gap-[10px]">
       <div className="flex items-end justify-between">
-        <div className="flex flex-col gap-[3px] text-ink">
-          <h2 className="text-[23px]">Trending across Looma</h2>
-          <p className="text-[13px] opacity-[0.56]">
+        <div className="flex flex-col gap-[2px] text-ink">
+          <h2 className="text-[20px]">Trending across Looma</h2>
+          <p className="text-[12px] opacity-[0.56]">
             Independent goods with exceptional customer ratings
           </p>
         </div>
@@ -74,11 +78,6 @@ export function TrendingProducts() {
           See all trending →
         </Link>
       </div>
-
-      <ResultsSummary
-        visibleCount={products.length}
-        totalCount={data?.pages[0]?.pagination.totalItems ?? products.length}
-      />
 
       {isLoading ? (
         <ProductGridSkeleton />
@@ -96,12 +95,20 @@ export function TrendingProducts() {
           No products available yet.
         </p>
       ) : (
-        /* Responsive grid: 1 col on phones, scaling up to 4 on wide screens */
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {products.map(({ id, ...product }) => (
-            <ProductCard key={id} {...product} showViewAction />
-          ))}
-        </div>
+        <>
+          {/* Only show the summary once real data has loaded — avoids "0 of 0"
+              flicker during the initial fetch or a cache revalidation cycle. */}
+          <ResultsSummary
+            visibleCount={products.length}
+            totalCount={data?.pages[0]?.pagination.totalItems ?? 0}
+          />
+          {/* Responsive grid: 1 col on phones, scaling up to 4 on wide screens */}
+          <div className="product-grid-enter grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+            {products.map(({ id, ...product }) => (
+              <ProductCard key={id} {...product} showViewAction />
+            ))}
+          </div>
+        </>
       )}
 
       {/* Load more button — hidden once every product has been loaded (hasNextPage is false). */}

@@ -10,9 +10,13 @@ export function Footer() {
       <p className="text-xs opacity-60">
         The shared market for independent goods.
       </p>
-      <nav className="flex flex-wrap gap-6 text-xs opacity-75">
+      <nav aria-label="Footer" className="flex flex-wrap gap-6 text-xs opacity-75">
         {FOOTER_LINKS.map((link) => (
-          <Link key={link} href={footerRoutes[link] ?? routes.home}>
+          <Link
+            key={link}
+            href={footerRoutes[link] ?? routes.home}
+            className="transition-opacity duration-150 hover:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/60 focus-visible:ring-offset-1 focus-visible:ring-offset-ink rounded"
+          >
             {link}
           </Link>
         ))}

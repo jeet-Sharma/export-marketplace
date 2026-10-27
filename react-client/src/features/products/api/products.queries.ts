@@ -118,6 +118,9 @@ export function useProductsInfiniteQuery(
   const paramsKey = JSON.stringify(baseParams);
   const [prevParamsKey, setPrevParamsKey] = useState(paramsKey);
 
+  // When baseParams change (e.g. a filter is applied) reset the accumulated
+  // pages immediately so the next render starts from a clean slate, rather
+  // than briefly displaying stale items from the previous filter set.
   if (paramsKey !== prevParamsKey) {
     setPrevParamsKey(paramsKey);
     setCurrentPage(1);
@@ -127,10 +130,16 @@ export function useProductsInfiniteQuery(
   const queryResult = useGetProductsQuery({ ...baseParams, page: currentPage });
   const [prevData, setPrevData] = useState<ApiPaginatedProducts | undefined>(undefined);
 
+  // Accumulate pages into local state. When RTK Query re-fetches page 1 due
+  // to cache invalidation (e.g. after createProduct) the returned data is a
+  // fresh page 1 — replace the entire pages array rather than merging, so
+  // the list reflects the server's current state instead of a stale splice.
   if (queryResult.data && queryResult.data !== prevData) {
     setPrevData(queryResult.data);
     const pageNum = queryResult.data.pagination.page;
     if (pageNum === 1) {
+      // Overwrite everything — handles both the initial load and a
+      // cache-invalidation refetch (where we always land back on page 1).
       setPages([queryResult.data]);
     } else {
       const next = [...pages];
@@ -139,15 +148,28 @@ export function useProductsInfiniteQuery(
     }
   }
 
+  // When RTK Query clears a cache entry (e.g. tag invalidation) queryResult
+  // briefly has no data while the refetch is in flight. If we still have
+  // accumulated pages, treat the component as "re-fetching page 1" rather
+  // than "no results" — this prevents the "0 of 0" flash that would
+  // otherwise appear while the fresh page-1 response is in flight.
+  const effectivePages =
+    queryResult.data === undefined && pages.length > 0 && queryResult.isFetching
+      ? []   // clear stale pages so the skeleton shows instead of stale cards
+      : pages;
+
   const totalPages =
     queryResult.data?.pagination.totalPages ??
-    pages[pages.length - 1]?.pagination.totalPages ??
+    effectivePages[effectivePages.length - 1]?.pagination.totalPages ??
     1;
 
   const hasNextPage = currentPage < totalPages;
-  const isLoading = queryResult.isLoading && pages.length === 0;
+  // isLoading: no accumulated pages AND the query is loading for the first time
+  const isLoading = queryResult.isLoading && effectivePages.length === 0;
+  // isFetching on a subsequent page (not a background revalidation of page 1)
   const isFetchingNextPage = queryResult.isFetching && currentPage > 1;
-  const isError = queryResult.isError && pages.length === 0;
+  // isError: only surface an error when there are no pages to show as fallback
+  const isError = queryResult.isError && effectivePages.length === 0;
 
   function fetchNextPage() {
     if (hasNextPage && !queryResult.isFetching) {
@@ -156,16 +178,16 @@ export function useProductsInfiniteQuery(
   }
 
   function refetch() {
-    if (currentPage === 1) {
-      queryResult.refetch();
-    } else {
-      setPages([]);
-      setCurrentPage(1);
-    }
+    // Always go back to page 1 and clear accumulated state so the fresh
+    // response fully replaces whatever was there before.
+    setPages([]);
+    setPrevData(undefined);
+    setCurrentPage(1);
+    queryResult.refetch();
   }
 
   return {
-    data: pages.length > 0 ? { pages } : undefined,
+    data: effectivePages.length > 0 ? { pages: effectivePages } : undefined,
     isLoading,
     isError,
     isFetchingNextPage,
