@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   useGetAdminProductQuery,
   usePublishAdminProductMutation,
@@ -35,6 +36,7 @@ export function ProductDetail({ productId, backHref }: ProductDetailProps) {
     useUnpublishAdminProductMutation();
 
   const [isEditOpen, setIsEditOpen] = useState(false);
+  const router = useRouter();
 
   const isBusy = isPublishing || isUnpublishing;
   const isPublished = data?.status === "PUBLISHED";
@@ -107,7 +109,7 @@ export function ProductDetail({ productId, backHref }: ProductDetailProps) {
               onClick={() => {
                 deleteCookie("access_token");
                 deleteCookie("user_data");
-                window.location.href = "/login?force=true";
+                router.push("/login?force=true");
               }}
               className="rounded-[8px] bg-bloom-pink px-4 py-1.5 text-[12px] font-bold text-white hover:opacity-90"
             >

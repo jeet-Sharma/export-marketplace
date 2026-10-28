@@ -1,6 +1,5 @@
 import { useState } from "react";
 import Link from "next/link";
-import { Button } from "@/components/ui/Button";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { routes } from "@/config/routes";
 import { useCountriesQuery } from "@/features/countries/api/countries.queries";
@@ -73,36 +72,42 @@ function MoqFilterGroup({ minMoq, maxMoq, onApply }: MoqFilterGroupProps) {
 
   return (
     <FilterGroup title="MOQ">
-      <div className="flex w-full items-center gap-[10px] text-[14px]">
-        <label className="flex flex-1 flex-col gap-1 rounded-[6px] border border-black/[0.09] bg-white p-[10px] transition-colors duration-150 focus-within:border-pink focus-within:ring-1 focus-within:ring-pink/30">
-          <span className="text-[12px] text-ink/50">Min</span>
+      {/* Range row — two separate inputs with a small gap */}
+      <div className="flex w-full items-center gap-[6px]">
+        <label className="flex flex-1 flex-col gap-[2px] cursor-text rounded-[10px] border border-black/[0.09] bg-white px-[10px] py-[8px] shadow-[0px_1px_4px_rgba(17,24,39,0.05)] transition-all duration-150 focus-within:border-pink/50 focus-within:shadow-[0px_0px_0px_3px_rgba(217,66,114,0.10)]">
+          <span className="text-[10px] font-bold uppercase tracking-wide text-pink">Min</span>
           <input
             type="number"
             min={0}
             inputMode="numeric"
             value={minInput}
             onChange={(event) => setMinInput(event.target.value)}
-            className="w-full bg-transparent text-ink focus:outline-none"
+            className="w-full bg-transparent text-[13px] text-ink placeholder:text-ink/30 focus:outline-none"
             placeholder="Any"
           />
         </label>
-        <span className="text-ink/50">–</span>
-        <label className="flex flex-1 flex-col gap-1 rounded-[6px] border border-black/[0.09] bg-white p-[10px] transition-colors duration-150 focus-within:border-pink focus-within:ring-1 focus-within:ring-pink/30">
-          <span className="text-[12px] text-ink/50">Max</span>
+        <span className="shrink-0 text-[13px] text-ink/30">–</span>
+        <label className="flex flex-1 flex-col gap-[2px] cursor-text rounded-[10px] border border-black/[0.09] bg-white px-[10px] py-[8px] shadow-[0px_1px_4px_rgba(17,24,39,0.05)] transition-all duration-150 focus-within:border-pink/50 focus-within:shadow-[0px_0px_0px_3px_rgba(217,66,114,0.10)]">
+          <span className="text-[10px] font-bold uppercase tracking-wide text-pink">Max</span>
           <input
             type="number"
             min={0}
             inputMode="numeric"
             value={maxInput}
             onChange={(event) => setMaxInput(event.target.value)}
-            className="w-full bg-transparent text-ink focus:outline-none"
+            className="w-full bg-transparent text-[13px] text-ink placeholder:text-ink/30 focus:outline-none"
             placeholder="Any"
           />
         </label>
       </div>
-      <Button variant="secondary" className="h-[35px] w-full" onClick={handleApply}>
+      {/* Apply button — filled pink, full width */}
+      <button
+        type="button"
+        onClick={handleApply}
+        className="mt-[2px] flex h-[34px] w-full items-center justify-center rounded-[10px] bg-pink text-[12px] font-bold text-white shadow-[0px_2px_8px_rgba(217,66,114,0.25)] transition-all duration-150 hover:bg-pink-hover hover:shadow-[0px_4px_12px_rgba(217,66,114,0.35)] active:bg-pink-pressed active:shadow-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink focus-visible:ring-offset-2"
+      >
         Apply MOQ
-      </Button>
+      </button>
     </FilterGroup>
   );
 }
@@ -131,17 +136,19 @@ function ShippingCountryFilterGroup({
       ) : isError || !countries?.length ? (
         <p className="text-[12px] text-ink/50">Countries unavailable.</p>
       ) : (
-        countries.map((country) => (
-          <Checkbox
-            key={country.id}
-            label={country.name}
-            className="w-full"
-            checked={selectedIso2 === country.iso2Code}
-            onChange={() =>
-              onSelect(selectedIso2 === country.iso2Code ? undefined : country.iso2Code)
-            }
-          />
-        ))
+        <div className="flex flex-col gap-px">
+          {countries.map((country) => (
+            <Checkbox
+              key={country.id}
+              label={country.name}
+              className="w-full"
+              checked={selectedIso2 === country.iso2Code}
+              onChange={() =>
+                onSelect(selectedIso2 === country.iso2Code ? undefined : country.iso2Code)
+              }
+            />
+          ))}
+        </div>
       )}
     </FilterGroup>
   );

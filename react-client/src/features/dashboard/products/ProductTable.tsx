@@ -1,3 +1,6 @@
+"use client";
+
+import { useRouter } from "next/navigation";
 import { deleteCookie } from "@/lib/cookies";
 import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
 import { PRODUCT_COLUMNS } from "./productColumns";
@@ -55,6 +58,7 @@ export function ProductTable({
   onPageChange,
 }: ProductTableProps) {
   const hasRows = rows.length > 0;
+  const router = useRouter();
 
   return (
     <div className="w-full overflow-x-auto rounded-[14px] border border-bloom-border bg-white shadow-[0px_6px_20px_-4px_rgba(53,16,31,0.07)]">
@@ -108,7 +112,7 @@ export function ProductTable({
                   onClick={() => {
                     deleteCookie("access_token");
                     deleteCookie("user_data");
-                    window.location.href = "/login?force=true";
+                    router.push("/login?force=true");
                   }}
                   className="rounded-[8px] bg-bloom-pink px-4 py-1.5 text-[12px] font-bold text-white hover:opacity-90"
                 >

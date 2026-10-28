@@ -50,7 +50,7 @@ export function Checkbox({
     <div className={`flex flex-col gap-[6px] ${className}`}>
       <label
         htmlFor={inputId}
-        className={`flex min-h-[46px] items-center gap-[9px] rounded-[10px] px-2 ${
+        className={`flex min-h-[28px] items-center gap-[9px] rounded-[10px] px-2 ${
           disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"
         } ${readOnly ? "cursor-default" : ""}`}
       >

@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { BellIcon } from "./icons";
 import { deleteCookie } from "@/lib/cookies";
 import { useAppDispatch } from "@/store/hooks";
@@ -12,12 +13,13 @@ type UtilityBarProps = {
 
 export function UtilityBar({ context, section }: UtilityBarProps) {
   const dispatch = useAppDispatch();
+  const router = useRouter();
 
   const handleLogout = () => {
     dispatch(clearCredentials());
     deleteCookie("access_token");
     deleteCookie("user_data");
-    window.location.href = "/login?force=true";
+    router.push("/login?force=true");
   };
 
   return (

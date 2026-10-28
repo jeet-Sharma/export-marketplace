@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useRef, useState } from "react";
+import Image from "next/image";
 import { PlusIcon } from "../components/icons";
 import { SelectField, TextField } from "./AddProductFormFields";
 import {
@@ -484,10 +485,15 @@ export function AddProductModal({ onClose, onSuccess }: AddProductModalProps) {
                       key={img.id}
                       className="group relative flex items-center gap-2 rounded-[8px] border border-bloom-border bg-white p-1.5 shadow-sm"
                     >
-                      <img
+                      <Image
                         src={img.previewUrl}
                         alt={img.file.name}
+                        width={44}
+                        height={44}
                         className="size-11 shrink-0 rounded-[6px] object-cover"
+                        // blob: URLs are local object URLs — they can't go through
+                        // the Next.js image optimizer, so unoptimized is required.
+                        unoptimized
                       />
                       <div className="flex flex-col pr-6">
                         <span className="max-w-[120px] truncate text-[11px] font-semibold text-bloom-ink">

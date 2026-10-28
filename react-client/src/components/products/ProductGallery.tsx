@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef } from "react";
 import Image from "next/image";
 import type { ApiProductImage } from "@/features/products/types/product-api.types";
 
@@ -29,27 +29,62 @@ export interface ZoomPanelProps {
   bpY: number;
 }
 
+/**
+ * Lens crosshair dimensions + position, derived purely from state values —
+ * safe to compute during render because no ref is read here.
+ */
+interface LensGeometry {
+  lensW: number;
+  lensH: number;
+  lensLeft: number;
+  lensTop: number;
+}
+
 interface LensState {
   active: boolean;
   xFrac: number;
   yFrac: number;
+  /** Snapshot of the image frame rect, captured on mouseenter and stored in
+   *  state so it is safe to read during render (refs must not be read in the
+   *  render phase per the react-hooks/refs rule). */
+  frameW: number;
+  frameH: number;
+}
+
+const LENS_INACTIVE: LensState = {
+  active: false,
+  xFrac: 0.5,
+  yFrac: 0.5,
+  frameW: 0,
+  frameH: 0,
+};
+
+/** Compute lens overlay geometry from the current lens state. Pure function — no refs. */
+function computeLens(lens: LensState): LensGeometry {
+  if (!lens.active || lens.frameW === 0 || lens.frameH === 0) {
+    return { lensW: 0, lensH: 0, lensLeft: 0, lensTop: 0 };
+  }
+  const bgW = lens.frameW * ZOOM_FACTOR;
+  const bgH = lens.frameH * ZOOM_FACTOR;
+  const panelSize = lens.frameH;
+  const lensW = (panelSize / bgW) * lens.frameW;
+  const lensH = (panelSize / bgH) * lens.frameH;
+  const lensLeft = Math.max(0, Math.min(lens.frameW - lensW, lens.xFrac * lens.frameW - lensW / 2));
+  const lensTop  = Math.max(0, Math.min(lens.frameH - lensH, lens.yFrac * lens.frameH - lensH / 2));
+  return { lensW, lensH, lensLeft, lensTop };
 }
 
 /**
  * Product image gallery with Amazon-style mouse-tracking zoom.
  *
- * UI improvements over the initial implementation:
- * - Thumbnails are larger (88 px), scale up on hover, and glow pink when active.
- * - The lens crosshair reads as a clean frosted "window" with a solid pink
- *   border and corner handles rather than a plain blurred rectangle.
- * - A "Move to zoom" hint pill fades in when the user first hovers the image
- *   and fades away after 1.6 s so it never gets in the way.
- * - The image counter badge uses the brand pink tint.
- *
- * frameRect is stored in a ref (not state) so mousemove handlers always read
- * a fresh value without triggering extra renders or stale closures.
- * onZoomChange is called directly from event handlers — never inside a
- * setState updater — avoiding the "setState during render" violation.
+ * - Thumbnails are 88 px, scale up on hover, and glow pink when active.
+ * - The lens crosshair is a frosted "window" with corner bracket handles.
+ * - A "Move to zoom" hint pill fades in briefly on first hover.
+ * - frameRect dimensions are stored in state (not a ref) so they are safe
+ *   to read during render — this satisfies the react-hooks/refs rule.
+ * - useCallback is omitted intentionally: the React Compiler handles
+ *   memoization automatically, and manual useCallback with deps the compiler
+ *   cannot verify causes the preserve-manual-memoization error.
  *
  * Touch / coarse-pointer: .zoom-lens is hidden via @media (pointer: coarse)
  * in globals.css; the purchase panel stays visible on mobile.
@@ -60,84 +95,61 @@ export function ProductGallery({ images, productName, onZoomChange }: ProductGal
   const active = sorted[activeIndex];
   const imageUrl = active?.url ?? PLACEHOLDER_IMAGE;
 
-  const frameRectRef = useRef<DOMRect | null>(null);
-  const [lens, setLens] = useState<LensState>({ active: false, xFrac: 0.5, yFrac: 0.5 });
-  // Controls the "Move to zoom" hint — shown briefly on first hover.
+  const [lens, setLens] = useState<LensState>(LENS_INACTIVE);
   const [showHint, setShowHint] = useState(false);
+  // hintTimer only lives in a ref — it is a side-effect handle, never read
+  // during render, so a ref is the correct tool here.
   const hintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── Zoom geometry → parent notification ────────────────────────────────
-  const emitZoom = useCallback(
-    (xFrac: number, yFrac: number) => {
-      if (!onZoomChange) return;
-      const fr = frameRectRef.current;
-      if (!fr) return;
-      const bgW = fr.width * ZOOM_FACTOR;
-      const bgH = fr.height * ZOOM_FACTOR;
-      const panelSize = fr.height;
-      const bpX = Math.max(0, Math.min(bgW - panelSize, xFrac * bgW - panelSize / 2));
-      const bpY = Math.max(0, Math.min(bgH - panelSize, yFrac * bgH - panelSize / 2));
-      onZoomChange(true, { imageUrl, bgW, bgH, bpX, bpY });
-    },
-    [onZoomChange, imageUrl],
-  );
+  // ── Helper: compute zoom props and notify parent ────────────────────────
+  // Plain function (not useCallback) — the React Compiler will memoize this.
+  function emitZoom(xFrac: number, yFrac: number, frameW: number, frameH: number) {
+    if (!onZoomChange || frameW === 0 || frameH === 0) return;
+    const bgW = frameW * ZOOM_FACTOR;
+    const bgH = frameH * ZOOM_FACTOR;
+    const panelSize = frameH;
+    const bpX = Math.max(0, Math.min(bgW - panelSize, xFrac * bgW - panelSize / 2));
+    const bpY = Math.max(0, Math.min(bgH - panelSize, yFrac * bgH - panelSize / 2));
+    onZoomChange(true, { imageUrl, bgW, bgH, bpX, bpY });
+  }
 
-  const handleMouseEnter = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
-      const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
-      frameRectRef.current = rect;
-      const xFrac = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-      const yFrac = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
-      setLens({ active: true, xFrac, yFrac });
-      emitZoom(xFrac, yFrac);
-      // Show hint briefly on enter then auto-hide.
-      setShowHint(true);
-      if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
-      hintTimerRef.current = setTimeout(() => setShowHint(false), 1600);
-    },
-    [emitZoom],
-  );
+  function handleMouseEnter(e: React.MouseEvent<HTMLDivElement>) {
+    const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+    const xFrac = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const yFrac = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+    setLens({ active: true, xFrac, yFrac, frameW: rect.width, frameH: rect.height });
+    emitZoom(xFrac, yFrac, rect.width, rect.height);
+    setShowHint(true);
+    if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
+    hintTimerRef.current = setTimeout(() => setShowHint(false), 1600);
+  }
 
-  const handleMouseMove = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
-      const fr = frameRectRef.current;
-      if (!fr) return;
-      const xFrac = Math.max(0, Math.min(1, (e.clientX - fr.left) / fr.width));
-      const yFrac = Math.max(0, Math.min(1, (e.clientY - fr.top) / fr.height));
-      setLens({ active: true, xFrac, yFrac });
-      emitZoom(xFrac, yFrac);
-    },
-    [emitZoom],
-  );
+  function handleMouseMove(e: React.MouseEvent<HTMLDivElement>) {
+    // frameW/frameH are already in state from mouseenter — read them there,
+    // not from a ref, to stay compliant with react-hooks/refs.
+    if (!lens.active || lens.frameW === 0) return;
+    const xFrac = Math.max(0, Math.min(1, (e.clientX - e.currentTarget.getBoundingClientRect().left) / lens.frameW));
+    const yFrac = Math.max(0, Math.min(1, (e.clientY - e.currentTarget.getBoundingClientRect().top) / lens.frameH));
+    setLens((prev) => ({ ...prev, xFrac, yFrac }));
+    emitZoom(xFrac, yFrac, lens.frameW, lens.frameH);
+  }
 
-  const handleMouseLeave = useCallback(() => {
-    frameRectRef.current = null;
-    setLens({ active: false, xFrac: 0.5, yFrac: 0.5 });
+  function handleMouseLeave() {
+    setLens(LENS_INACTIVE);
     setShowHint(false);
     if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
     onZoomChange?.(false, null);
-  }, [onZoomChange]);
+  }
 
-  const handleThumbnailClick = useCallback(
-    (index: number) => {
-      setActiveIndex(index);
-      frameRectRef.current = null;
-      setLens({ active: false, xFrac: 0.5, yFrac: 0.5 });
-      setShowHint(false);
-      onZoomChange?.(false, null);
-    },
-    [onZoomChange],
-  );
+  function handleThumbnailClick(index: number) {
+    setActiveIndex(index);
+    setLens(LENS_INACTIVE);
+    setShowHint(false);
+    onZoomChange?.(false, null);
+  }
 
-  // ── Lens crosshair geometry ─────────────────────────────────────────────
-  const fr = frameRectRef.current;
-  const bgW = fr ? fr.width * ZOOM_FACTOR : 0;
-  const bgH = fr ? fr.height * ZOOM_FACTOR : 0;
-  const panelSize = fr ? fr.height : 0;
-  const lensW = fr && bgW > 0 ? (panelSize / bgW) * fr.width : 0;
-  const lensH = fr && bgH > 0 ? (panelSize / bgH) * fr.height : 0;
-  const lensLeft = fr ? Math.max(0, Math.min(fr.width - lensW, lens.xFrac * fr.width - lensW / 2)) : 0;
-  const lensTop  = fr ? Math.max(0, Math.min(fr.height - lensH, lens.yFrac * fr.height - lensH / 2)) : 0;
+  // ── Lens crosshair geometry — derived from state, no refs ───────────────
+  const { lensW, lensH, lensLeft, lensTop } = computeLens(lens);
 
   return (
     <div className="flex w-full gap-3">
@@ -167,9 +179,10 @@ export function ProductGallery({ images, productName, onZoomChange }: ProductGal
                   alt={image.altText ?? `${productName} thumbnail ${index + 1}`}
                   fill
                   className="object-cover"
+                  // Presigned S3/LocalStack URLs have a short-lived signature —
+                  // bypassing the optimizer prevents caching an expiring URL.
                   unoptimized
                 />
-                {/* Active indicator dot */}
                 {isActive ? (
                   <span
                     aria-hidden
@@ -200,29 +213,21 @@ export function ProductGallery({ images, productName, onZoomChange }: ProductGal
           unoptimized
         />
 
-        {/* ── Lens crosshair ── */}
-        {lens.active && fr ? (
+        {/* ── Lens crosshair overlay ── */}
+        {lens.active ? (
           <div
             aria-hidden
             className="zoom-lens pointer-events-none absolute"
-            style={{
-              left: lensLeft,
-              top: lensTop,
-              width: lensW,
-              height: lensH,
-            }}
+            style={{ left: lensLeft, top: lensTop, width: lensW, height: lensH }}
           >
             {/* Frosted fill */}
             <div className="absolute inset-0 rounded-[6px] bg-white/20 backdrop-blur-[1.5px]" />
-            {/* Solid pink border */}
+            {/* Solid pink border + inner highlight */}
             <div className="absolute inset-0 rounded-[6px] border-2 border-pink shadow-[inset_0px_0px_0px_1px_rgba(255,255,255,0.6)]" />
-            {/* Corner handles — top-left */}
+            {/* Corner bracket handles */}
             <span className="absolute left-0 top-0 h-[10px] w-[10px] rounded-tl-[4px] border-l-[3px] border-t-[3px] border-pink" />
-            {/* top-right */}
             <span className="absolute right-0 top-0 h-[10px] w-[10px] rounded-tr-[4px] border-r-[3px] border-t-[3px] border-pink" />
-            {/* bottom-left */}
             <span className="absolute bottom-0 left-0 h-[10px] w-[10px] rounded-bl-[4px] border-b-[3px] border-l-[3px] border-pink" />
-            {/* bottom-right */}
             <span className="absolute bottom-0 right-0 h-[10px] w-[10px] rounded-br-[4px] border-b-[3px] border-r-[3px] border-pink" />
           </div>
         ) : null}
@@ -238,7 +243,6 @@ export function ProductGallery({ images, productName, onZoomChange }: ProductGal
             showHint ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-1",
           ].join(" ")}
         >
-          {/* magnifier icon */}
           <svg width="11" height="11" viewBox="0 0 11 11" fill="none" aria-hidden>
             <circle cx="4.5" cy="4.5" r="3.5" stroke="white" strokeWidth="1.4" />
             <line x1="7.4" y1="7.4" x2="10" y2="10" stroke="white" strokeWidth="1.4" strokeLinecap="round" />
@@ -246,7 +250,7 @@ export function ProductGallery({ images, productName, onZoomChange }: ProductGal
           Move to zoom
         </div>
 
-        {/* Image counter */}
+        {/* Image counter badge */}
         {sorted.length > 1 ? (
           <span className="absolute bottom-4 right-4 rounded-full bg-pink/90 px-[10px] py-[5px] text-[11px] font-bold text-white shadow-[0px_2px_8px_rgba(217,66,114,0.35)] backdrop-blur-sm">
             {activeIndex + 1} / {sorted.length}
