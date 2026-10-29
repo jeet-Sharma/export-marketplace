@@ -22,7 +22,7 @@ export const SHOP_CATEGORIES: readonly string[] = [
 /** Links shown in the footer. */
 export const FOOTER_LINKS: readonly string[] = [
   "About",
-  "Sell on Looma",
+  "Sell on Export Marketplace",
   "Trade",
   "Help",
   "Terms",

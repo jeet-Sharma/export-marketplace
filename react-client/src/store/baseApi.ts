@@ -54,6 +54,9 @@ const baseQueryWithReauth: BaseQueryFn<
       api.dispatch(clearCredentials());
       clearAuthCookies();
       if (typeof window !== "undefined" && window.location.pathname.startsWith("/dashboard")) {
+        // useRouter() is not available in RTK Query middleware — window.location
+        // is the only valid way to force a full navigation from this context.
+        // eslint-disable-next-line @next/next/no-location-assign-relative-destination
         window.location.href = "/login?reason=expired";
       }
       return {
@@ -74,6 +77,9 @@ const baseQueryWithReauth: BaseQueryFn<
       api.dispatch(clearCredentials());
       clearAuthCookies();
       if (typeof window !== "undefined" && window.location.pathname.startsWith("/dashboard")) {
+        // useRouter() is not available in RTK Query middleware — window.location
+        // is the only valid way to force a full navigation from this context.
+        // eslint-disable-next-line @next/next/no-location-assign-relative-destination
         window.location.href = "/login?reason=unauthorized";
       }
     }

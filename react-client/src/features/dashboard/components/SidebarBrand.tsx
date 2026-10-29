@@ -13,7 +13,7 @@ export function SidebarBrand({ workspaceLabel }: SidebarBrandProps) {
             &#8734;
           </span>
         </div>
-        <span className="text-[24px] text-white">looma</span>
+        <span className="text-[24px] text-white">Export Marketplace</span>
       </div>
       <button
         type="button"

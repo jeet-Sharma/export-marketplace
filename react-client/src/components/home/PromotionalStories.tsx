@@ -42,7 +42,7 @@ function MainPromotion() {
       </p>
       <Link
         href={routes.products}
-        className="relative z-10 self-start rounded-[10px] bg-pink px-[17px] py-[10px] text-[13px] font-extrabold text-white"
+        className="relative z-10 self-start rounded-[10px] bg-pink px-[17px] py-[10px] text-[13px] font-extrabold text-white transition-all duration-150 hover:bg-pink-hover hover:shadow-[0px_4px_14px_-2px_rgba(217,66,114,0.45)] active:bg-pink-pressed active:shadow-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-maroon motion-safe:active:scale-[0.97]"
       >
         Explore the collection →
       </Link>
@@ -80,9 +80,9 @@ export function PromotionalStories() {
   return (
     // Stacks vertically on small screens; the fixed desktop height and the
     // 320px side column only apply from lg: up, preventing mobile overflow.
-    <section className="flex flex-col gap-[14px] lg:h-[286px] lg:flex-row">
+    <section className="flex flex-col gap-[10px] lg:h-[286px] lg:flex-row">
       <MainPromotion />
-      <div className="flex flex-col gap-[14px] lg:h-full lg:w-[320px]">
+      <div className="flex flex-col gap-[10px] lg:h-full lg:w-[320px]">
         <SidePromotion
           variant="amber"
           eyebrow="Wholesale spotlight"

@@ -77,10 +77,10 @@ function CategoryTabs({
             key={category.id}
             href={routes.category(category.slug)}
             aria-current={selected ? "page" : undefined}
-            className={`flex h-11 min-w-[140px] flex-1 items-center justify-center whitespace-nowrap rounded-[10px] border border-pink px-4 text-[13px] ${
+            className={`flex h-11 min-w-[140px] flex-1 items-center justify-center whitespace-nowrap rounded-[10px] border border-pink px-4 text-[13px] transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink focus-visible:ring-offset-2 ${
               selected
-                ? "bg-pink font-bold text-white"
-                : "bg-white text-ink"
+                ? "bg-pink font-bold text-white shadow-[0px_4px_12px_-2px_rgba(217,66,114,0.35)]"
+                : "bg-white text-ink hover:border-pink-hover hover:bg-pink hover:text-white hover:shadow-[0px_4px_12px_-2px_rgba(217,66,114,0.25)]"
             }`}
           >
             {selected ? `All ${category.name}` : category.name}

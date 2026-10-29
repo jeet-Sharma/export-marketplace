@@ -1,9 +1,10 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { BellIcon } from "./icons";
-import { deleteCookie } from "@/lib/cookies";
 import { useAppDispatch } from "@/store/hooks";
 import { clearCredentials } from "@/features/auth/authSlice";
+import { baseApi } from "@/store/baseApi";
 
 type UtilityBarProps = {
   context: string;
@@ -12,12 +13,15 @@ type UtilityBarProps = {
 
 export function UtilityBar({ context, section }: UtilityBarProps) {
   const dispatch = useAppDispatch();
+  const router = useRouter();
 
   const handleLogout = () => {
+    // Clear credentials (also purges auth cookies) then wipe the RTK Query
+    // cache so a subsequent login as a different account cannot see cached
+    // results that belong to the previous session.
     dispatch(clearCredentials());
-    deleteCookie("access_token");
-    deleteCookie("user_data");
-    window.location.href = "/login?force=true";
+    dispatch(baseApi.util.resetApiState());
+    router.push("/login?force=true");
   };
 
   return (

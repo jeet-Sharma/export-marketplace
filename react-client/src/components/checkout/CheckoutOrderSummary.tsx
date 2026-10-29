@@ -49,7 +49,7 @@ interface CheckoutOrderSummaryProps {
  * product from GET /products/:slug. Pricing rows read "Pending confirmed
  * price" per the design — there is no checkout/pricing backend yet, so
  * this isn't a stand-in for a real total, it matches the actual Figma
- * copy for a not-yet-priced B2B order. "Verified Looma supplier" is
+ * copy for a not-yet-priced B2B order. "Verified Export Marketplace supplier" is
  * static Figma copy, not a real verification feature (same caveat as
  * ProductSupplierCard elsewhere on the site — Vendor has no verification
  * concept on the backend).
@@ -81,7 +81,7 @@ export function CheckoutOrderSummary({ product }: CheckoutOrderSummaryProps) {
               <path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z" />
               <path d="m9 12 2 2 4-4" />
             </svg>
-            <p className="text-[11px] font-bold text-delivery">Verified Looma supplier</p>
+            <p className="text-[11px] font-bold text-delivery">Verified Export Marketplace supplier</p>
           </div>
         </div>
       </div>

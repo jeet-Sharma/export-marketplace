@@ -10,7 +10,7 @@ export function AuthHeader() {
             &#8734;
           </span>
         </div>
-        <span className="text-[24px] text-white">looma</span>
+        <span className="text-[24px] text-white">Export Marketplace</span>
         <span className="rounded-full bg-white/[0.09] px-[9px] py-[5px] text-[10px] font-bold uppercase text-white">
           Market Bloom
         </span>

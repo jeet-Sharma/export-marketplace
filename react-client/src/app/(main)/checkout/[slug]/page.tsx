@@ -34,7 +34,7 @@ export async function generateMetadata({ params }: CheckoutPageProps): Promise<M
   const { slug } = await params;
   const product = await fetchProduct(slug);
   return {
-    title: product ? `Checkout · ${product.name} · Looma` : "Checkout · Looma",
+    title: product ? `Checkout · ${product.name} · Export Marketplace` : "Checkout · Export Marketplace",
   };
 }
 

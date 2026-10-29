@@ -20,13 +20,8 @@ function formatQuantityRange(tier: ApiProductPriceTier, unit: string | null): st
 }
 
 /**
- * Quantity-tier pill selector for the purchase panel, matching the Figma
- * "Quantity tiers" pills. Backed entirely by the product's real
- * `priceTiers` — the same data already shown in the detailed
- * `ProductPriceTiers` table further down the page, just presented as
- * selectable pills here. Selecting a pill updates the displayed price to
- * that tier's price; it does not add anything to a cart or submit a
- * quote (Phase 1 has no cart/RFQ feature).
+ * Quantity-tier pill selector — compact Amazon-style size/variant chips.
+ * Selected pill is outlined in pink. Price shown inline below the pills.
  */
 export function ProductQuantityTiers({ tiers, unit }: ProductQuantityTiersProps) {
   const sorted = [...tiers].sort((a, b) => Number(a.minQuantity) - Number(b.minQuantity));
@@ -39,28 +34,35 @@ export function ProductQuantityTiers({ tiers, unit }: ProductQuantityTiersProps)
   const active = sorted[activeIndex];
 
   return (
-    <div className="flex flex-col gap-2">
-      <p className="text-[12px] text-ink/50">Quantity tiers</p>
-      <div className="flex flex-wrap gap-2">
+    <div className="flex flex-col gap-[5px]">
+      {/* "Quantity tier: 7 kg+  ·  $708.00 / kg" — like Amazon's "Size: 512 GB" */}
+      <p className="text-[13px] text-ink/60">
+        <span className="font-semibold text-ink">Quantity tier: </span>
+        {formatQuantityRange(active, unit)} ·{" "}
+        <span className="font-semibold text-ink">
+          {formatPrice(active.price, active.currencyCode)}
+        </span>
+        <span className="text-ink/50"> / {unit ?? "unit"}</span>
+      </p>
+
+      {/* Compact selector chips — like Amazon's 128 GB / 256 GB / 512 GB row */}
+      <div className="flex flex-wrap gap-[5px]">
         {sorted.map((tier, index) => (
           <button
             key={tier.id}
             type="button"
             onClick={() => setActiveIndex(index)}
             aria-pressed={index === activeIndex}
-            className={`rounded-[10px] border px-4 py-2 text-[13px] font-bold transition-colors ${
+            className={`rounded-[6px] border px-[10px] py-[4px] text-[12px] font-medium transition-colors duration-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink focus-visible:ring-offset-1 ${
               index === activeIndex
-                ? "border-pink bg-pink/10 text-pink"
-                : "border-border bg-white text-ink hover:border-pink/40"
+                ? "border-pink bg-pink/5 font-semibold text-pink shadow-[0_0_0_1px_rgba(217,66,114,0.25)]"
+                : "border-border bg-white text-ink hover:border-pink/50"
             }`}
           >
             {formatQuantityRange(tier, unit)}
           </button>
         ))}
       </div>
-      <p className="text-[13px] text-ink/60">
-        {formatPrice(active.price, active.currencyCode)} per {unit ?? "unit"} at this tier
-      </p>
     </div>
   );
 }

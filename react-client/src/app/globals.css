@@ -41,10 +41,117 @@
   --color-success: #146b49;
   --color-border: #ddd7d5;
   --color-text-secondary: #656575;
+
+  /* Custom durations not in Tailwind's default scale */
+  --transition-duration-350: 350ms;
 }
 
 body {
   background-color: var(--color-cream);
   color: var(--color-ink);
   font-family: var(--font-sans);
+}
+
+/* ─── Skeleton shimmer ────────────────────────────────────────────────────── */
+/* A gradient sweep replaces the plain pulse on skeletons when the user has
+   not requested reduced motion. animate-pulse is still used as the fallback. */
+@keyframes skeleton-shimmer {
+  from {
+    background-position: 200% center;
+  }
+  to {
+    background-position: -200% center;
+  }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    #f0ebe4 25%,
+    #faf6f0 50%,
+    #f0ebe4 75%
+  );
+  background-size: 400% 100%;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .skeleton-shimmer {
+    animation: skeleton-shimmer 1.8s ease-in-out infinite;
+  }
+}
+
+/* Users who prefer reduced motion get a static muted bg instead */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-shimmer {
+    background: #f0ebe4;
+    animation: none;
+  }
+}
+
+/* ─── Product grid fade-in ────────────────────────────────────────────────── */
+/* Softens the abrupt swap from skeleton → product cards */
+@keyframes fade-up-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.product-grid-enter {
+  animation: fade-up-in 0.32s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .product-grid-enter {
+    animation: none;
+  }
+}
+
+/* ─── Custom transition duration (motion-safe:duration-350) ──────────────── */
+/* Tailwind v4 — added via @theme above. Used for image zoom on ProductCard. */
+.motion-safe\:duration-350 {
+  transition-duration: 350ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .motion-safe\:duration-350 {
+    transition-duration: 0ms;
+  }
+}
+
+/* ─── Product gallery zoom — suppress on touch/coarse-pointer devices ─────── */
+/* The zoom panel and lens overlay are rendered by React on all devices, but
+   hidden via CSS on touchscreens (pointer: coarse) so they never appear on
+   phones or tablets where mouse-tracking makes no sense. */
+@media (pointer: coarse) {
+  .zoom-panel,
+  .zoom-lens {
+    display: none !important;
+  }
+}
+
+/* ─── Zoom panel enter animation ─────────────────────────────────────────── */
+@keyframes zoom-panel-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.zoom-panel-enter {
+  animation: zoom-panel-in 0.18s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zoom-panel-enter {
+    animation: none;
+  }
 }

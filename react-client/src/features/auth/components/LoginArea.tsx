@@ -9,7 +9,7 @@ export function LoginArea() {
       <LoginCard />
 
       <p className="relative w-full text-center text-[11px] text-bloom-muted">
-        Privacy · Terms · Accessibility · © 2026 Looma Market Ltd.
+        Privacy · Terms · Accessibility · © 2026 Export Marketplace Ltd.
       </p>
     </main>
   );
