@@ -96,7 +96,7 @@ export function ProductCard({
           <p className="text-[10px] font-extrabold uppercase tracking-wide text-pink">
             {origin}
           </p>
-          <h3 className="line-clamp-2 h-[28px] text-[12px] font-normal leading-[1.3] text-ink transition-colors duration-150 group-hover:text-pink">
+          <h3 className="line-clamp-2 h-[32px] text-[12px] font-normal leading-[1.3] text-ink transition-colors duration-150 group-hover:text-pink">
             {name}
           </h3>
 

@@ -54,7 +54,7 @@ export function Button({
       type="button"
       disabled={isDisabled}
       aria-busy={loading || undefined}
-      className={`inline-flex h-10 items-center justify-center gap-2 rounded-[10px] px-4 text-[13px] font-bold transition-[colors,box-shadow,transform] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink focus-visible:ring-offset-2 disabled:cursor-not-allowed motion-safe:active:scale-[0.97] ${variantClasses} ${className}`}
+      className={`inline-flex h-10 items-center justify-center gap-2 rounded-[10px] px-4 text-[13px] font-bold transition-[color,background-color,border-color,box-shadow,transform] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink focus-visible:ring-offset-2 disabled:cursor-not-allowed motion-safe:active:scale-[0.97] ${variantClasses} ${className}`}
       {...rest}
     >
       {loading ? <Spinner variant={variant} /> : icon}

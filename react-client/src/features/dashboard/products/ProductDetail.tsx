@@ -9,7 +9,9 @@ import {
   useUnpublishAdminProductMutation,
 } from "./productsApi";
 import { EditProductModal } from "./EditProductModal";
-import { deleteCookie } from "@/lib/cookies";
+import { useAppDispatch } from "@/store/hooks";
+import { clearCredentials } from "@/features/auth/authSlice";
+import { baseApi } from "@/store/baseApi";
 
 type ProductDetailProps = {
   productId: string;
@@ -36,6 +38,7 @@ export function ProductDetail({ productId, backHref }: ProductDetailProps) {
     useUnpublishAdminProductMutation();
 
   const [isEditOpen, setIsEditOpen] = useState(false);
+  const dispatch = useAppDispatch();
   const router = useRouter();
 
   const isBusy = isPublishing || isUnpublishing;
@@ -107,8 +110,8 @@ export function ProductDetail({ productId, backHref }: ProductDetailProps) {
             <button
               type="button"
               onClick={() => {
-                deleteCookie("access_token");
-                deleteCookie("user_data");
+                dispatch(clearCredentials());
+                dispatch(baseApi.util.resetApiState());
                 router.push("/login?force=true");
               }}
               className="rounded-[8px] bg-bloom-pink px-4 py-1.5 text-[12px] font-bold text-white hover:opacity-90"

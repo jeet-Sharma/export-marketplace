@@ -97,19 +97,19 @@ export function Footer() {
           <div className="flex flex-wrap items-center gap-5">
             <Link
               href={footerRoutes["Terms"] ?? routes.home}
-              className="text-[12px] text-white/40 transition-colors hover:text-white/70 focus-visible:outline-none"
+              className="rounded text-[12px] text-white/40 transition-colors hover:text-white/70 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/60"
             >
               Terms
             </Link>
             <Link
               href={footerRoutes["Help"] ?? routes.home}
-              className="text-[12px] text-white/40 transition-colors hover:text-white/70 focus-visible:outline-none"
+              className="rounded text-[12px] text-white/40 transition-colors hover:text-white/70 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/60"
             >
               Privacy
             </Link>
             <Link
               href={footerRoutes["Help"] ?? routes.home}
-              className="text-[12px] text-white/40 transition-colors hover:text-white/70 focus-visible:outline-none"
+              className="rounded text-[12px] text-white/40 transition-colors hover:text-white/70 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/60"
             >
               Cookies
             </Link>
