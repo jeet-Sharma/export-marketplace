@@ -10,7 +10,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Looma · Market Bloom",
+  title: "Export Marketplace · Market Bloom",
   description: "Export marketplace connecting international buyers with exporters.",
 };
 

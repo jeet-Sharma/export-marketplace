@@ -92,11 +92,11 @@ export function ProductCard({
         </div>
 
         {/* Text content */}
-        <div className={`flex flex-col gap-[4px] px-[10px] pt-[10px] ${showViewAction ? "" : "pb-[10px]"}`}>
+        <div className={`flex flex-col gap-[2px] px-[10px] pt-[10px] ${showViewAction ? "" : "pb-[10px]"}`}>
           <p className="text-[10px] font-extrabold uppercase tracking-wide text-pink">
             {origin}
           </p>
-          <h3 className="line-clamp-2 h-[34px] text-[12px] font-normal leading-[1.3] text-ink transition-colors duration-150 group-hover:text-pink">
+          <h3 className="line-clamp-2 h-[28px] text-[12px] font-normal leading-[1.3] text-ink transition-colors duration-150 group-hover:text-pink">
             {name}
           </h3>
 
@@ -132,7 +132,7 @@ export function ProductCard({
           <button
             type="button"
             title="Requesting a quote isn't available yet"
-            className="flex h-[30px] w-[58px] shrink-0 items-center justify-center rounded-[7px] border border-pink bg-white text-[12px] font-bold text-pink transition-colors duration-150 hover:bg-cream hover:border-pink-hover hover:text-pink-hover active:bg-pink/10 active:text-pink-pressed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-45"
+            className="flex h-[30px] flex-1 items-center justify-center rounded-[7px] border border-pink bg-white text-[12px] font-bold text-pink transition-colors duration-150 hover:bg-cream hover:border-pink-hover hover:text-pink-hover active:bg-pink/10 active:text-pink-pressed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-45"
           >
             REQ
           </button>

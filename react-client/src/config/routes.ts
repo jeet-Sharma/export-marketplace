@@ -37,7 +37,7 @@ export const routes = {
   newArrivals: "/products?sort=newest",
 
   // Account
-  signIn: "/sign-in",
+  signIn: "/login",
   orders: "/orders",
   cart: "/cart",
 
@@ -63,7 +63,7 @@ export function toCategorySlug(label: string): string {
  */
 export const footerRoutes: Record<string, string> = {
   About: "/about",
-  "Sell on Looma": routes.sellGlobally,
+  "Sell on Export Marketplace": routes.sellGlobally,
   Trade: routes.tradeAccount,
   Help: "/support",
   Terms: "/terms",

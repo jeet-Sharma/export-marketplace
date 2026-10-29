@@ -5,7 +5,7 @@ import { TrendingProducts } from "@/components/home/TrendingProducts";
 import { TradeAndExport } from "@/components/home/TradeAndExport";
 
 /**
- * Looma homepage · Market Bloom.
+ * Export Marketplace homepage · Market Bloom.
  * Composes the marketplace content sections; header/footer come from the
  * `(main)` route group layout.
  */

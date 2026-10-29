@@ -20,7 +20,7 @@ import type { GetProductsParams } from "@/features/products/types/product-api.ty
 /** Skeleton placeholder shown while the catalogue grid is loading. */
 function ProductGridSkeleton() {
   return (
-    <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
       {Array.from({ length: 12 }).map((_, index) => (
         <div
           key={index}
@@ -191,7 +191,7 @@ export function ProductsPageContent() {
   const categoryName = selectedCategory?.name ?? "All Products";
   const categoryDescription =
     selectedCategory?.description ??
-    "Browse every published product currently available on Looma.";
+    "Browse every published product currently available on Export Marketplace.";
 
   const products = productsData?.items.map((item) => ({
     id: item.id,

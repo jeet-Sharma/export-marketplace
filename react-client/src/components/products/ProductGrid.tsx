@@ -6,10 +6,10 @@ interface ProductGridProps {
   products: Array<Product & { id: string; slug: string }>;
 }
 
-/** 3-column product grid for the catalogue/listing page, reusing the shared ProductCard. */
+/** 4-column product grid for the catalogue/listing page, reusing the shared ProductCard. */
 export function ProductGrid({ products }: ProductGridProps) {
   return (
-    <div className="product-grid-enter grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="product-grid-enter grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
       {products.map(({ id, ...product }) => (
         <ProductCard key={id} {...product} showViewAction />
       ))}

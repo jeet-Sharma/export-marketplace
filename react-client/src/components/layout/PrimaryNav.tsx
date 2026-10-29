@@ -13,7 +13,7 @@ function Brand() {
       <div className="flex size-7 items-center justify-center rounded-[10px] bg-amber text-[17px] text-ink">
         ∞
       </div>
-      <span className="text-2xl text-white">looma</span>
+      <span className="text-2xl text-white">Export Marketplace</span>
     </Link>
   );
 }

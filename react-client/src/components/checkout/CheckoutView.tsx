@@ -154,7 +154,7 @@ export function CheckoutView({ product }: CheckoutViewProps) {
 
           <section className="flex w-full flex-col gap-4 rounded-[16px] border border-border bg-white p-[22px] shadow-[0px_5px_18px_-2px_rgba(17,24,39,0.09)]">
             <CheckoutCheckedRow>
-              I agree to Looma&apos;s <span className="font-bold text-pink">Marketplace Terms</span> and
+              I agree to Export Marketplace&apos;s <span className="font-bold text-pink">Marketplace Terms</span> and
               acknowledge that the order is subject to supplier price confirmation before payment.
             </CheckoutCheckedRow>
 

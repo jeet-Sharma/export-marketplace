@@ -45,7 +45,7 @@ function ProductGridSkeleton() {
   );
 }
 
-/** "Trending across Looma" section — fetches the live catalogue (GET /products) and renders it as a grid with sort/filter bar and "Load more" pagination. */
+/** "Trending across Export Marketplace" section — fetches the live catalogue (GET /products) and renders it as a grid with sort/filter bar and "Load more" pagination. */
 export function TrendingProducts() {
   const {
     data,
@@ -69,7 +69,7 @@ export function TrendingProducts() {
     <section className="flex flex-col gap-[10px]">
       <div className="flex items-end justify-between">
         <div className="flex flex-col gap-[2px] text-ink">
-          <h2 className="text-[20px]">Trending across Looma</h2>
+          <h2 className="text-[20px]">Trending across Export Marketplace</h2>
           <p className="text-[12px] opacity-[0.56]">
             Independent goods with exceptional customer ratings
           </p>

@@ -77,13 +77,13 @@ export async function generateMetadata({ params }: ProductPageProps): Promise<Me
   const product = await fetchProduct(slug);
 
   if (!product) {
-    return { title: "Product not found · Looma" };
+    return { title: "Product not found · Export Marketplace" };
   }
 
   const price = formatPrice(product.price, product.currencyCode);
   return {
-    title: `${product.name} · Looma`,
-    description: product.description ?? `${product.name} — ${price} on Looma, the shared market for independent goods.`,
+    title: `${product.name} · Export Marketplace`,
+    description: product.description ?? `${product.name} — ${price} on Export Marketplace, the shared market for independent goods.`,
     openGraph: {
       title: product.name,
       description: product.description ?? undefined,
