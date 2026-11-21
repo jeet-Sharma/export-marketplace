@@ -16,5 +16,6 @@ export default registerAs('database', () => {
     username: db.username,
     password: db.password,
     name: db.database,
+    ssl: db.ssl,
   };
 });

@@ -129,27 +129,6 @@ export type AdminProductsQuery = {
   vendorId?: string;
 };
 
-// Input payload for POST /admin/products
-export type CreateProductInput = {
-  name: string;
-  vendorId: string;
-  status: ApiProductStatus;
-  description?: string;
-  categoryId?: string;
-  price?: number;
-  currencyCode?: string;
-  unit?: string;
-  moq?: number;
-  hsCode?: string;
-  sourceCountryId?: string;
-  targetCountryIds?: string[];
-  exportEligibility?: string;
-  countryRestrictions?: string;
-  estimatedDeliveryText?: string;
-  dutiesTaxesNote?: string;
-  expiryDate?: string;
-};
-
 // Input payload for PATCH /admin/products/:id.
 // Optional fields accept null so the client can clear a saved value.
 // Omitted fields stay unchanged on the server.

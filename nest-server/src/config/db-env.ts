@@ -18,7 +18,24 @@
  * resolve identically. Running migrations against a different database than
  * the app is connecting to is the worst possible outcome of a mismatch —
  * this helper makes that impossible.
+ *
+ * SSL: set DB_SSL=true for hosted Postgres that requires TLS (e.g. Render).
+ * By default rejectUnauthorized is false so managed-provider certs work;
+ * set DB_SSL_REJECT_UNAUTHORIZED=true to enforce full cert verification.
  */
+export type DbSslOptions = { rejectUnauthorized: boolean };
+
+function resolveSsl(): DbSslOptions | undefined {
+  const flag = (process.env.DB_SSL ?? '').toLowerCase();
+  if (flag !== 'true' && flag !== '1') {
+    return undefined;
+  }
+  const rejectUnauthorized =
+    (process.env.DB_SSL_REJECT_UNAUTHORIZED ?? 'false').toLowerCase() ===
+    'true';
+  return { rejectUnauthorized };
+}
+
 export function resolveDbConfig() {
   return {
     host: process.env.DB_HOST ?? process.env.POSTGRES_HOST ?? 'localhost',
@@ -29,5 +46,6 @@ export function resolveDbConfig() {
       process.env.DB_PASSWORD ?? process.env.POSTGRES_PASSWORD ?? 'postgres',
     database:
       process.env.DB_NAME ?? process.env.POSTGRES_DB ?? 'export_marketplace',
+    ssl: resolveSsl(),
   };
 }

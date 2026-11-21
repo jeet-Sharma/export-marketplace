@@ -5,6 +5,7 @@ import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
 import { useAppDispatch } from "@/store/hooks";
 import { clearCredentials } from "@/features/auth/authSlice";
 import { baseApi } from "@/store/baseApi";
+import { ProductTableRowsSkeleton } from "@/components/ui/Skeleton";
 import { PRODUCT_COLUMNS } from "./productColumns";
 import type { ProductRow } from "./productData";
 import type { PaginatedResponse } from "./productTypes";
@@ -14,6 +15,8 @@ import { ProductTableRow } from "./ProductTableRow";
 type ProductTableProps = {
   rows: ProductRow[];
   buildDetailHref: (id: string) => string;
+  /** Opens the edit product flow for the given product id. */
+  onEditProduct: (productId: string) => void;
   pagination?: PaginatedResponse<unknown>["pagination"];
   isLoading: boolean;
   isFetching: boolean;
@@ -52,6 +55,7 @@ function StateMessage({
 export function ProductTable({
   rows,
   buildDetailHref,
+  onEditProduct,
   pagination,
   isLoading,
   isFetching,
@@ -73,7 +77,7 @@ export function ProductTable({
     <div className="w-full overflow-x-auto rounded-[14px] border border-bloom-border bg-white shadow-[0px_6px_20px_-4px_rgba(53,16,31,0.07)]">
       {/* min-width keeps columns from crushing; the wrapper scrolls instead of
           clipping on narrow (laptop) viewports — fixes the cut-off Actions column. */}
-      <div className="flex min-w-[1040px] flex-col">
+      <div className="flex min-w-[1110px] flex-col">
         {/* Header */}
         <div className="flex h-[42px] w-full items-center gap-3 border-b border-bloom-border bg-[#f7f3f0] px-4 text-[10px] font-extrabold uppercase text-bloom-muted">
           {COLUMNS.map((col) => (
@@ -99,10 +103,7 @@ export function ProductTable({
 
         {/* Body states */}
         {isLoading && !hasRows ? (
-          <StateMessage
-            title="Loading products…"
-            detail="Fetching the latest catalog from the server."
-          />
+          <ProductTableRowsSkeleton count={6} />
         ) : isError && !hasRows ? (
           <StateMessage
             title="Unable to load products"
@@ -157,6 +158,7 @@ export function ProductTable({
                   <ProductTableRow
                     product={product}
                     detailHref={buildDetailHref(product.id)}
+                    onEdit={() => onEditProduct(product.id)}
                     highlighted={i === 0}
                   />
                 </ErrorBoundary>

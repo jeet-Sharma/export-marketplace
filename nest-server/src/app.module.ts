@@ -70,6 +70,10 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
         username: configService.get<string>('database.username'),
         password: configService.get<string>('database.password'),
         database: configService.get<string>('database.name'),
+        // Enabled when DB_SSL=true (required for external Render Postgres).
+        ssl: configService.get<{ rejectUnauthorized: boolean } | undefined>(
+          'database.ssl',
+        ),
         entities: [
           Country,
           Vendor,

@@ -3,7 +3,6 @@ import type {
   AdminProductsQuery,
   ApiProduct,
   CreateProductPayload,
-  CreateProductInput,
   PaginatedResponse,
   ProductImageResponse,
   UpdateProductInput,
@@ -68,15 +67,6 @@ export const productsApi = baseApi.injectEndpoints({
         url: "/admin/products",
         method: "POST",
         body: payload,
-      }),
-      invalidatesTags: [{ type: "ProductList", id: "LIST" }],
-    }),
-
-    createAdminProduct: builder.mutation<ApiProduct, CreateProductInput>({
-      query: (body) => ({
-        url: "/admin/products",
-        method: "POST",
-        body,
       }),
       invalidatesTags: [{ type: "ProductList", id: "LIST" }],
     }),
@@ -175,7 +165,6 @@ export const {
   useGetAdminProductsQuery,
   useGetAdminProductQuery,
   useCreateProductMutation,
-  useCreateAdminProductMutation,
   useUpdateAdminProductMutation,
   usePublishAdminProductMutation,
   useUnpublishAdminProductMutation,

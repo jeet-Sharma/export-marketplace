@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { ProductCard } from "@/components/ui/ProductCard";
+import { ProductCardSkeletonGrid } from "@/components/ui/Skeleton";
 import { routes } from "@/config/routes";
 import { useProductsInfiniteQuery } from "@/features/products/api/products.queries";
 import { toProductCardProps } from "@/features/products/api/products.mapper";
@@ -26,21 +27,6 @@ function ResultsSummary({
       <p className="text-[12px] text-ink/50">
         Showing {visibleCount} of {totalCount} visible products
       </p>
-    </div>
-  );
-}
-
-/** Skeleton placeholder shown while the catalogue is loading. */
-function ProductGridSkeleton() {
-  return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-      {Array.from({ length: TRENDING_PAGE_SIZE }).map((_, index) => (
-        <div
-          key={index}
-          aria-hidden
-          className="skeleton-shimmer h-[278px] rounded-[10px] border border-black/[0.09]"
-        />
-      ))}
     </div>
   );
 }
@@ -80,7 +66,7 @@ export function TrendingProducts() {
       </div>
 
       {isLoading ? (
-        <ProductGridSkeleton />
+        <ProductCardSkeletonGrid count={TRENDING_PAGE_SIZE} />
       ) : isError ? (
         <div className="flex flex-col items-center gap-3 rounded-[10px] border border-black/[0.09] bg-white py-10 text-center">
           <p className="text-[13px] text-ink/60">

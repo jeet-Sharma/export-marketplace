@@ -6,6 +6,7 @@ import { PlusIcon } from "../components/icons";
 import { SelectField, TextField } from "./AddProductFormFields";
 import {
   useCreateProductMutation,
+  useGetAdminProductQuery,
   useUpdateAdminProductMutation,
   useRequestImageUploadUrlMutation,
   useAddProductImageMutation,
@@ -16,9 +17,19 @@ import {
   useGetCategoryOptionsQuery,
   useGetCountryOptionsQuery,
 } from "./referenceDataApi";
-import type { CreateProductPayload } from "./productTypes";
+import type { ApiProduct, CreateProductPayload } from "./productTypes";
+import {
+  messageFromUnknown,
+  monthsUntilIsoDate,
+  parseDutiesTaxesNote,
+  resolveExpiryDate,
+} from "./productModalUtils";
 import { useGetAdminVendorsQuery } from "../vendors/vendorsApi";
 import { AccessibleDialog } from "@/components/ui/AccessibleDialog";
+import {
+  ProductFormSkeleton,
+  ProductModalFooterSkeleton,
+} from "@/components/ui/Skeleton";
 
 type ExtraDetailValueType = "Text" | "Number" | "Color";
 
@@ -38,6 +49,8 @@ type SelectedImage = {
 type AddProductModalProps = {
   onClose: () => void;
   onSuccess?: (createdStatus?: "DRAFT" | "PUBLISHED") => void;
+  /** When set, the modal opens in edit mode and prefills the form. */
+  productId?: string;
 };
 
 const EXPORT_ELIGIBILITY_OPTIONS = [
@@ -46,51 +59,175 @@ const EXPORT_ELIGIBILITY_OPTIONS = [
   { value: "PENDING", label: "Pending review" },
 ];
 
-/** Converts a whole-number months value into a calendar date N months from today (YYYY-MM-DD), matching CreateProductDto.expiryDate's strict format. */
-function monthsFromNowToIsoDate(months: number): string {
-  const date = new Date();
-  date.setUTCMonth(date.getUTCMonth() + months);
-  return date.toISOString().slice(0, 10);
-}
-
 function emptyDetailRow(): ExtraDetailRow {
   return { id: crypto.randomUUID(), label: "", valueType: "Text", value: "" };
 }
 
-function messageFromUnknown(err: unknown, fallback: string): string {
-  if (typeof err === "object" && err !== null && "data" in err) {
-    const data = (err as { data?: { message?: string | string[] } }).data;
-    if (typeof data?.message === "string" && data.message.trim()) {
-      return data.message;
-    }
-    if (Array.isArray(data?.message) && data.message.length > 0) {
-      return data.message.join(", ");
-    }
-  }
-  if (err instanceof Error && err.message.trim()) {
-    return err.message;
-  }
-  return fallback;
+function ModalCloseButton({ onClose }: { onClose: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClose}
+      aria-label="Close"
+      className="flex size-9 shrink-0 items-center justify-center rounded-[10px] border border-bloom-border bg-white text-bloom-ink transition-colors hover:bg-bloom-cream"
+    >
+      <svg
+        aria-hidden
+        viewBox="0 0 24 24"
+        className="size-3.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={2}
+        strokeLinecap="round"
+      >
+        <path d="M18 6 6 18" />
+        <path d="M6 6l12 12" />
+      </svg>
+    </button>
+  );
 }
 
-export function AddProductModal({ onClose, onSuccess }: AddProductModalProps) {
+function ProductModalHeader({
+  titleId,
+  title,
+  subtitle,
+  onClose,
+}: {
+  titleId: string;
+  title: string;
+  subtitle: string;
+  onClose: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-between border-b border-[#eee9e4] px-6 py-5">
+      <div className="flex max-w-[620px] flex-col gap-1">
+        <p className="text-[10px] font-extrabold uppercase text-bloom-pink">
+          Catalog operations
+        </p>
+        <h2 id={titleId} className="text-[24px] font-semibold text-bloom-ink">
+          {title}
+        </h2>
+        <p className="text-[13px] text-bloom-muted">{subtitle}</p>
+      </div>
+      <ModalCloseButton onClose={onClose} />
+    </div>
+  );
+}
+
+/**
+ * Shared add/edit product dialog.
+ * - No `productId` → empty create form ("Add product")
+ * - With `productId` → load product, prefill, save via PATCH ("Edit product")
+ */
+export function AddProductModal({
+  onClose,
+  onSuccess,
+  productId,
+}: AddProductModalProps) {
+  const isEdit = Boolean(productId);
+  const {
+    data: product,
+    isLoading,
+    isError,
+    refetch,
+  } = useGetAdminProductQuery(productId!, { skip: !isEdit });
+
+  if (isEdit && isLoading) {
+    return (
+      <AccessibleDialog labelId="edit-product-loading" onClose={onClose}>
+        <ProductModalHeader
+          titleId="edit-product-loading"
+          title="Edit product"
+          subtitle="Loading listing details…"
+          onClose={onClose}
+        />
+        <ProductFormSkeleton />
+        <ProductModalFooterSkeleton />
+      </AccessibleDialog>
+    );
+  }
+
+  if (isEdit && (isError || !product)) {
+    return (
+      <AccessibleDialog labelId="edit-product-error" onClose={onClose}>
+        <ProductModalHeader
+          titleId="edit-product-error"
+          title="Edit product"
+          subtitle="Couldn't load this listing."
+          onClose={onClose}
+        />
+        <div className="flex flex-col gap-3 px-6 py-8">
+          <p className="text-[14px] font-semibold text-bloom-ink">
+            Couldn&apos;t load this product
+          </p>
+          <p className="text-[12px] text-bloom-muted">
+            Check your connection or try again.
+          </p>
+          <div className="flex items-center gap-2 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="h-9 rounded-[8px] border border-bloom-border bg-white px-3 text-[12px] font-semibold text-bloom-ink hover:bg-bloom-cream"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => refetch()}
+              className="h-9 rounded-[8px] bg-bloom-pink px-3 text-[12px] font-bold text-white hover:opacity-90"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      </AccessibleDialog>
+    );
+  }
+
+  return (
+    <AddProductModalForm
+      key={productId ?? "create"}
+      onClose={onClose}
+      onSuccess={onSuccess}
+      initialProduct={product ?? null}
+    />
+  );
+}
+
+type AddProductModalFormProps = {
+  onClose: () => void;
+  onSuccess?: (createdStatus?: "DRAFT" | "PUBLISHED") => void;
+  initialProduct: ApiProduct | null;
+};
+
+function AddProductModalForm({
+  onClose,
+  onSuccess,
+  initialProduct,
+}: AddProductModalFormProps) {
+  const isEdit = Boolean(initialProduct);
   const headingId = useId();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const costNotes = parseDutiesTaxesNote(initialProduct?.dutiesTaxesNote);
 
   const { data: categories } = useGetCategoryOptionsQuery();
   const { data: countries } = useGetCountryOptionsQuery();
   const { data: vendorsResult } = useGetAdminVendorsQuery();
   const [createProduct, { isLoading: isCreating, error }] =
     useCreateProductMutation();
-  const [updateProduct] = useUpdateAdminProductMutation();
+  const [updateProduct, { isLoading: isUpdating }] =
+    useUpdateAdminProductMutation();
   const [publishProduct] = usePublishAdminProductMutation();
   const [unpublishProduct] = useUnpublishAdminProductMutation();
   const [requestImageUploadUrl] = useRequestImageUploadUrlMutation();
   const [addProductImage] = useAddProductImageMutation();
+  const isSaving = isCreating || isUpdating;
 
-  const [name, setName] = useState("");
-  const [categoryId, setCategoryId] = useState("");
-  const [shortDescription, setShortDescription] = useState("");
+  const [name, setName] = useState(initialProduct?.name ?? "");
+  const [categoryId, setCategoryId] = useState(initialProduct?.categoryId ?? "");
+  const [shortDescription, setShortDescription] = useState(
+    initialProduct?.description ?? "",
+  );
   const [fullDetails, setFullDetails] = useState("");
 
   const [selectedImages, setSelectedImages] = useState<SelectedImage[]>([]);
@@ -101,23 +238,38 @@ export function AddProductModal({ onClose, onSuccess }: AddProductModalProps) {
   const [createdProduct, setCreatedProduct] = useState<{
     id: string;
     status: "DRAFT" | "PUBLISHED";
-  } | null>(null);
+  } | null>(
+    initialProduct
+      ? { id: initialProduct.id, status: initialProduct.status }
+      : null,
+  );
   const [uploadedImageIds, setUploadedImageIds] = useState<string[]>([]);
+  const existingImages = initialProduct?.images ?? [];
 
   const [quantityTiers, setQuantityTiers] = useState("");
-  const [moq, setMoq] = useState("");
-  const [hsCode, setHsCode] = useState("");
-  const [exportEligibility, setExportEligibility] = useState("");
-  const [sourceCountryId, setSourceCountryId] = useState("");
-  const [shippingCountryId, setShippingCountryId] = useState("");
-  const [deliveryEstimate, setDeliveryEstimate] = useState("");
-  const [expiryMonths, setExpiryMonths] = useState("");
+  const [moq, setMoq] = useState(initialProduct?.moq ?? "");
+  const [hsCode, setHsCode] = useState(initialProduct?.hsCode ?? "");
+  const [exportEligibility, setExportEligibility] = useState(
+    initialProduct?.exportEligibility ?? "",
+  );
+  const [sourceCountryId, setSourceCountryId] = useState(
+    initialProduct?.sourceCountryId ?? "",
+  );
+  const [shippingCountryId, setShippingCountryId] = useState(
+    initialProduct?.targetCountries?.[0]?.id ?? "",
+  );
+  const [deliveryEstimate, setDeliveryEstimate] = useState(
+    initialProduct?.estimatedDeliveryText ?? "",
+  );
+  const [expiryMonths, setExpiryMonths] = useState(
+    monthsUntilIsoDate(initialProduct?.expiryDate),
+  );
 
-  const [vendorId, setVendorId] = useState("");
-  const [price, setPrice] = useState("");
-  const [shippingEstimate, setShippingEstimate] = useState("");
-  const [dutiesEstimate, setDutiesEstimate] = useState("");
-  const [taxesEstimate, setTaxesEstimate] = useState("");
+  const [vendorId, setVendorId] = useState(initialProduct?.vendorId ?? "");
+  const [price, setPrice] = useState(initialProduct?.price ?? "");
+  const [shippingEstimate, setShippingEstimate] = useState(costNotes.shipping);
+  const [dutiesEstimate, setDutiesEstimate] = useState(costNotes.duties);
+  const [taxesEstimate, setTaxesEstimate] = useState(costNotes.taxes);
 
   const [extraDetails, setExtraDetails] = useState<ExtraDetailRow[]>([
     emptyDetailRow(),
@@ -136,22 +288,21 @@ export function AddProductModal({ onClose, onSuccess }: AddProductModalProps) {
     label: `${country.name} (${country.iso2Code})`,
   }));
 
-  const mutationError = (() => {
-    if (!error) return null;
-    if ("data" in error && typeof error.data === "object" && error.data !== null) {
-      const data = error.data as { message?: string | string[] };
-      if (data.message) {
-        return Array.isArray(data.message) ? data.message.join(", ") : data.message;
-      }
-    }
-    return "Could not save this product. Check the required fields (name and supplier) and try again.";
-  })();
-  const errorMessage = submitError ?? mutationError;
+  const errorMessage =
+    submitError ??
+    (error
+      ? messageFromUnknown(
+          error,
+          "Could not save this product. Check the required fields (name and supplier) and try again.",
+        )
+      : null);
 
   function buildPayload(status: "DRAFT" | "PUBLISHED"): CreateProductPayload {
     const parsedMoq = Number(moq);
     const parsedPrice = Number(price);
-    const parsedExpiryMonths = Number(expiryMonths);
+    const currencyCode =
+      initialProduct?.currencyCode?.trim() || "USD";
+    const unit = initialProduct?.unit?.trim() || "kg";
 
     return {
       name: name.trim(),
@@ -163,8 +314,9 @@ export function AddProductModal({ onClose, onSuccess }: AddProductModalProps) {
       vendorId,
       status,
       price: price && Number.isFinite(parsedPrice) ? parsedPrice : undefined,
-      currencyCode: price ? "USD" : undefined,
-      unit: moq || price ? "kg" : undefined,
+      // Preserve existing currency/unit on edit; default only for new listings.
+      currencyCode: price ? currencyCode : undefined,
+      unit: moq || price ? unit : undefined,
       moq: moq && Number.isFinite(parsedMoq) ? parsedMoq : undefined,
       hsCode: hsCode.trim() || undefined,
       sourceCountryId: sourceCountryId || undefined,
@@ -181,10 +333,10 @@ export function AddProductModal({ onClose, onSuccess }: AddProductModalProps) {
               .filter(Boolean)
               .join(" · ")
           : undefined,
-      expiryDate:
-        expiryMonths && Number.isFinite(parsedExpiryMonths)
-          ? monthsFromNowToIsoDate(parsedExpiryMonths)
-          : undefined,
+      expiryDate: resolveExpiryDate({
+        expiryMonths,
+        initialExpiryDate: initialProduct?.expiryDate,
+      }),
     };
   }
 
@@ -238,7 +390,13 @@ export function AddProductModal({ onClose, onSuccess }: AddProductModalProps) {
     let saved = createdProduct;
     try {
       setUploadProgress(
-        status === "PUBLISHED" ? "Publishing product…" : "Saving draft…",
+        isEdit
+          ? status === "PUBLISHED"
+            ? "Saving & publishing…"
+            : "Saving changes…"
+          : status === "PUBLISHED"
+            ? "Publishing product…"
+            : "Saving draft…",
       );
 
       const payload = buildPayload(status);
@@ -365,32 +523,16 @@ export function AddProductModal({ onClose, onSuccess }: AddProductModalProps) {
        * aria-labelledby, max-h, rounded, shadow). The children below are the
        * scrollable header + body + footer that go inside it.
        */}
-      {/* Modal header */}
-        <div className="flex items-center justify-between border-b border-[#eee9e4] px-6 py-5">
-          <div className="flex max-w-[620px] flex-col gap-1">
-            <p className="text-[10px] font-extrabold uppercase text-bloom-pink">
-              Catalog operations
-            </p>
-            <h2 id={headingId} className="text-[24px] font-semibold text-bloom-ink">
-              Add product
-            </h2>
-            <p className="text-[13px] text-bloom-muted">
-              Create a new product listing and prepare it for review,
-              supplier verification, and marketplace publication.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="flex size-9 shrink-0 items-center justify-center rounded-[10px] border border-bloom-border bg-white text-bloom-ink transition-colors hover:bg-bloom-cream"
-          >
-            <svg aria-hidden viewBox="0 0 24 24" className="size-3.5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-              <path d="M18 6 6 18" />
-              <path d="M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
+      <ProductModalHeader
+          titleId={headingId}
+          title={isEdit ? "Edit product" : "Add product"}
+          subtitle={
+            isEdit
+              ? "Update this listing’s details, then save as draft or publish."
+              : "Create a new product listing and prepare it for review, supplier verification, and marketplace publication."
+          }
+          onClose={onClose}
+        />
 
         {/* Modal body — the only scrollable region in this dialog */}
         <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-6">
@@ -478,6 +620,34 @@ export function AddProductModal({ onClose, onSuccess }: AddProductModalProps) {
                 <p className="text-[11px] font-semibold text-red-600">{imageError}</p>
               ) : null}
 
+              {existingImages.length > 0 ? (
+                <div className="flex flex-wrap gap-2.5 pt-1">
+                  {existingImages.map((img, idx) => (
+                    <div
+                      key={img.id}
+                      className="relative flex items-center gap-2 rounded-[8px] border border-bloom-border bg-white p-1.5 shadow-sm"
+                    >
+                      <Image
+                        src={img.url}
+                        alt={img.altText || "Product image"}
+                        width={44}
+                        height={44}
+                        className="size-11 shrink-0 rounded-[6px] object-cover"
+                        unoptimized
+                      />
+                      <div className="flex flex-col pr-2">
+                        <span className="max-w-[120px] truncate text-[11px] font-semibold text-bloom-ink">
+                          Current image
+                        </span>
+                        <span className="text-[10px] text-bloom-muted">
+                          {idx === 0 ? "Primary" : `Image ${idx + 1}`}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
               {selectedImages.length > 0 ? (
                 <div className="flex flex-wrap gap-2.5 pt-1">
                   {selectedImages.map((img, idx) => (
@@ -500,7 +670,10 @@ export function AddProductModal({ onClose, onSuccess }: AddProductModalProps) {
                           {img.file.name}
                         </span>
                         <span className="text-[10px] text-bloom-muted">
-                          {(img.file.size / 1024).toFixed(0)} KB {idx === 0 ? "· Primary" : ""}
+                          {(img.file.size / 1024).toFixed(0)} KB{" "}
+                          {existingImages.length === 0 && idx === 0
+                            ? "· Primary"
+                            : "· New"}
                         </span>
                       </div>
                       <button
@@ -773,7 +946,7 @@ export function AddProductModal({ onClose, onSuccess }: AddProductModalProps) {
           <div className="flex items-center gap-2">
             <button
               type="button"
-              disabled={isCreating || Boolean(uploadProgress)}
+              disabled={isSaving || Boolean(uploadProgress)}
               onClick={onClose}
               className="flex h-10 items-center rounded-[10px] border border-bloom-border bg-white px-4 text-[13px] font-semibold text-bloom-ink transition-colors hover:bg-bloom-cream disabled:opacity-50"
             >
@@ -781,21 +954,27 @@ export function AddProductModal({ onClose, onSuccess }: AddProductModalProps) {
             </button>
             <button
               type="button"
-              disabled={isCreating || Boolean(uploadProgress) || !name.trim() || !vendorId}
+              disabled={isSaving || Boolean(uploadProgress) || !name.trim() || !vendorId}
               title={!name.trim() || !vendorId ? "Product name and supplier are required" : undefined}
               onClick={() => handleSubmit("DRAFT")}
               className="flex h-10 items-center rounded-[10px] border border-bloom-pink bg-white px-4 text-[13px] font-bold text-bloom-pink transition-colors hover:bg-[#fbeaf0] disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {isCreating && !uploadProgress ? "Saving…" : "Save as draft"}
+              {isSaving && !uploadProgress ? "Saving…" : "Save as draft"}
             </button>
             <button
               type="button"
-              disabled={isCreating || Boolean(uploadProgress) || !name.trim() || !vendorId}
+              disabled={isSaving || Boolean(uploadProgress) || !name.trim() || !vendorId}
               title={!name.trim() || !vendorId ? "Product name and supplier are required" : undefined}
               onClick={() => handleSubmit("PUBLISHED")}
               className="flex h-10 items-center rounded-[10px] bg-bloom-pink px-4 text-[13px] font-bold text-white shadow-[0px_6px_10px_rgba(53,16,31,0.07)] transition-colors hover:bg-pink-hover disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {uploadProgress ? uploadProgress : isCreating ? "Saving…" : "Publish product"}
+              {uploadProgress
+                ? uploadProgress
+                : isSaving
+                  ? "Saving…"
+                  : isEdit
+                    ? "Save & publish"
+                    : "Publish product"}
             </button>
           </div>
         </div>

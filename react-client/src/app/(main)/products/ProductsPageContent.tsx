@@ -8,6 +8,7 @@ import { ProductGrid } from "@/components/products/ProductGrid";
 import { ProductsPagination } from "@/components/products/ProductsPagination";
 import { ProductsToolbar } from "@/components/products/ProductsToolbar";
 import { Button } from "@/components/ui/Button";
+import { ProductCardSkeletonGrid, Skeleton } from "@/components/ui/Skeleton";
 import { TradeAndExport } from "@/components/home/TradeAndExport";
 import { routes } from "@/config/routes";
 import { useCategoriesQuery } from "@/features/categories/api/categories.queries";
@@ -16,21 +17,6 @@ import { useProductsQuery } from "@/features/products/api/products.queries";
 import { toProductCardProps } from "@/features/products/api/products.mapper";
 import { parseProductListUrlState } from "@/features/products/lib/parse-product-filters";
 import type { GetProductsParams } from "@/features/products/types/product-api.types";
-
-/** Skeleton placeholder shown while the catalogue grid is loading. */
-function ProductGridSkeleton() {
-  return (
-    <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-      {Array.from({ length: 12 }).map((_, index) => (
-        <div
-          key={index}
-          aria-hidden
-          className="skeleton-shimmer h-[278px] rounded-[10px] border border-black/[0.09]"
-        />
-      ))}
-    </div>
-  );
-}
 
 /**
  * Product listing page content. URL searchParams are the single source of
@@ -145,8 +131,8 @@ export function ProductsPageContent() {
   if (isCategoriesLoading) {
     return (
       <main className="flex flex-col gap-7 px-7 pb-9 pt-[22px]">
-        <div className="h-24 w-full animate-pulse rounded-[10px] border border-black/[0.09] bg-white" />
-        <ProductGridSkeleton />
+        <Skeleton className="h-24 w-full rounded-[10px] border border-black/[0.09]" />
+        <ProductCardSkeletonGrid count={12} />
       </main>
     );
   }
@@ -232,7 +218,7 @@ export function ProductsPageContent() {
           ) : null}
 
           {isProductsLoading || !isProductsEnabled ? (
-            <ProductGridSkeleton />
+            <ProductCardSkeletonGrid count={12} />
           ) : isProductsError ? (
             <div className="flex flex-col items-center gap-3 rounded-[10px] border border-black/[0.09] bg-white py-10 text-center">
               <p className="text-[13px] text-ink/60">

@@ -29,7 +29,7 @@ import {
 // the migration runner and the application ALWAYS resolve the same host/port/
 // credentials with the same precedence (DB_* → POSTGRES_* → defaults),
 // eliminating the risk of running migrations against a different database.
-const { host, port, username, password, database } = resolveDbConfig();
+const { host, port, username, password, database, ssl } = resolveDbConfig();
 const dataSource = new DataSource({
   type: 'postgres',
   host,
@@ -37,6 +37,7 @@ const dataSource = new DataSource({
   username,
   password,
   database,
+  ssl,
   entities: [
     Country,
     Vendor,
