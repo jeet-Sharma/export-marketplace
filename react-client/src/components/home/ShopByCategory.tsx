@@ -2,23 +2,9 @@
 
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
+import { ChipSkeletonRow } from "@/components/ui/Skeleton";
 import { routes } from "@/config/routes";
 import { useCategoriesQuery } from "@/features/categories/api/categories.queries";
-
-/** Skeleton chip placeholders shown while categories are loading. */
-function CategoryChipsSkeleton() {
-  return (
-    <div className="flex flex-wrap gap-[10px]">
-      {Array.from({ length: 6 }).map((_, index) => (
-        <div
-          key={index}
-          aria-hidden
-          className="skeleton-shimmer h-[46px] min-w-[140px] flex-1 rounded-[10px] border border-black/[0.09]"
-        />
-      ))}
-    </div>
-  );
-}
 
 /** "Shop by category" section with a row of category chips, fetched live from GET /categories. */
 export function ShopByCategory() {
@@ -34,7 +20,7 @@ export function ShopByCategory() {
       </div>
 
       {isLoading ? (
-        <CategoryChipsSkeleton />
+        <ChipSkeletonRow count={6} />
       ) : isError ? (
         <div className="flex items-center gap-3 rounded-[10px] border border-black/[0.09] bg-white px-4 py-3">
           <p className="text-[13px] text-ink/60">Couldn&apos;t load categories.</p>

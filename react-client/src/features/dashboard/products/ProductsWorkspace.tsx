@@ -20,7 +20,10 @@ type ProductsWorkspaceProps = {
 export function ProductsWorkspace({ role }: ProductsWorkspaceProps) {
   const { state, setSearch, setSort, setPage, setStatus, setCategoryId } =
     useProductQueryParams();
-  const [isAddProductOpen, setIsAddProductOpen] = useState(false);
+  /** One modal for both create and edit — avoids two competing open states. */
+  const [productModal, setProductModal] = useState<
+    { mode: "create" } | { mode: "edit"; productId: string } | null
+  >(null);
 
   // Primary list query respecting all active filters
   const { data, isLoading, isFetching, isError, refetch } =
@@ -93,7 +96,7 @@ export function ProductsWorkspace({ role }: ProductsWorkspaceProps) {
   return (
     <>
       <ProductsHeading
-        onAddProduct={() => setIsAddProductOpen(true)}
+        onAddProduct={() => setProductModal({ mode: "create" })}
         exportQuery={{
           search: state.search || undefined,
           sort: state.sort,
@@ -143,6 +146,9 @@ export function ProductsWorkspace({ role }: ProductsWorkspaceProps) {
       <ProductTable
         rows={rows}
         buildDetailHref={buildDetailHref}
+        onEditProduct={(productId) =>
+          setProductModal({ mode: "edit", productId })
+        }
         pagination={pagination}
         isLoading={isLoading}
         isFetching={isFetching}
@@ -151,8 +157,13 @@ export function ProductsWorkspace({ role }: ProductsWorkspaceProps) {
         onPageChange={setPage}
       />
 
-      {isAddProductOpen ? (
-        <AddProductModal onClose={() => setIsAddProductOpen(false)} />
+      {productModal ? (
+        <AddProductModal
+          productId={
+            productModal.mode === "edit" ? productModal.productId : undefined
+          }
+          onClose={() => setProductModal(null)}
+        />
       ) : null}
     </>
   );

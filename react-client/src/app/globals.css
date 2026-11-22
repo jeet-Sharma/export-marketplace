@@ -52,6 +52,19 @@ body {
   font-family: var(--font-sans);
 }
 
+/* Clickable controls should show a hand cursor everywhere. */
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]),
+a[href],
+summary {
+  cursor: pointer;
+}
+
+button:disabled,
+[aria-disabled="true"] {
+  cursor: not-allowed;
+}
+
 /* ─── Skeleton shimmer ────────────────────────────────────────────────────── */
 /* A gradient sweep replaces the plain pulse on skeletons when the user has
    not requested reduced motion. animate-pulse is still used as the fallback. */

@@ -8,7 +8,8 @@ import {
   usePublishAdminProductMutation,
   useUnpublishAdminProductMutation,
 } from "./productsApi";
-import { EditProductModal } from "./EditProductModal";
+import { AddProductModal } from "./AddProductModal";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { useAppDispatch } from "@/store/hooks";
 import { clearCredentials } from "@/features/auth/authSlice";
 import { baseApi } from "@/store/baseApi";
@@ -72,7 +73,7 @@ export function ProductDetail({ productId, backHref }: ProductDetailProps) {
             <button
               type="button"
               onClick={() => setIsEditOpen(true)}
-              className="rounded-[8px] border border-bloom-border bg-white px-3 py-1.5 text-[12px] font-semibold text-bloom-ink hover:bg-bloom-cream"
+              className="rounded-[8px] bg-bloom-pink px-3 py-1.5 text-[12px] font-bold text-white transition-opacity hover:opacity-90"
             >
               Edit Product
             </button>
@@ -93,7 +94,25 @@ export function ProductDetail({ productId, backHref }: ProductDetailProps) {
       </div>
 
       {isLoading ? (
-        <p className="text-[13px] text-bloom-muted">Loading product…</p>
+        <div
+          className="flex w-full flex-col gap-5 rounded-[14px] border border-bloom-border bg-white p-6"
+          role="status"
+          aria-label="Loading product"
+        >
+          <div className="flex flex-col gap-2 border-b border-[#eee9e4] pb-4">
+            <Skeleton className="h-7 w-64 max-w-full rounded-[8px]" />
+            <Skeleton className="h-3 w-40 rounded-[6px]" />
+          </div>
+          <div className="grid grid-cols-2 gap-5 md:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="flex flex-col gap-1.5">
+                <Skeleton className="h-2.5 w-20 rounded-[6px]" />
+                <Skeleton className="h-4 w-32 rounded-[6px]" />
+              </div>
+            ))}
+          </div>
+          <Skeleton className="h-24 w-full rounded-[10px]" />
+        </div>
       ) : isError || !data ? (
         <div className="flex flex-col items-start gap-2">
           <p className="text-[14px] font-semibold text-bloom-ink">
@@ -193,11 +212,9 @@ export function ProductDetail({ productId, backHref }: ProductDetailProps) {
             </div>
           ) : null}
 
-          {/* Edit Modal */}
           {isEditOpen ? (
-            <EditProductModal
-              isOpen
-              product={data}
+            <AddProductModal
+              productId={data.id}
               onClose={() => setIsEditOpen(false)}
             />
           ) : null}

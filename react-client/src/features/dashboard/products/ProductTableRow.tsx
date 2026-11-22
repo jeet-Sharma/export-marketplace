@@ -12,15 +12,18 @@ import {
 
 type ProductTableRowProps = {
   product: ProductRow;
-  /** Destination for the View/Edit actions (built by the parent so the
+  /** Destination for the View action (built by the parent so the
       active ?role= param is preserved). */
   detailHref: string;
+  /** Opens edit modal for this product. */
+  onEdit: () => void;
   highlighted?: boolean;
 };
 
 export function ProductTableRow({
   product,
   detailHref,
+  onEdit,
   highlighted = false,
 }: ProductTableRowProps) {
   const [publish, { isLoading: isPublishing }] = usePublishAdminProductMutation();
@@ -139,6 +142,17 @@ export function ProductTableRow({
         >
           View
         </Link>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            onEdit();
+          }}
+          title="Edit product"
+          className="flex h-[30px] flex-1 items-center justify-center rounded-[6px] bg-bloom-pink text-[11px] font-bold text-white transition-opacity hover:opacity-90"
+        >
+          Edit
+        </button>
         <button
           type="button"
           onClick={handleTogglePublish}
